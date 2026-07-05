@@ -63,19 +63,19 @@ export default function UniversalPageHeader({
         {(backHref || shareUrl || badge || children) && (
           <div className="mt-5">
             {(backHref || shareUrl) && (
-              <div className="flex items-center justify-between gap-3">
-                <div>
+              <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="w-full sm:w-auto">
                   {backHref && (
                     <a
                       href={backHref}
-                      className="inline-flex items-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-1.5 text-sm font-bold text-black transition hover:bg-[#b99236]"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#b99236] sm:w-auto"
                     >
                       ← Back
                     </a>
                   )}
                 </div>
 
-                <div>
+                <div className="w-full sm:w-auto [&_button]:w-full sm:[&_button]:w-auto">
                   {shareUrl && shareType && title && (
                     <ShareButton
                       type={shareType}
