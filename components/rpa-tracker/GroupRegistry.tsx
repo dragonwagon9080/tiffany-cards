@@ -112,14 +112,32 @@ function extractMostRecentHistoryDate(card: any) {
   return dates.length ? Math.max(...dates) : 0;
 }
 
-function sortCards(cards: any[], sortMode: string) {
+function serialFallbackSort(a: any, b: any) {
+  const serialA = parseSerial(a.Serial_Number);
+  const serialB = parseSerial(b.Serial_Number);
+
+  if (serialA.denominator !== serialB.denominator) {
+    return serialA.denominator - serialB.denominator;
+  }
+
+  const variationSort = variationName(a).localeCompare(variationName(b), undefined, {
+    sensitivity: "base",
+    numeric: true,
+  });
+
+  if (variationSort !== 0) return variationSort;
+
+  return serialA.numerator - serialB.numerator;
+}
+
+function sortCards(cards: any[], sortMode: string): any[] {
   const list = [...cards];
 
   if (sortMode === "grade") {
     return list.sort((a, b) => {
       const gradeSort = compareGradesHighestFirst(a, b);
       if (gradeSort !== 0) return gradeSort;
-      return sortCards([a, b], "serial").indexOf(a) - sortCards([a, b], "serial").indexOf(b);
+      return serialFallbackSort(a, b);
     });
   }
 
@@ -130,7 +148,7 @@ function sortCards(cards: any[], sortMode: string) {
 
       if (dateA !== dateB) return dateB - dateA;
 
-      return sortCards([a, b], "serial").indexOf(a) - sortCards([a, b], "serial").indexOf(b);
+      return serialFallbackSort(a, b);
     });
   }
 
