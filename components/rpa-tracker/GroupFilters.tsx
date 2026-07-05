@@ -8,6 +8,9 @@ type Props = {
   variation: string;
   setVariation: (value: string) => void;
 
+  sortMode: string;
+  setSortMode: (value: string) => void;
+
   variations: any[];
   registryTitle: string;
 
@@ -20,6 +23,8 @@ export default function GroupFilters({
   onSearch,
   variation,
   setVariation,
+  sortMode,
+  setSortMode,
   variations,
   registryTitle,
   onReset,
@@ -35,7 +40,7 @@ export default function GroupFilters({
           e.preventDefault();
           onSearch();
         }}
-        className="grid gap-3 md:grid-cols-[1fr_260px_110px_110px]"
+        className="grid gap-3 md:grid-cols-[1fr_90px_230px_220px_110px]"
       >
         <input
           value={searchDraft}
@@ -43,6 +48,13 @@ export default function GroupFilters({
           placeholder={`Search ${registryTitle}...`}
           className="h-11 rounded border border-blue-700 bg-black px-4 text-sm font-bold text-white outline-none transition placeholder:text-zinc-400 focus:border-blue-400"
         />
+
+<button
+          type="submit"
+          className="h-11 rounded border border-blue-500 bg-blue-700 px-4 text-sm font-black uppercase text-white transition hover:bg-blue-600 whitespace-nowrap"
+        >
+          Search
+        </button>
 
         <select
           value={variation}
@@ -58,14 +70,19 @@ export default function GroupFilters({
           ))}
         </select>
 
-        <button
-          type="submit"
-          className="h-11 rounded border border-blue-500 bg-blue-700 px-4 text-sm font-black uppercase text-white transition hover:bg-blue-600"
+        <select
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value)}
+          className="h-11 rounded border border-blue-700 bg-black px-3 text-sm font-bold text-white outline-none transition focus:border-blue-400"
         >
-          Search
-        </button>
+          <option value="serial">View: Serial Number</option>
+          <option value="variation">View: Variation</option>
+          <option value="grade">View: Highest Grade</option>
+          <option value="recent">View: Recently Added</option>
+          <option value="lowestSerial">View: Lowest Serial</option>
+        </select>
 
-        <button
+                <button
           type="button"
           onClick={onReset}
           className="h-11 rounded border border-[#d4af37] bg-[#9c7a2d] px-4 text-sm font-black uppercase text-black transition hover:bg-[#b99236]"

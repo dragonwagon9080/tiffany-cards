@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
 function variationName(card: any) {
   return String(card.Variation_Input || card.Variation || "Base").trim();
@@ -9,7 +9,6 @@ function variationName(card: any) {
 
 function parseSerial(value: any) {
   const match = String(value || "").match(/(\d+)\s*\/\s*(\d+)/);
-
   if (!match) return null;
 
   return {
@@ -22,7 +21,7 @@ function buildPrintRuns(cards: any[], variation: string) {
   const runs = new Map<number, Map<number, any>>();
 
   cards.forEach((card) => {
-    if (variationName(card) !== variation) return;
+    if (variation !== "All" && variationName(card) !== variation) return;
 
     const serial = parseSerial(card.Serial_Number);
     if (!serial) return;
@@ -55,7 +54,7 @@ function buildVariationOptions(cards: any[]) {
     }
   });
 
-  return Array.from(map.entries())
+  const options = Array.from(map.entries())
     .map(([name, runs]) => {
       const runLabel = Array.from(runs.entries())
         .sort((a, b) => a[0] - b[0])
@@ -73,31 +72,50 @@ function buildVariationOptions(cards: any[]) {
         numeric: true,
       })
     );
+
+  return [{ name: "All", label: "All Variations" }, ...options];
+}
+
+function getVariationLabelForRun(foundByNumber: Map<number, any>) {
+  const firstCard = Array.from(foundByNumber.values())[0];
+  return firstCard ? variationName(firstCard) : "Unknown Variation";
 }
 
 export default function RegistryMap({
   variation,
   cards,
   showVariationPicker = false,
+  onVariationChange,
 }: {
   variation: string;
   cards: any[];
   showVariationPicker?: boolean;
+  onVariationChange?: (variation: string) => void;
 }) {
   const variationOptions = useMemo(
     () => buildVariationOptions(cards || []),
     [cards]
   );
 
-  const [selectedVariation, setSelectedVariation] = useState(variation);
+  const [internalVariation, setInternalVariation] = useState(variation || "All");
 
-  const activeVariation = showVariationPicker ? selectedVariation : variation;
-  const printRuns = buildPrintRuns(cards, activeVariation);
+const activeVariation = onVariationChange
+  ? variation || "All"
+  : internalVariation || variation || "All";
+
+function handleVariationChange(value: string) {
+  if (onVariationChange) {
+    onVariationChange(value);
+  } else {
+    setInternalVariation(value);
+  }
+}
+  const printRuns = buildPrintRuns(cards || [], activeVariation);
 
   if (!printRuns.length) return null;
 
   return (
-    <div className="mb-8 rounded-xl border border-zinc-700 bg-zinc-950 p-6">
+    <div className="rounded-xl border border-zinc-700 bg-zinc-950 p-4 sm:p-6">
       <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <h2 className="text-xl font-black uppercase tracking-wide text-white">
           Registry Map
@@ -105,8 +123,8 @@ export default function RegistryMap({
 
         {showVariationPicker && variationOptions.length > 1 && (
           <select
-            value={selectedVariation}
-            onChange={(e) => setSelectedVariation(e.target.value)}
+            value={activeVariation}
+           onChange={(e) => handleVariationChange(e.target.value)}
             className="h-10 rounded border border-blue-700 bg-black px-4 text-sm font-bold text-white outline-none transition focus:border-blue-400"
           >
             {variationOptions.map((item) => (
@@ -121,16 +139,19 @@ export default function RegistryMap({
       <div className="space-y-8">
         {printRuns.map(([denominator, foundByNumber]) => (
           <div key={`${activeVariation}-${denominator}`}>
-            <div className="mb-4 text-xl font-bold">
+            <div className="mb-4 text-lg font-bold sm:text-xl">
               <span className="text-blue-400">
-                {activeVariation} /{denominator}
-              </span>{" "}
+  {activeVariation === "All"
+    ? getVariationLabelForRun(foundByNumber)
+    : activeVariation}{" "}
+  /{denominator}
+</span>{" "}
               <span className="text-zinc-300">
                 ({foundByNumber.size}/{denominator})
               </span>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
               {Array.from({ length: denominator }).map((_, index) => {
                 const number = index + 1;
                 const card = foundByNumber.get(number);
@@ -138,8 +159,8 @@ export default function RegistryMap({
 
                 const inner = (
                   <span className="flex h-full w-full flex-col items-center justify-center leading-none">
-                    <span className="text-lg font-black">{number}</span>
-                    <span className="mt-0.5 text-[10px] font-bold opacity-90">
+                    <span className="text-sm font-black sm:text-lg">{number}</span>
+                    <span className="mt-0.5 text-[8px] font-bold opacity-90 sm:text-[10px]">
                       /{denominator}
                     </span>
                   </span>
@@ -150,8 +171,8 @@ export default function RegistryMap({
                     <Link
                       key={label}
                       href={`/rpa-tracker/card/${card.Card_id}`}
-                      title={`${activeVariation} ${label} tracked`}
-                      className="flex h-12 w-12 items-center justify-center rounded-full border border-blue-300 bg-blue-700 text-white transition hover:scale-110 hover:shadow-[0_0_18px_rgba(59,130,246,.85)]"
+                      title={`${activeVariation === "All" ? variationName(card) : activeVariation} ${label} tracked`}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-blue-300 bg-blue-700 text-white transition hover:scale-110 hover:shadow-[0_0_18px_rgba(59,130,246,.85)] sm:h-12 sm:w-12"
                     >
                       {inner}
                     </Link>
@@ -162,8 +183,8 @@ export default function RegistryMap({
                   <button
                     key={label}
                     type="button"
-                    title={`${activeVariation} ${label} not yet tracked`}
-                    className="flex h-12 w-12 items-center justify-center rounded-full border border-[#d4af37] bg-black text-[#d4af37] transition hover:scale-110 hover:shadow-[0_0_18px_rgba(212,175,55,.75)]"
+                    title={`${activeVariation === "All" ? getVariationLabelForRun(foundByNumber) : activeVariation} ${label} not yet tracked`}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d4af37] bg-black text-[#d4af37] transition hover:scale-110 hover:shadow-[0_0_18px_rgba(212,175,55,.75)] sm:h-12 sm:w-12"
                   >
                     {inner}
                   </button>

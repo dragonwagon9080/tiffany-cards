@@ -53,19 +53,11 @@ function formatDate(month: number, day: number, year: number) {
 function extractDate(line: string) {
   const text = line.trim();
 
-  const numeric = text.match(
-    /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(.*)$/i
-  );
+  const numeric = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(.*)$/i);
 
   if (numeric) {
-    const date = formatDate(
-      Number(numeric[1]) - 1,
-      Number(numeric[2]),
-      Number(numeric[3])
-    );
-
     return {
-      date,
+      date: formatDate(Number(numeric[1]) - 1, Number(numeric[2]), Number(numeric[3])),
       rest: numeric[4].trim(),
     };
   }
@@ -75,8 +67,7 @@ function extractDate(line: string) {
   );
 
   if (written) {
-    const monthKey = written[1].toLowerCase();
-    const month = MONTHS[monthKey];
+    const month = MONTHS[written[1].toLowerCase()];
 
     if (month !== undefined) {
       return {
@@ -91,8 +82,7 @@ function extractDate(line: string) {
   );
 
   if (reverseWritten) {
-    const monthKey = reverseWritten[2].toLowerCase();
-    const month = MONTHS[monthKey];
+    const month = MONTHS[reverseWritten[2].toLowerCase()];
 
     if (month !== undefined) {
       return {
@@ -106,10 +96,6 @@ function extractDate(line: string) {
     date: "",
     rest: line,
   };
-}
-
-function startsWithDate(line: string) {
-  return Boolean(extractDate(line).date);
 }
 
 function sourceLabel(url: string) {
@@ -135,7 +121,7 @@ function psaCertUrl(cert: string) {
 
 function normalizeGradeCert(text: string) {
   return text.replace(
-    /\b(PSA|BGS|SGC|CGC|MBA)\s+(.+?)\s+(?:cert\s*#?\s*)?(\d{5,})(?=\s|$)/gi,
+    /\b(PSA|BGS|SGC|CGC|MBA)\s+([A-Za-z0-9.+/-]+)\s+(?:cert\s*#?\s*)?(\d{5,})(?=\s|$|https?:\/\/)/gi,
     (_match, company, grade, cert) =>
       `${company.toUpperCase()} ${grade.trim()} cert# ${cert}`
   );
@@ -176,7 +162,7 @@ function renderSourceText(text: string) {
   const normalized = normalizeGradeCert(text);
 
   const parts = normalized.split(
-    /(https?:\/\/[^\s]+|\b(?:PSA|BGS|SGC|CGC|MBA)\s+[^•\n]*?cert\s*#\s*\d{5,}|\bebay\b|\bGoldin\b|\bHeritage\b|\bPWCC\b|\bFanatics Collect\b)/gi
+    /(https?:\/\/[^\s]+|\b(?:PSA|BGS|SGC|CGC|MBA)\s+[A-Za-z0-9.+/-]+\s+cert\s*#\s*\d{5,}|\bRaw\b|\bebay\b|\bGoldin\b|\bHeritage\b|\bPWCC\b|\bFanatics Collect\b)/gi
   );
 
   return parts.map((part, index) => {
@@ -184,22 +170,22 @@ function renderSourceText(text: string) {
 
     if (/^https?:\/\//i.test(part)) {
       return (
-  <span key={index}>
-    <span className="mx-2 font-bold text-white">•</span>
-    <a
-      href={part}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="font-bold text-blue-400 underline hover:text-blue-300"
-    >
-      {sourceLabel(part)}
-    </a>
-  </span>
-);
+        <span key={index}>
+          <span className="mx-2 font-bold text-white">•</span>
+          <a
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-bold text-blue-400 underline hover:text-blue-300"
+          >
+            {sourceLabel(part)}
+          </a>
+        </span>
+      );
     }
 
     const gradeCert = part.match(
-      /\b(PSA|BGS|SGC|CGC|MBA|Raw)\s+(.+?)?(?:\s+cert\s*#\s*(\d{5,}))?\b/i
+      /\b(PSA|BGS|SGC|CGC|MBA)\s+([A-Za-z0-9.+/-]+)\s+cert\s*#\s*(\d{5,})\b/i
     );
 
     if (gradeCert) {
@@ -230,39 +216,36 @@ function renderSourceText(text: string) {
     }
 
     if (/^ebay$/i.test(part)) {
-  return (
-    <span key={index}>
-      <span className="mx-2 font-bold text-white">•</span>
-      <span className="font-bold text-blue-400">
-        eBay
-      </span>
-    </span>
-  );
-}
+      return (
+        <span key={index}>
+          <span className="mx-2 font-bold text-white">•</span>
+          <span className="font-bold text-blue-400">eBay</span>
+        </span>
+      );
+    }
 
     if (/^(Goldin|Heritage|PWCC|Fanatics Collect)$/i.test(part)) {
-  return (
-    <span key={index}>
-      <span className="mx-2 font-bold text-white">•</span>
-      <span className="font-bold text-blue-400">
+      return (
+        <span key={index}>
+          <span className="mx-2 font-bold text-white">•</span>
+          <span className="font-bold text-blue-400">{part}</span>
+        </span>
+      );
+    }
+
+    if (/\bRaw\b/i.test(part)) {
+      return (
+        <span key={index} className="font-bold text-[#d4af37]">
+          {part}
+        </span>
+      );
+    }
+
+    return (
+      <span key={index} className="text-zinc-400">
         {part}
       </span>
-    </span>
-  );
-}
-    if (/\bRaw\b/i.test(part)) {
-  return (
-    <span key={index} className="font-bold text-[#d4af37]">
-      {part}
-    </span>
-  );
-}
-
-return (
-  <span key={index} className="text-zinc-400">
-    {part}
-  </span>
-);
+    );
   });
 }
 

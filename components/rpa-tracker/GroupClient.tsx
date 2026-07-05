@@ -16,13 +16,19 @@ type GroupData = {
   variations: any[];
 };
 
+function variationName(card: any) {
+  return String(card.Variation_Input || card.Variation || "Base").trim();
+}
+
 export default function GroupClient({ slug }: { slug: string }) {
   const [data, setData] = useState<GroupData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
-  const [variation, setVariation] = useState("");
+  const [variation, setVariation] = useState("All");
+  const [sortMode, setSortMode] = useState("serial");
+  const [showRegistryMap, setShowRegistryMap] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -48,8 +54,9 @@ export default function GroupClient({ slug }: { slug: string }) {
     const q = search.trim().toLowerCase();
 
     return data.cards.filter((card) => {
-      const cardVariation = card.Variation_Input || card.Variation || "Base";
-      const variationMatch = variation ? cardVariation === variation : true;
+      const cardVariation = variationName(card);
+      const variationMatch =
+        variation && variation !== "All" ? cardVariation === variation : true;
 
       const searchable = [
         cardVariation,
@@ -83,7 +90,6 @@ export default function GroupClient({ slug }: { slug: string }) {
 
   const group = data.group;
   const title = group.Card_Title_Display || group.Card_Title;
-  const selectedVariation = variation || data.variations?.[0]?.name || "Base";
 
   return (
     <main className="min-h-screen bg-black px-4 py-10 text-white sm:px-6">
@@ -104,14 +110,17 @@ export default function GroupClient({ slug }: { slug: string }) {
             </div>
 
             <div className="text-lg font-bold leading-tight text-white sm:text-xl">
-              {group.Count} tracked card{group.Count === 1 ? "" : "s"}
+              {filteredCards.length} of {group.Count} tracked card
+              {group.Count === 1 ? "" : "s"}
             </div>
 
             <div className="flex justify-center sm:justify-end [&_button]:w-full sm:[&_button]:w-auto">
               <ShareButton
                 type="registry"
                 title={title}
-                url={`${process.env.NEXT_PUBLIC_SITE_URL || ""}/rpa-tracker/group/${group.Slug}`}
+                url={`${
+                  process.env.NEXT_PUBLIC_SITE_URL || ""
+                }/rpa-tracker/group/${group.Slug}`}
               />
             </div>
           </div>
@@ -121,24 +130,42 @@ export default function GroupClient({ slug }: { slug: string }) {
           searchDraft={searchDraft}
           setSearchDraft={setSearchDraft}
           onSearch={() => setSearch(searchDraft)}
-          variation={variation}
-          setVariation={setVariation}
+          variation={variation === "All" ? "" : variation}
+          setVariation={(value) => setVariation(value || "All")}
+          sortMode={sortMode}
+          setSortMode={setSortMode}
           variations={data.variations || []}
           registryTitle={title}
           onReset={() => {
             setSearchDraft("");
             setSearch("");
-            setVariation("");
+            setVariation("All");
+            setSortMode("serial");
           }}
         />
 
-        <RegistryMap
-          variation={variation || selectedVariation}
-          cards={data.cards}
-          showVariationPicker
-        />
+        <div className="mb-5">
+          <button
+            type="button"
+            onClick={() => setShowRegistryMap((current) => !current)}
+            className="w-full rounded-lg border border-blue-700 bg-zinc-950 px-5 py-3 text-sm font-black uppercase tracking-wide text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
+          >
+            {showRegistryMap ? "Hide Registry Map" : "Show Registry Map"}
+          </button>
+        </div>
 
-        <GroupRegistry cards={filteredCards} />
+        {showRegistryMap && (
+          <div className="mb-8">
+            <RegistryMap
+              variation={variation}
+              cards={data.cards}
+              showVariationPicker
+              onVariationChange={setVariation}
+            />
+          </div>
+        )}
+
+        <GroupRegistry cards={filteredCards} sortMode={sortMode} />
       </div>
     </main>
   );

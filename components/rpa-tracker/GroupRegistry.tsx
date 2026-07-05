@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { compareGradesHighestFirst } from "@/lib/grading";
 
 const SPECIAL_ONE_OF_ONE_ORDER = [
   "logoman",
@@ -44,8 +45,136 @@ function specialRank(card: any) {
   return index === -1 ? 999 : index;
 }
 
-function sortCards(cards: any[]) {
-  return [...cards].sort((a, b) => {
+function extractMostRecentHistoryDate(card: any) {
+  const history = String(card.Card_History || "");
+
+  const dates: number[] = [];
+
+  const numericDates = history.matchAll(
+    /\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/g
+  );
+
+  for (const match of numericDates) {
+    const month = Number(match[1]) - 1;
+    const day = Number(match[2]);
+    let year = Number(match[3]);
+
+    if (year < 100) year += 2000;
+
+    const date = new Date(year, month, day).getTime();
+
+    if (!Number.isNaN(date)) dates.push(date);
+  }
+
+  const writtenDates = history.matchAll(
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(\d{2,4})\b/gi
+  );
+
+  const monthMap: Record<string, number> = {
+    jan: 0,
+    january: 0,
+    feb: 1,
+    february: 1,
+    mar: 2,
+    march: 2,
+    apr: 3,
+    april: 3,
+    may: 4,
+    jun: 5,
+    june: 5,
+    jul: 6,
+    july: 6,
+    aug: 7,
+    august: 7,
+    sep: 8,
+    sept: 8,
+    september: 8,
+    oct: 9,
+    october: 9,
+    nov: 10,
+    november: 10,
+    dec: 11,
+    december: 11,
+  };
+
+  for (const match of writtenDates) {
+    const month = monthMap[String(match[1]).toLowerCase()];
+    const day = Number(match[2]);
+    let year = Number(match[3]);
+
+    if (year < 100) year += 2000;
+
+    const date = new Date(year, month, day).getTime();
+
+    if (!Number.isNaN(date)) dates.push(date);
+  }
+
+  return dates.length ? Math.max(...dates) : 0;
+}
+
+function sortCards(cards: any[], sortMode: string) {
+  const list = [...cards];
+
+  if (sortMode === "grade") {
+    return list.sort((a, b) => {
+      const gradeSort = compareGradesHighestFirst(a, b);
+      if (gradeSort !== 0) return gradeSort;
+      return sortCards([a, b], "serial").indexOf(a) - sortCards([a, b], "serial").indexOf(b);
+    });
+  }
+
+  if (sortMode === "recent") {
+    return list.sort((a, b) => {
+      const dateA = extractMostRecentHistoryDate(a);
+      const dateB = extractMostRecentHistoryDate(b);
+
+      if (dateA !== dateB) return dateB - dateA;
+
+      return sortCards([a, b], "serial").indexOf(a) - sortCards([a, b], "serial").indexOf(b);
+    });
+  }
+
+  if (sortMode === "variation") {
+    return list.sort((a, b) => {
+      const variationSort = variationName(a).localeCompare(variationName(b), undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+
+      if (variationSort !== 0) return variationSort;
+
+      const serialA = parseSerial(a.Serial_Number);
+      const serialB = parseSerial(b.Serial_Number);
+
+      if (serialA.denominator !== serialB.denominator) {
+        return serialA.denominator - serialB.denominator;
+      }
+
+      return serialA.numerator - serialB.numerator;
+    });
+  }
+
+  if (sortMode === "lowestSerial") {
+    return list.sort((a, b) => {
+      const serialA = parseSerial(a.Serial_Number);
+      const serialB = parseSerial(b.Serial_Number);
+
+      if (serialA.numerator !== serialB.numerator) {
+        return serialA.numerator - serialB.numerator;
+      }
+
+      if (serialA.denominator !== serialB.denominator) {
+        return serialA.denominator - serialB.denominator;
+      }
+
+      return variationName(a).localeCompare(variationName(b), undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+  }
+
+  return list.sort((a, b) => {
     const serialA = parseSerial(a.Serial_Number);
     const serialB = parseSerial(b.Serial_Number);
 
@@ -60,7 +189,11 @@ function sortCards(cards: any[]) {
       return serialA.denominator - serialB.denominator;
     }
 
-    const variationSort = variationName(a).localeCompare(variationName(b));
+    const variationSort = variationName(a).localeCompare(variationName(b), undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+
     if (variationSort !== 0) return variationSort;
 
     return serialA.numerator - serialB.numerator;
@@ -108,8 +241,14 @@ function CopyText({
   );
 }
 
-export default function GroupRegistry({ cards }: { cards: any[] }) {
-  const sortedCards = sortCards(cards || []);
+export default function GroupRegistry({
+  cards,
+  sortMode = "serial",
+}: {
+  cards: any[];
+  sortMode?: string;
+}) {
+  const sortedCards = sortCards(cards || [], sortMode);
 
   if (!sortedCards.length) {
     return (
@@ -130,19 +269,22 @@ export default function GroupRegistry({ cards }: { cards: any[] }) {
             key={card.Card_id}
             className="overflow-hidden rounded-lg border border-zinc-700 bg-black transition hover:border-blue-500 hover:shadow-[0_0_25px_rgba(59,130,246,.65)]"
           >
-            <Link href={`/rpa-tracker/card/${card.Card_id}`} className="block bg-black p-4">
+            <Link
+              href={`/rpa-tracker/card/${card.Card_id}`}
+              className="block bg-black p-4"
+            >
               <div className="group flex h-64 items-center justify-center overflow-hidden">
-  {card.Front_Image ? (
-    <img
-      src={card.Front_Image}
-      alt={card.Card_Title_Display || card.Card_Title}
-      className="max-h-full w-auto object-contain transition-transform duration-300 ease-out group-hover:scale-105"
-      loading="lazy"
-    />
-  ) : (
-    <div className="text-zinc-500">No Image</div>
-  )}
-</div>
+                {card.Front_Image ? (
+                  <img
+                    src={card.Front_Image}
+                    alt={card.Card_Title_Display || card.Card_Title}
+                    className="max-h-full w-auto object-contain transition-transform duration-300 ease-out group-hover:scale-105"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="text-zinc-500">No Image</div>
+                )}
+              </div>
             </Link>
 
             <div className="space-y-2 px-4 pb-4 pt-2 text-center select-text">
