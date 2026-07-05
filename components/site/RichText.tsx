@@ -1,5 +1,3 @@
-import DOMPurify from "isomorphic-dompurify";
-
 export default function RichText({
   content,
   className = "",
@@ -9,9 +7,7 @@ export default function RichText({
 }) {
   if (!content) return null;
 
-  const html = DOMPurify.sanitize(content.replace(/\n/g, "<br />"), {
-    ADD_ATTR: ["target", "rel"],
-  });
+  const html = String(content).replace(/\n/g, "<br />");
 
   return (
     <div
