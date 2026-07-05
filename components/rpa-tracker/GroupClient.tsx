@@ -8,7 +8,6 @@ import UniversalPageHeader from "@/components/shared/UniversalPageHeader";
 import GroupFilters from "./GroupFilters";
 import GroupRegistry from "./GroupRegistry";
 import RegistryMap from "./RegistryMap";
-import ActionBar from "@/components/shared/ActionBar";
 import ShareButton from "@/components/shared/ShareButton";
 
 type GroupData = {
@@ -84,38 +83,38 @@ export default function GroupClient({ slug }: { slug: string }) {
 
   const group = data.group;
   const title = group.Card_Title_Display || group.Card_Title;
-const selectedVariation = variation || data.variations?.[0]?.name || "Base";
+  const selectedVariation = variation || data.variations?.[0]?.name || "Base";
 
   return (
-    <main className="min-h-screen bg-black px-6 py-10 text-white">
+    <main className="min-h-screen bg-black px-4 py-10 text-white sm:px-6">
       <div className="mx-auto max-w-7xl">
         <UniversalPageHeader
           section="RPA Tracker"
           title={title}
           defaultTarget="rpa"
         >
-          <ActionBar
-  left={
-    <Link
-      href="/rpa-tracker"
-      className="inline-flex items-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-1.5 text-sm font-bold text-black transition hover:bg-[#b99236]"
-    >
-      ← Back
-    </Link>
-  }
-  center={
-    <div className="whitespace-nowrap text-xl font-bold text-white">
-      {group.Count} tracked card{group.Count === 1 ? "" : "s"}
-    </div>
-  }
-  right={
-    <ShareButton
-      type="registry"
-      title={title}
-      url={`${process.env.NEXT_PUBLIC_SITE_URL}/rpa-tracker/group/${group.Slug}`}
-    />
-  }
-/>
+          <div className="mt-5 grid w-full grid-cols-1 gap-3 text-center sm:grid-cols-3 sm:items-center">
+            <div className="flex justify-center sm:justify-start">
+              <Link
+                href="/rpa-tracker"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#b99236] sm:w-auto"
+              >
+                ← Back
+              </Link>
+            </div>
+
+            <div className="text-lg font-bold leading-tight text-white sm:text-xl">
+              {group.Count} tracked card{group.Count === 1 ? "" : "s"}
+            </div>
+
+            <div className="flex justify-center sm:justify-end [&_button]:w-full sm:[&_button]:w-auto">
+              <ShareButton
+                type="registry"
+                title={title}
+                url={`${process.env.NEXT_PUBLIC_SITE_URL || ""}/rpa-tracker/group/${group.Slug}`}
+              />
+            </div>
+          </div>
         </UniversalPageHeader>
 
         <GroupFilters
@@ -133,11 +132,11 @@ const selectedVariation = variation || data.variations?.[0]?.name || "Base";
           }}
         />
 
-       <RegistryMap
-  variation={variation || selectedVariation}
-  cards={data.cards}
-  showVariationPicker
-/>
+        <RegistryMap
+          variation={variation || selectedVariation}
+          cards={data.cards}
+          showVariationPicker
+        />
 
         <GroupRegistry cards={filteredCards} />
       </div>
