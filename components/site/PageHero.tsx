@@ -58,14 +58,14 @@ export default function PageHero({
                 : "linear-gradient(135deg, #050505, #2a2112)",
             }}
           >
-            <div className="relative z-20 mx-auto flex h-full max-w-4xl flex-col items-center justify-center px-10 text-center">
-             <h1 className="gold-title text-4xl font-black uppercase tracking-[0.08em] md:text-6xl">
+            <div className="relative z-20 mx-auto flex h-full max-w-4xl flex-col items-center justify-center px-5 py-8 text-center md:px-10 md:py-0">
+              <h1 className="gold-title text-2xl font-black uppercase leading-tight tracking-[0.04em] sm:text-3xl md:text-5xl lg:text-6xl">
                 {title || fallbackTitle}
               </h1>
 
               {subtitle && (
                 <p
-                  className="mt-5 text-lg uppercase tracking-[0.22em] text-white md:text-2xl"
+                  className="mt-3 text-sm uppercase leading-relaxed tracking-[0.12em] text-white sm:text-base md:mt-5 md:text-2xl md:tracking-[0.22em]"
                   style={{
                     fontFamily:
                       "var(--font-cinzel), Georgia, 'Times New Roman', serif",
