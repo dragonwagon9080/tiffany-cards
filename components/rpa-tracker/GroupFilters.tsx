@@ -27,7 +27,6 @@ export default function GroupFilters({
   setSortMode,
   variations,
   registryTitle,
-  onReset,
 }: Props) {
   return (
     <section className="mb-8 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
@@ -40,7 +39,7 @@ export default function GroupFilters({
           e.preventDefault();
           onSearch();
         }}
-        className="grid gap-3 md:grid-cols-[1fr_90px_230px_220px_110px]"
+        className="grid gap-3 md:grid-cols-[minmax(0,1fr)_90px_190px_190px]"
       >
         <input
           value={searchDraft}
@@ -49,9 +48,9 @@ export default function GroupFilters({
           className="h-11 rounded border border-blue-700 bg-black px-4 text-sm font-bold text-white outline-none transition placeholder:text-zinc-400 focus:border-blue-400"
         />
 
-<button
+        <button
           type="submit"
-          className="h-11 rounded border border-blue-500 bg-blue-700 px-4 text-sm font-black uppercase text-white transition hover:bg-blue-600 whitespace-nowrap"
+          className="h-11 whitespace-nowrap rounded border border-blue-500 bg-blue-700 px-4 text-sm font-black uppercase text-white transition hover:bg-blue-600"
         >
           Search
         </button>
@@ -81,14 +80,6 @@ export default function GroupFilters({
           <option value="recent">View: Recently Added</option>
           <option value="lowestSerial">View: Lowest Serial</option>
         </select>
-
-                <button
-          type="button"
-          onClick={onReset}
-          className="h-11 rounded border border-[#d4af37] bg-[#9c7a2d] px-4 text-sm font-black uppercase text-black transition hover:bg-[#b99236]"
-        >
-          Reset
-        </button>
       </form>
     </section>
   );
