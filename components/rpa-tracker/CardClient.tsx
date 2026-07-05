@@ -139,10 +139,10 @@ export default function CardClient({ id }: Props) {
   title={card.Card_Title_Display || card.Card_Title}
   defaultTarget="rpa"
 >
-  <div className="flex items-center justify-between gap-3">
+<div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
   <Link
     href={`/rpa-tracker/group/${card.Slug}`}
-    className="inline-flex items-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-1.5 text-sm font-bold text-black transition hover:bg-[#b99236]"
+    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#b99236] sm:w-auto sm:justify-start"
   >
     ← Back
   </Link>

@@ -48,12 +48,12 @@ export default function ImageCanvas({
       onMouseMove={zoomEnabled ? handleMouseMove : undefined}
       onMouseUp={zoomEnabled ? handleMouseUp : undefined}
       onMouseLeave={zoomEnabled ? handleMouseUp : undefined}
-      className="flex h-full w-full touch-none items-center justify-center overflow-hidden overscroll-contain bg-[#0a0a0a] p-3"
+      className="flex h-full w-full touch-pan-x touch-pan-y items-center justify-center overflow-auto overscroll-contain bg-[#0a0a0a] p-3"
     >
       <div
         onMouseDown={zoomEnabled ? handleMouseDown : undefined}
         onDoubleClick={zoomEnabled ? handleDoubleClick : undefined}
-        className={`flex h-full w-full items-center justify-center ${
+        className={`flex h-full w-full min-w-full items-center justify-center ${
           zoomEnabled && scale > 1
             ? dragging
               ? "cursor-grabbing"
