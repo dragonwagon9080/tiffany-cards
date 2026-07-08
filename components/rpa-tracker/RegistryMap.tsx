@@ -3,39 +3,11 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-function variationName(card: any) {
-  return String(card.Variation_Input || card.Variation || "Base").trim();
-}
-
-function parseSerial(value: any) {
-  const match = String(value || "").match(/(\d+)\s*\/\s*(\d+)/);
-  if (!match) return null;
-
-  return {
-    numerator: Number(match[1]),
-    denominator: Number(match[2]),
-  };
-}
-
-function buildPrintRuns(cards: any[], variation: string) {
-  const runs = new Map<number, Map<number, any>>();
-
-  cards.forEach((card) => {
-    if (variation !== "All" && variationName(card) !== variation) return;
-
-    const serial = parseSerial(card.Serial_Number);
-    if (!serial) return;
-    if (!serial.denominator || serial.denominator > 250) return;
-
-    if (!runs.has(serial.denominator)) {
-      runs.set(serial.denominator, new Map<number, any>());
-    }
-
-    runs.get(serial.denominator)?.set(serial.numerator, card);
-  });
-
-  return Array.from(runs.entries()).sort((a, b) => a[0] - b[0]);
-}
+import {
+  buildRegistryRuns,
+  parseSerial,
+  variationName,
+} from "@/lib/rpaSort";
 
 function buildVariationOptions(cards: any[]) {
   const map = new Map<string, Map<number, number>>();
@@ -76,11 +48,6 @@ function buildVariationOptions(cards: any[]) {
   return [{ name: "All", label: "All Variations" }, ...options];
 }
 
-function getVariationLabelForRun(foundByNumber: Map<number, any>) {
-  const firstCard = Array.from(foundByNumber.values())[0];
-  return firstCard ? variationName(firstCard) : "Unknown Variation";
-}
-
 export default function RegistryMap({
   variation,
   cards,
@@ -97,20 +64,23 @@ export default function RegistryMap({
     [cards]
   );
 
-  const [internalVariation, setInternalVariation] = useState(variation || "All");
+  const [internalVariation, setInternalVariation] = useState(
+    variation || "All"
+  );
 
-const activeVariation = onVariationChange
-  ? variation || "All"
-  : internalVariation || variation || "All";
+  const activeVariation = onVariationChange
+    ? variation || "All"
+    : internalVariation || variation || "All";
 
-function handleVariationChange(value: string) {
-  if (onVariationChange) {
-    onVariationChange(value);
-  } else {
-    setInternalVariation(value);
+  function handleVariationChange(value: string) {
+    if (onVariationChange) {
+      onVariationChange(value);
+    } else {
+      setInternalVariation(value);
+    }
   }
-}
-  const printRuns = buildPrintRuns(cards || [], activeVariation);
+
+  const printRuns = buildRegistryRuns(cards || [], activeVariation);
 
   if (!printRuns.length) return null;
 
@@ -124,7 +94,7 @@ function handleVariationChange(value: string) {
         {showVariationPicker && variationOptions.length > 1 && (
           <select
             value={activeVariation}
-           onChange={(e) => handleVariationChange(e.target.value)}
+            onChange={(e) => handleVariationChange(e.target.value)}
             className="h-10 rounded border border-blue-700 bg-black px-4 text-sm font-bold text-white outline-none transition focus:border-blue-400"
           >
             {variationOptions.map((item) => (
@@ -137,15 +107,12 @@ function handleVariationChange(value: string) {
       </div>
 
       <div className="space-y-8">
-        {printRuns.map(([denominator, foundByNumber]) => (
-          <div key={`${activeVariation}-${denominator}`}>
+        {printRuns.map(({ variation, denominator, foundByNumber }) => (
+          <div key={`${variation}-${denominator}`}>
             <div className="mb-4 text-lg font-bold sm:text-xl">
               <span className="text-blue-400">
-  {activeVariation === "All"
-    ? getVariationLabelForRun(foundByNumber)
-    : activeVariation}{" "}
-  /{denominator}
-</span>{" "}
+                {variation} /{denominator}
+              </span>{" "}
               <span className="text-zinc-300">
                 ({foundByNumber.size}/{denominator})
               </span>
@@ -159,7 +126,9 @@ function handleVariationChange(value: string) {
 
                 const inner = (
                   <span className="flex h-full w-full flex-col items-center justify-center leading-none">
-                    <span className="text-sm font-black sm:text-lg">{number}</span>
+                    <span className="text-sm font-black sm:text-lg">
+                      {number}
+                    </span>
                     <span className="mt-0.5 text-[8px] font-bold opacity-90 sm:text-[10px]">
                       /{denominator}
                     </span>
@@ -171,7 +140,7 @@ function handleVariationChange(value: string) {
                     <Link
                       key={label}
                       href={`/rpa-tracker/card/${card.Card_id}`}
-                      title={`${activeVariation === "All" ? variationName(card) : activeVariation} ${label} tracked`}
+                      title={`${variation} ${label} tracked`}
                       className="flex h-9 w-9 items-center justify-center rounded-full border border-blue-300 bg-blue-700 text-white transition hover:scale-110 hover:shadow-[0_0_18px_rgba(59,130,246,.85)] sm:h-12 sm:w-12"
                     >
                       {inner}
@@ -183,7 +152,7 @@ function handleVariationChange(value: string) {
                   <button
                     key={label}
                     type="button"
-                    title={`${activeVariation === "All" ? getVariationLabelForRun(foundByNumber) : activeVariation} ${label} not yet tracked`}
+                    title={`${variation} ${label} not yet tracked`}
                     className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d4af37] bg-black text-[#d4af37] transition hover:scale-110 hover:shadow-[0_0_18px_rgba(212,175,55,.75)] sm:h-12 sm:w-12"
                   >
                     {inner}
