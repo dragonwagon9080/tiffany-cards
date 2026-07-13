@@ -1,4 +1,3 @@
-cat > proxy.ts <<'EOF'
 import { NextRequest, NextResponse } from "next/server";
 
 export function proxy(request: NextRequest) {
@@ -13,27 +12,37 @@ export function proxy(request: NextRequest) {
     );
   }
 
-  const authorization = request.headers.get("authorization");
+  const authorization =
+    request.headers.get("authorization");
 
   if (authorization) {
-    const [scheme, encodedCredentials] = authorization.split(" ");
+    const [scheme, encodedCredentials] =
+      authorization.split(" ");
 
     if (
       scheme?.toLowerCase() === "basic" &&
       encodedCredentials
     ) {
       try {
-        const decodedCredentials = atob(encodedCredentials);
-        const separatorIndex = decodedCredentials.indexOf(":");
+        const decodedCredentials =
+          atob(encodedCredentials);
+
+        const separatorIndex =
+          decodedCredentials.indexOf(":");
 
         const username =
           separatorIndex >= 0
-            ? decodedCredentials.slice(0, separatorIndex)
+            ? decodedCredentials.slice(
+                0,
+                separatorIndex
+              )
             : "";
 
         const password =
           separatorIndex >= 0
-            ? decodedCredentials.slice(separatorIndex + 1)
+            ? decodedCredentials.slice(
+                separatorIndex + 1
+              )
             : "";
 
         if (
@@ -42,18 +51,23 @@ export function proxy(request: NextRequest) {
         ) {
           return NextResponse.next();
         }
-      } catch {}
+      } catch {
+        // Invalid Basic Auth header.
+      }
     }
   }
 
-  return new NextResponse("Authentication required.", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate":
-        'Basic realm="TNCE Admin", charset="UTF-8"',
-      "Cache-Control": "no-store",
-    },
-  });
+  return new NextResponse(
+    "Authentication required.",
+    {
+      status: 401,
+      headers: {
+        "WWW-Authenticate":
+          'Basic realm="TNCE Admin", charset="UTF-8"',
+        "Cache-Control": "no-store",
+      },
+    }
+  );
 }
 
 export const config = {
@@ -62,4 +76,3 @@ export const config = {
     "/api/tnce/admin/:path*",
   ],
 };
-EOF
