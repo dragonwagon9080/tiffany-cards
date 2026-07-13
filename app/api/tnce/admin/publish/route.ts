@@ -6,12 +6,23 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const url = process.env.TNCE_APPS_SCRIPT_URL;
+    const adminSecret = process.env.TNCE_ADMIN_SECRET;
 
     if (!url) {
       return NextResponse.json(
         {
           ok: false,
           error: "Missing TNCE_APPS_SCRIPT_URL environment variable.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!adminSecret) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing TNCE_ADMIN_SECRET environment variable.",
         },
         { status: 500 }
       );
@@ -39,6 +50,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         action: "publish",
+        adminSecret,
         submissionId,
         reviewNotes,
       }),

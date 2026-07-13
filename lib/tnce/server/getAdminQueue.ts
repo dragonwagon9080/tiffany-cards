@@ -2,6 +2,7 @@ import type { TNCEAdminQueueResponse } from "../types";
 
 export async function getAdminQueue(): Promise<TNCEAdminQueueResponse> {
   const url = process.env.TNCE_APPS_SCRIPT_URL;
+  const adminSecret = process.env.TNCE_ADMIN_SECRET;
 
   if (!url) {
     throw new Error(
@@ -9,7 +10,12 @@ export async function getAdminQueue(): Promise<TNCEAdminQueueResponse> {
     );
   }
 
-  console.log("TNCE URL:", url);
+  if (!adminSecret) {
+    throw new Error(
+      "Missing TNCE_ADMIN_SECRET environment variable."
+    );
+  }
+
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -17,6 +23,7 @@ export async function getAdminQueue(): Promise<TNCEAdminQueueResponse> {
     },
     body: JSON.stringify({
       action: "adminQueue",
+      adminSecret,
     }),
     cache: "no-store",
     redirect: "follow",
@@ -30,7 +37,7 @@ export async function getAdminQueue(): Promise<TNCEAdminQueueResponse> {
     data = JSON.parse(text);
   } catch {
     throw new Error(
-      `TNCE Apps Script returned invalid JSON.\n\n${text.slice(
+      `TNCE Apps Script returned invalid JSON. First response text: ${text.slice(
         0,
         500
       )}`
