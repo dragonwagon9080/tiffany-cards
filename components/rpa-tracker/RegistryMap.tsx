@@ -53,11 +53,13 @@ export default function RegistryMap({
   cards,
   showVariationPicker = false,
   onVariationChange,
+  onMissingCardClick,
 }: {
   variation: string;
   cards: any[];
   showVariationPicker?: boolean;
   onVariationChange?: (variation: string) => void;
+  onMissingCardClick?: (missingCard: any) => void;
 }) {
   const variationOptions = useMemo(
     () => buildVariationOptions(cards || []),
@@ -78,6 +80,40 @@ export default function RegistryMap({
     } else {
       setInternalVariation(value);
     }
+  }
+
+  function buildMissingCardContext({
+    variation,
+    number,
+    denominator,
+  }: {
+    variation: string;
+    number: number;
+    denominator: number;
+  }) {
+    const sample = cards?.[0] || {};
+    const serialNumber = `${number}/${denominator}`;
+
+    return {
+      title: sample.Card_Title_Display || sample.Card_Title || "Missing RPA Card",
+      Card_Title: sample.Card_Title || "",
+      Card_Title_Display: sample.Card_Title_Display || sample.Card_Title || "",
+      Serial_Number: serialNumber,
+      Variation_Input: variation,
+      Variation: variation,
+      Numerator: String(number),
+      Denominator: String(denominator),
+      Player: sample.Player || "",
+      First: sample.First || "",
+      Last: sample.Last || "",
+      Year: sample.Year || "",
+      Brand: sample.Brand || "",
+      Set: sample.Set || "",
+      Sport: sample.Sport || "",
+      Material: sample.Material || "",
+      Slug: sample.Slug || "",
+      Missing_From_Registry: "true",
+    };
   }
 
   const printRuns = buildRegistryRuns(cards || [], activeVariation);
@@ -150,13 +186,22 @@ export default function RegistryMap({
 
                 return (
                   <button
-                    key={label}
-                    type="button"
-                    title={`${variation} ${label} not yet tracked`}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d4af37] bg-black text-[#d4af37] transition hover:scale-110 hover:shadow-[0_0_18px_rgba(212,175,55,.75)] sm:h-12 sm:w-12"
-                  >
-                    {inner}
-                  </button>
+  key={label}
+  type="button"
+title={`⭐ Contribute Missing Card • ${variation} • ${label}`}
+  onClick={() =>
+    onMissingCardClick?.(
+      buildMissingCardContext({
+        variation,
+        number,
+        denominator,
+      })
+    )
+  }
+  className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d4af37] bg-black text-[#d4af37] transition hover:scale-110 hover:bg-[#181300] hover:shadow-[0_0_18px_rgba(212,175,55,.75)] sm:h-12 sm:w-12"
+>
+  {inner}
+</button>
                 );
               })}
             </div>

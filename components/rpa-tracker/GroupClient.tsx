@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import UniversalPageHeader from "@/components/shared/UniversalPageHeader";
-
 import GroupFilters from "./GroupFilters";
 import GroupRegistry from "./GroupRegistry";
 import RegistryMap from "./RegistryMap";
 import ShareButton from "@/components/shared/ShareButton";
+import ContributionModal from "@/components/tnce/ContributionModal";
 
 type GroupData = {
   group: any;
@@ -20,7 +20,13 @@ function variationName(card: any) {
   return String(card.Variation_Input || card.Variation || "Base").trim();
 }
 
-export default function GroupClient({ slug }: { slug: string }) {
+export default function GroupClient({
+  slug,
+  logoUrl,
+}: {
+  slug: string;
+  logoUrl?: string;
+}) {
   const [data, setData] = useState<GroupData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -29,6 +35,11 @@ export default function GroupClient({ slug }: { slug: string }) {
   const [variation, setVariation] = useState("All");
   const [sortMode, setSortMode] = useState("serial");
   const [showRegistryMap, setShowRegistryMap] = useState(false);
+
+  const [showContribute, setShowContribute] = useState(false);
+  const [contributionObject, setContributionObject] = useState<any>(null);
+  const [contributionMode, setContributionMode] =
+    useState<"new" | "update" | "missing">("update");
 
   useEffect(() => {
     async function load() {
@@ -114,7 +125,19 @@ export default function GroupClient({ slug }: { slug: string }) {
               {group.Count === 1 ? "" : "s"}
             </div>
 
-            <div className="flex justify-center sm:justify-end [&_button]:w-full sm:[&_button]:w-auto">
+            <div className="flex justify-center gap-3 sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setContributionMode("update");
+                  setContributionObject(group);
+                  setShowContribute(true);
+                }}
+                className="inline-flex items-center justify-center rounded-xl border-2 border-blue-300 bg-blue-600 px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-white shadow-lg shadow-blue-900/40 transition hover:scale-105 hover:bg-blue-500"
+              >
+                📝 Submit Update
+              </button>
+
               <ShareButton
                 type="registry"
                 title={title}
@@ -161,12 +184,27 @@ export default function GroupClient({ slug }: { slug: string }) {
               cards={data.cards}
               showVariationPicker
               onVariationChange={setVariation}
+              onMissingCardClick={(missingCard) => {
+                setContributionMode("missing");
+                setContributionObject(missingCard);
+                setShowContribute(true);
+              }}
             />
           </div>
         )}
 
         <GroupRegistry cards={filteredCards} sortMode={sortMode} />
       </div>
+
+      <ContributionModal
+        open={showContribute}
+        onClose={() => setShowContribute(false)}
+        mode={contributionMode}
+        project="rpa-tracker"
+        projectLabel="RPA Tracker"
+        logoUrl={logoUrl}
+        activeObject={contributionObject || group}
+      />
     </main>
   );
 }

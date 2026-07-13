@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import CardClient from "@/components/rpa-tracker/CardClient";
+import { getSiteSettings } from "@/lib/cms";
 
 type Card = {
   Card_Title?: string;
@@ -111,6 +112,7 @@ export default async function RPATrackerCardPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const settings = await getSiteSettings();
 
-  return <CardClient id={id} />;
+  return <CardClient id={id} logoUrl={settings.logo_url} />;
 }

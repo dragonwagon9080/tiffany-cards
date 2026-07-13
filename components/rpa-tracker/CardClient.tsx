@@ -9,11 +9,13 @@ import CardInfo from "./CardInfo";
 import CardHistory from "./CardHistory";
 import UniversalPageHeader from "@/components/shared/UniversalPageHeader";
 import ShareButton from "@/components/shared/ShareButton";
+import ContributionModal from "@/components/tnce/ContributionModal";
 
 import type { ImageItem } from "@/types/image";
 
 type Props = {
   id: string;
+  logoUrl?: string;
 };
 
 function extractImages(value: any) {
@@ -47,13 +49,18 @@ function GoldDivider() {
   );
 }
 
-export default function CardClient({ id }: Props) {
+export default function CardClient({ id, logoUrl }: Props) {
   const [card, setCard] = useState<any>(null);
-  const [groupCards, setGroupCards] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+const [groupCards, setGroupCards] = useState<any[]>([]);
+const [loading, setLoading] = useState(true);
 
-  const [leftIndex, setLeftIndex] = useState(0);
-  const [rightIndex, setRightIndex] = useState(1);
+const [showContribute, setShowContribute] = useState(false);
+const [contributionObject, setContributionObject] = useState<any>(null);
+const [contributionMode, setContributionMode] =
+  useState<"new" | "update" | "missing">("update");
+
+const [leftIndex, setLeftIndex] = useState(0);
+const [rightIndex, setRightIndex] = useState(1);
 
   useEffect(() => {
     async function load() {
@@ -84,7 +91,7 @@ export default function CardClient({ id }: Props) {
     load();
   }, [id]);
 
-  const images = useMemo<ImageItem[]>(() => {
+  const images = useMemo<ImageItem[]>((() => {
     if (!card) return [];
 
     const list: ImageItem[] = [];
@@ -106,7 +113,7 @@ export default function CardClient({ id }: Props) {
     });
 
     return list;
-  }, [card]);
+  }) as any, [card]);
 
   useEffect(() => {
     setLeftIndex(0);
@@ -135,25 +142,41 @@ export default function CardClient({ id }: Props) {
     <main className="min-h-screen bg-black px-6 py-10 text-white">
       <div className="mx-auto max-w-7xl">
         <UniversalPageHeader
-  section="RPA Tracker"
-  title={card.Card_Title_Display || card.Card_Title}
-  defaultTarget="rpa"
->
-<div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-  <Link
-    href={`/rpa-tracker/group/${card.Slug}`}
-    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#b99236] sm:w-auto sm:justify-start"
-  >
-    ← Back
-  </Link>
+          section="RPA Tracker"
+          title={card.Card_Title_Display || card.Card_Title}
+          defaultTarget="rpa"
+        >
+          <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Link
+              href={`/rpa-tracker/group/${card.Slug}`}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#b99236] sm:w-auto sm:justify-start"
+            >
+              ← Back
+            </Link>
 
-  <ShareButton
-    type="card"
-    title={card.Card_Title_Display || card.Card_Title}
-    url={`${process.env.NEXT_PUBLIC_SITE_URL || ""}/rpa-tracker/card/${card.Card_id}`}
-  />
-</div>
-</UniversalPageHeader>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => {
+  setContributionMode("update");
+setContributionObject(card);
+setShowContribute(true);
+}}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-blue-300 bg-blue-600 px-6 py-3.5 text-base font-extrabold uppercase tracking-wide text-white shadow-lg shadow-blue-900/40 transition duration-200 hover:scale-105 hover:bg-blue-500 hover:shadow-xl sm:w-auto"
+              >
+                📝 Submit Update
+              </button>
+
+              <ShareButton
+                type="card"
+                title={card.Card_Title_Display || card.Card_Title}
+                url={`${
+                  process.env.NEXT_PUBLIC_SITE_URL || ""
+                }/rpa-tracker/card/${card.Card_id}`}
+              />
+            </div>
+          </div>
+        </UniversalPageHeader>
 
         {images.length > 0 && (
           <div className="h-[800px] overflow-hidden rounded-xl border border-[#9c7a2d]/70">
@@ -169,26 +192,41 @@ export default function CardClient({ id }: Props) {
 
         <GoldDivider />
 
-<CardInfo card={card} />
+        <CardInfo card={card} />
 
-{card.Card_History && (
-  <>
-    <GoldDivider />
-    <CardHistory history={card.Card_History} />
-  </>
-)}
+        {card.Card_History && (
+          <>
+            <GoldDivider />
+            <CardHistory history={card.Card_History} />
+          </>
+        )}
 
-{groupCards.length > 0 && (
-  <>
-    <GoldDivider />
-    <RegistryMap
+        {groupCards.length > 0 && (
+          <>
+            <GoldDivider />
+            <RegistryMap
   variation={selectedVariation}
   cards={groupCards}
   showVariationPicker
+  onMissingCardClick={(missingCard) => {
+  setContributionMode("missing");
+  setContributionObject(missingCard);
+  setShowContribute(true);
+}}
 />
-  </>
-)}
+          </>
+        )}
       </div>
+
+      <ContributionModal
+  open={showContribute}
+  onClose={() => setShowContribute(false)}
+  mode={contributionMode}
+  project="rpa-tracker"
+  projectLabel="RPA Tracker"
+  logoUrl={logoUrl}
+  activeObject={contributionObject || card}
+/>
     </main>
   );
 }

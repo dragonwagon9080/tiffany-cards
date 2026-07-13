@@ -8,6 +8,7 @@ import RegistryGrid from "./RegistryGrid";
 import RegistryStats from "./RegistryStats";
 import Loading from "./Loading";
 import UniversalSearchBar from "@/components/shared/UniversalSearchBar";
+import ContributionModal from "@/components/tnce/ContributionModal";
 
 import {
   RegistryGroup,
@@ -24,11 +25,12 @@ type ApiResponse = {
 
 export default function RPATrackerClient({
   theme,
+  logoUrl,
 }: {
   theme: TrackerTheme;
+  logoUrl?: string;
 }) {
   const searchParams = useSearchParams();
-
   const initialQuery = searchParams.get("q") || "";
 
   const [groups, setGroups] = useState<RegistryGroup[]>([]);
@@ -44,7 +46,6 @@ export default function RPATrackerClient({
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState(initialQuery);
-
   const [sport, setSport] = useState("");
   const [player, setPlayer] = useState("");
   const [year, setYear] = useState("");
@@ -52,11 +53,12 @@ export default function RPATrackerClient({
   const [variation, setVariation] = useState("");
   const [sort, setSort] = useState("");
 
+  const [showContribute, setShowContribute] = useState(false);
+
   async function loadData() {
     setLoading(true);
 
     const params = new URLSearchParams();
-
     params.set("mode", search.trim() ? "filter" : "startup");
 
     if (search.trim()) params.set("q", search.trim());
@@ -74,15 +76,16 @@ export default function RPATrackerClient({
     const json: ApiResponse = await res.json();
 
     setGroups(json.groups || []);
-    setOptions(json.options || {
-      sports: [],
-      players: [],
-      years: [],
-      brands: [],
-      variations: [],
-    });
+    setOptions(
+      json.options || {
+        sports: [],
+        players: [],
+        years: [],
+        brands: [],
+        variations: [],
+      }
+    );
     setMeta(json.meta || null);
-
     setLoading(false);
   }
 
@@ -105,38 +108,51 @@ export default function RPATrackerClient({
     setSort("");
   }
 
-  if (loading) {
-    return <Loading />;
-  }
+  if (loading) return <Loading />;
 
   return (
     <section className="mx-auto max-w-7xl px-6 py-10">
       <UniversalSearchBar defaultTarget="rpa" />
 
-<div className="mt-8">
-  <SearchFilters
-    theme={theme}
-    sport={sport}
-    setSport={setSport}
-    player={player}
-    setPlayer={setPlayer}
-    year={year}
-    setYear={setYear}
-    brand={brand}
-    setBrand={setBrand}
-    variation={variation}
-    setVariation={setVariation}
-    sort={sort}
-    setSort={setSort}
-    options={options}
-    onReset={resetFilters}
-  />
-</div>
+      <div className="mt-8">
+        <SearchFilters
+          theme={theme}
+          sport={sport}
+          setSport={setSport}
+          player={player}
+          setPlayer={setPlayer}
+          year={year}
+          setYear={setYear}
+          brand={brand}
+          setBrand={setBrand}
+          variation={variation}
+          setVariation={setVariation}
+          sort={sort}
+          setSort={setSort}
+          options={options}
+          onReset={resetFilters}
+        />
+      </div>
 
-<RegistryStats meta={meta} theme={theme} />
+      <RegistryStats
+        meta={meta}
+        theme={theme}
+        onContribute={() => setShowContribute(true)}
+      />
 
-<RegistryGrid groups={groups} theme={theme} />
+      <RegistryGrid groups={groups} theme={theme} />
 
+      <ContributionModal
+        open={showContribute}
+        onClose={() => setShowContribute(false)}
+        project="rpa-tracker"
+        projectLabel="RPA Tracker"
+        logoUrl={logoUrl}
+        activeObject={{
+          id: "rpa-tracker-main-page",
+          title: "RPA Tracker Main Page",
+        }}
+      />
     </section>
   );
 }

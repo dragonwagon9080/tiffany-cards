@@ -1,12 +1,16 @@
-import Link from "next/link";
 import { TrackerMeta, TrackerTheme } from "./types";
 
 type Props = {
   meta: TrackerMeta | null;
   theme: TrackerTheme;
+  onContribute?: () => void;
 };
 
-export default function RegistryStats({ meta, theme }: Props) {
+export default function RegistryStats({
+  meta,
+  theme,
+  onContribute,
+}: Props) {
   if (!meta) return null;
 
   const cardBg = theme.card_bg_color || "#18181b";
@@ -15,8 +19,8 @@ export default function RegistryStats({ meta, theme }: Props) {
   const statsText = theme.stats_text_color || "#a1a1aa";
   const statsNumber = theme.stats_number_color || "#ffffff";
 
-  const reportBg = theme.report_bg_color || "#1e3a8a";
-  const reportHover = theme.report_hover_color || "#dc2626";
+  const reportBg = theme.report_bg_color || "#2563eb";
+  const reportHover = theme.report_hover_color || "#1d4ed8";
   const reportBorder = theme.report_border_color || "#60a5fa";
   const reportText = theme.report_text_color || "#ffffff";
 
@@ -31,18 +35,14 @@ export default function RegistryStats({ meta, theme }: Props) {
       >
         <div
           className="text-3xl font-bold"
-          style={{
-            color: statsNumber,
-          }}
+          style={{ color: statsNumber }}
         >
           {meta.groupCount.toLocaleString()}
         </div>
 
         <div
           className="mt-2 text-xs font-bold uppercase tracking-widest"
-          style={{
-            color: statsText,
-          }}
+          style={{ color: statsText }}
         >
           Registries
         </div>
@@ -57,41 +57,49 @@ export default function RegistryStats({ meta, theme }: Props) {
       >
         <div
           className="text-3xl font-bold"
-          style={{
-            color: statsNumber,
-          }}
+          style={{ color: statsNumber }}
         >
           {meta.cardCount.toLocaleString()}
         </div>
 
         <div
           className="mt-2 text-xs font-bold uppercase tracking-widest"
-          style={{
-            color: statsText,
-          }}
+          style={{ color: statsText }}
         >
           Cards Tracked
         </div>
       </div>
 
-      <div className="flex items-center justify-center">
-        <Link
-          href="/rpa-tracker/submit"
-          className="rounded border px-5 py-3 text-center text-sm font-bold uppercase tracking-wide transition"
+      <div className="flex h-full items-center justify-center">
+        <button
+          type="button"
+          onClick={onContribute}
+          className="group relative overflow-hidden rounded-xl border-2 px-8 py-4 font-bold uppercase tracking-wider transition-all duration-300 hover:scale-105 hover:shadow-2xl active:scale-95"
           style={{
-            backgroundColor: reportBg,
+            background: `linear-gradient(135deg, ${reportBg}, #2563eb)`,
             borderColor: reportBorder,
             color: reportText,
+            boxShadow: `0 0 18px ${reportBorder}55`,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = reportHover;
+            e.currentTarget.style.background = `linear-gradient(135deg, ${reportHover}, #1d4ed8)`;
+            e.currentTarget.style.boxShadow = `0 0 28px ${reportBorder}`;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = reportBg;
+            e.currentTarget.style.background = `linear-gradient(135deg, ${reportBg}, #2563eb)`;
+            e.currentTarget.style.boxShadow = `0 0 18px ${reportBorder}55`;
           }}
         >
-          Add / Remove Card
-        </Link>
+          <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+
+          <span className="relative flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-xl font-bold">
+              +
+            </span>
+
+            <span>Contribute</span>
+          </span>
+        </button>
       </div>
     </div>
   );

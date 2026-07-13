@@ -26,7 +26,7 @@ export default async function RPATrackerPage() {
       />
 
       <Suspense fallback={<RPATrackerLoading />}>
-        <RPATrackerClient theme={rpaTheme} />
+        <RPATrackerClient theme={rpaTheme} logoUrl={settings.logo_url} />
       </Suspense>
     </main>
   );
