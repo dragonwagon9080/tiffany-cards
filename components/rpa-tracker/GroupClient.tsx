@@ -1,14 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import UniversalPageHeader from "@/components/shared/UniversalPageHeader";
+import ShareButton from "@/components/shared/ShareButton";
+import ContributionModal from "@/components/tnce/ContributionModal";
+
 import GroupFilters from "./GroupFilters";
 import GroupRegistry from "./GroupRegistry";
 import RegistryMap from "./RegistryMap";
-import ShareButton from "@/components/shared/ShareButton";
-import ContributionModal from "@/components/tnce/ContributionModal";
 
 type GroupData = {
   group: any;
@@ -17,7 +23,11 @@ type GroupData = {
 };
 
 function variationName(card: any) {
-  return String(card.Variation_Input || card.Variation || "Base").trim();
+  return String(
+    card.Variation_Input ||
+    card.Variation ||
+    "Base"
+  ).trim();
 }
 
 export default function GroupClient({
@@ -27,27 +37,62 @@ export default function GroupClient({
   slug: string;
   logoUrl?: string;
 }) {
-  const [data, setData] = useState<GroupData | null>(null);
+  const [data, setData] =
+    useState<GroupData | null>(null);
+
   const [loading, setLoading] = useState(true);
 
-  const [searchDraft, setSearchDraft] = useState("");
-  const [search, setSearch] = useState("");
-  const [variation, setVariation] = useState("All");
-  const [sortMode, setSortMode] = useState("serial");
-  const [showRegistryMap, setShowRegistryMap] = useState(false);
+  const [searchDraft, setSearchDraft] =
+    useState("");
 
-  const [showContribute, setShowContribute] = useState(false);
-  const [contributionObject, setContributionObject] = useState<any>(null);
-  const [contributionMode, setContributionMode] =
-    useState<"new" | "update" | "missing">("update");
+  const [search, setSearch] = useState("");
+  const [variation, setVariation] =
+    useState("All");
+
+  const [sortMode, setSortMode] =
+    useState("serial");
+
+  const [
+    showRegistryMap,
+    setShowRegistryMap,
+  ] = useState(false);
+
+  const [
+    registrySelectionMode,
+    setRegistrySelectionMode,
+  ] = useState(false);
+
+  const registryMapRef =
+    useRef<HTMLDivElement>(null);
+
+  const [
+    showContribute,
+    setShowContribute,
+  ] = useState(false);
+
+  const [
+    contributionObject,
+    setContributionObject,
+  ] = useState<any>(null);
+
+  const [
+    contributionMode,
+    setContributionMode,
+  ] = useState<
+    "new" | "update" | "missing"
+  >("update");
 
   useEffect(() => {
     async function load() {
       setLoading(true);
 
       const res = await fetch(
-        `/api/rpa-tracker?mode=group&slug=${encodeURIComponent(slug)}`,
-        { cache: "no-store" }
+        `/api/rpa-tracker?mode=group&slug=${encodeURIComponent(
+          slug
+        )}`,
+        {
+          cache: "no-store",
+        }
       );
 
       const json = await res.json();
@@ -60,14 +105,22 @@ export default function GroupClient({
   }, [slug]);
 
   const filteredCards = useMemo(() => {
-    if (!data?.cards) return [];
+    if (!data?.cards) {
+      return [];
+    }
 
-    const q = search.trim().toLowerCase();
+    const query =
+      search.trim().toLowerCase();
 
     return data.cards.filter((card) => {
-      const cardVariation = variationName(card);
+      const cardVariation =
+        variationName(card);
+
       const variationMatch =
-        variation && variation !== "All" ? cardVariation === variation : true;
+        variation &&
+          variation !== "All"
+          ? cardVariation === variation
+          : true;
 
       const searchable = [
         cardVariation,
@@ -79,14 +132,19 @@ export default function GroupClient({
         .join(" ")
         .toLowerCase();
 
-      return q ? searchable.includes(q) && variationMatch : variationMatch;
+      return query
+        ? searchable.includes(query) &&
+        variationMatch
+        : variationMatch;
     });
   }, [data, search, variation]);
 
   if (loading) {
     return (
       <main className="min-h-screen bg-black px-6 py-10 text-white">
-        <div className="mx-auto max-w-7xl">Loading Registry...</div>
+        <div className="mx-auto max-w-7xl">
+          Loading Registry...
+        </div>
       </main>
     );
   }
@@ -94,13 +152,18 @@ export default function GroupClient({
   if (!data?.group) {
     return (
       <main className="min-h-screen bg-black px-6 py-10 text-white">
-        <div className="mx-auto max-w-7xl">Registry not found.</div>
+        <div className="mx-auto max-w-7xl">
+          Registry not found.
+        </div>
       </main>
     );
   }
 
   const group = data.group;
-  const title = group.Card_Title_Display || group.Card_Title;
+
+  const title =
+    group.Card_Title_Display ||
+    group.Card_Title;
 
   return (
     <main className="min-h-screen bg-black px-4 py-10 text-white sm:px-6">
@@ -121,7 +184,8 @@ export default function GroupClient({
             </div>
 
             <div className="text-lg font-bold leading-tight text-white sm:text-xl">
-              {filteredCards.length} of {group.Count} tracked card
+              {filteredCards.length} of{" "}
+              {group.Count} tracked card
               {group.Count === 1 ? "" : "s"}
             </div>
 
@@ -129,9 +193,15 @@ export default function GroupClient({
               <button
                 type="button"
                 onClick={() => {
-                  setContributionMode("update");
-                  setContributionObject(group);
-                  setShowContribute(true);
+                  setRegistrySelectionMode(true);
+                  setShowRegistryMap(true);
+
+                  window.setTimeout(() => {
+                    registryMapRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }, 50);
                 }}
                 className="inline-flex items-center justify-center rounded-xl border-2 border-blue-300 bg-blue-600 px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-white shadow-lg shadow-blue-900/40 transition hover:scale-105 hover:bg-blue-500"
               >
@@ -141,9 +211,10 @@ export default function GroupClient({
               <ShareButton
                 type="registry"
                 title={title}
-                url={`${
-                  process.env.NEXT_PUBLIC_SITE_URL || ""
-                }/rpa-tracker/group/${group.Slug}`}
+                url={`${process.env
+                    .NEXT_PUBLIC_SITE_URL || ""
+                  }/rpa-tracker/group/${group.Slug
+                  }`}
               />
             </div>
           </div>
@@ -152,9 +223,17 @@ export default function GroupClient({
         <GroupFilters
           searchDraft={searchDraft}
           setSearchDraft={setSearchDraft}
-          onSearch={() => setSearch(searchDraft)}
-          variation={variation === "All" ? "" : variation}
-          setVariation={(value) => setVariation(value || "All")}
+          onSearch={() =>
+            setSearch(searchDraft)
+          }
+          variation={
+            variation === "All"
+              ? ""
+              : variation
+          }
+          setVariation={(value) =>
+            setVariation(value || "All")
+          }
           sortMode={sortMode}
           setSortMode={setSortMode}
           variations={data.variations || []}
@@ -170,40 +249,94 @@ export default function GroupClient({
         <div className="mb-5">
           <button
             type="button"
-            onClick={() => setShowRegistryMap((current) => !current)}
+            onClick={() =>
+              setShowRegistryMap(
+                (current) => !current
+              )
+            }
             className="w-full rounded-lg border border-blue-700 bg-zinc-950 px-5 py-3 text-sm font-black uppercase tracking-wide text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
           >
-            {showRegistryMap ? "Hide Registry Map" : "Show Registry Map"}
+            {showRegistryMap
+              ? "Hide Registry Map"
+              : "Show Registry Map"}
           </button>
         </div>
 
         {showRegistryMap && (
-          <div className="mb-8">
+          <div
+            ref={registryMapRef}
+            className="mb-8 scroll-mt-6"
+          >
+            {registrySelectionMode && (
+              <div className="mb-3 flex flex-col gap-3 rounded-xl border border-blue-500/60 bg-blue-950/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-black text-white">
+                    Select a card to update or add
+                  </div>
+
+                  <div className="mt-1 text-sm text-neutral-400">
+                    Blue cards are tracked. Yellow cards
+                    are missing.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRegistrySelectionMode(false)
+                  }
+                  className="rounded-lg border border-neutral-700 bg-black px-4 py-2 text-xs font-bold uppercase tracking-wide text-neutral-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
             <RegistryMap
               variation={variation}
               cards={data.cards}
               showVariationPicker
               onVariationChange={setVariation}
+              selectionMode={registrySelectionMode}
+              selectionTitle={
+                registrySelectionMode
+                  ? "Select a card"
+                  : undefined
+              }
+              onTrackedCardClick={(card) => {
+                setContributionMode("update");
+                setContributionObject(card);
+                setRegistrySelectionMode(false);
+                setShowContribute(true);
+              }}
               onMissingCardClick={(missingCard) => {
                 setContributionMode("missing");
                 setContributionObject(missingCard);
+                setRegistrySelectionMode(false);
                 setShowContribute(true);
               }}
             />
           </div>
         )}
 
-        <GroupRegistry cards={filteredCards} sortMode={sortMode} />
+        <GroupRegistry
+          cards={filteredCards}
+          sortMode={sortMode}
+        />
       </div>
 
       <ContributionModal
         open={showContribute}
-        onClose={() => setShowContribute(false)}
+        onClose={() =>
+          setShowContribute(false)
+        }
         mode={contributionMode}
         project="rpa-tracker"
         projectLabel="RPA Tracker"
         logoUrl={logoUrl}
-        activeObject={contributionObject || group}
+        activeObject={
+          contributionObject || group
+        }
       />
     </main>
   );

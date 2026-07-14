@@ -1,6 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import {
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 
 import type { TNCEUploadedImage } from "@/lib/tnce/types";
 
@@ -20,16 +26,14 @@ type Props = {
   setOtherImages: (value: string) => void;
 
   uploadedImages: PendingTNCEUpload[];
-  setUploadedImages: (
-    value:
-      | PendingTNCEUpload[]
-      | ((
-          current: PendingTNCEUpload[]
-        ) => PendingTNCEUpload[])
-  ) => void;
+
+  setUploadedImages: Dispatch<
+    SetStateAction<PendingTNCEUpload[]>
+  >;
 };
 
 type UploadSlot = "front" | "back" | "other";
+type ImageMethod = "upload" | "links";
 
 const MAX_IMAGE_DIMENSION = 1600;
 const JPEG_QUALITY = 0.82;
@@ -66,12 +70,13 @@ function loadImage(dataUrl: string) {
 
       image.onload = () => resolve(image);
 
-      image.onerror = () =>
+      image.onerror = () => {
         reject(
           new Error(
             "Unable to process the selected image."
           )
         );
+      };
 
       image.src = dataUrl;
     }
@@ -123,7 +128,13 @@ async function prepareImageFile(
     );
   }
 
-  context.drawImage(sourceImage, 0, 0, width, height);
+  context.drawImage(
+    sourceImage,
+    0,
+    0,
+    width,
+    height
+  );
 
   const outputDataUrl = canvas.toDataURL(
     "image/jpeg",
@@ -154,57 +165,6 @@ function totalUploadSize(
   );
 }
 
-function ImagePreview({
-  label,
-  upload,
-  url,
-  onRemoveUpload,
-}: {
-  label: string;
-  upload?: PendingTNCEUpload;
-  url?: string;
-  onRemoveUpload?: () => void;
-}) {
-  const preview =
-    upload?.previewUrl || String(url || "").trim();
-
-  if (!preview) return null;
-
-  return (
-    <div className="overflow-hidden rounded-lg border border-neutral-700 bg-black">
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-3 py-2">
-        <span className="text-xs font-bold uppercase tracking-wide text-neutral-400">
-          {label}
-        </span>
-
-        {upload && onRemoveUpload && (
-          <button
-            type="button"
-            onClick={onRemoveUpload}
-            className="text-xs font-bold text-red-300 hover:text-red-200"
-          >
-            Remove upload
-          </button>
-        )}
-      </div>
-
-      <div className="flex h-44 items-center justify-center p-3">
-        <img
-          src={preview}
-          alt={label}
-          className="max-h-full w-full object-contain"
-        />
-      </div>
-
-      {upload && (
-        <div className="truncate border-t border-neutral-800 px-3 py-2 text-xs text-neutral-500">
-          {upload.fileName}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function UploadBox({
   label,
   description,
@@ -215,7 +175,7 @@ function UploadBox({
   label: string;
   description: string;
   multiple?: boolean;
-  inputRef: React.RefObject<HTMLInputElement | null>;
+  inputRef: RefObject<HTMLInputElement | null>;
   onFiles: (files: File[]) => void;
 }) {
   const [dragging, setDragging] = useState(false);
@@ -249,20 +209,19 @@ function UploadBox({
       }`}
     >
       <input
-  ref={inputRef}
-  type="file"
-  accept="image/*"
-  capture="environment"
-  multiple={multiple}
-  className="hidden"
-  onChange={(event) => {
-    onFiles(
-      Array.from(event.target.files || [])
-    );
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple={multiple}
+        className="hidden"
+        onChange={(event) => {
+          onFiles(
+            Array.from(event.target.files || [])
+          );
 
-    event.target.value = "";
-  }}
-/>
+          event.target.value = "";
+        }}
+      />
 
       <div className="text-sm font-bold text-white">
         {label}
@@ -277,8 +236,44 @@ function UploadBox({
         onClick={() => inputRef.current?.click()}
         className="mt-3 rounded-lg border border-[#9c7a2d] bg-black px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#d4af37] transition hover:border-[#d4af37] hover:bg-[#181300]"
       >
-        Add {multiple ? "Images" : "Image"}
+        {multiple ? "Add Images" : "Add Image"}
       </button>
+    </div>
+  );
+}
+
+function ImagePreview({
+  label,
+  upload,
+  onRemove,
+}: {
+  label: string;
+  upload: PendingTNCEUpload;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-neutral-700 bg-black">
+      <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-3 py-2">
+        <span className="text-xs font-bold uppercase tracking-wide text-neutral-400">
+          {label}
+        </span>
+
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-xs font-bold text-red-300 hover:text-red-200"
+        >
+          Remove
+        </button>
+      </div>
+
+      <div className="flex h-40 items-center justify-center p-3">
+        <img
+          src={upload.previewUrl}
+          alt={label}
+          className="max-h-full w-full object-contain"
+        />
+      </div>
     </div>
   );
 }
@@ -293,6 +288,11 @@ export default function ImageSection({
   uploadedImages,
   setUploadedImages,
 }: Props) {
+  const [method, setMethod] =
+    useState<ImageMethod>("upload");
+
+  const [error, setError] = useState("");
+
   const frontInputRef =
     useRef<HTMLInputElement>(null);
 
@@ -301,8 +301,6 @@ export default function ImageSection({
 
   const otherInputRef =
     useRef<HTMLInputElement>(null);
-
-  const [error, setError] = useState("");
 
   const frontUpload = uploadedImages.find(
     (image) => image.slot === "front"
@@ -326,7 +324,9 @@ export default function ImageSection({
 
     try {
       const filesToProcess =
-        slot === "other" ? files : files.slice(0, 1);
+        slot === "other"
+          ? files
+          : files.slice(0, 1);
 
       const prepared: PendingTNCEUpload[] = [];
 
@@ -376,41 +376,152 @@ export default function ImageSection({
     );
   }
 
+  function switchToLinks() {
+    if (uploadedImages.length > 0) {
+      const confirmed = window.confirm(
+        "Switch to image URLs? Your selected image uploads will be removed."
+      );
+
+      if (!confirmed) return;
+    }
+
+    setUploadedImages([]);
+    setError("");
+    setMethod("links");
+  }
+
+  function switchToUploads() {
+    const hasLinks = Boolean(
+      frontImage.trim() ||
+        backImage.trim() ||
+        otherImages.trim()
+    );
+
+    if (hasLinks) {
+      const confirmed = window.confirm(
+        "Switch to image uploads? Your pasted image URLs will be cleared."
+      );
+
+      if (!confirmed) return;
+    }
+
+    setFrontImage("");
+    setBackImage("");
+    setOtherImages("");
+    setError("");
+    setMethod("upload");
+  }
+
   return (
     <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-      <div>
-        <h3 className="text-sm font-black uppercase tracking-wide text-white">
-          Card Images
-        </h3>
+      <h3 className="text-sm font-black uppercase tracking-wide text-white">
+        Card Images
+      </h3>
 
-        <p className="mt-1 text-xs leading-5 text-neutral-400">
-          Upload images from your phone or computer, drag
-          images into the boxes, or paste image URLs.
-        </p>
+      <p className="mt-1 text-xs leading-5 text-neutral-400">
+        Upload photos from your phone or computer, or
+        provide image links.
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={switchToUploads}
+          className={`rounded-lg border px-3 py-2.5 text-xs font-bold uppercase tracking-wide transition ${
+            method === "upload"
+              ? "border-[#d4af37] bg-[#181300] text-[#f1d36b]"
+              : "border-neutral-700 bg-black text-neutral-400 hover:text-white"
+          }`}
+        >
+          📷 Upload Images
+        </button>
+
+        <button
+          type="button"
+          onClick={switchToLinks}
+          className={`rounded-lg border px-3 py-2.5 text-xs font-bold uppercase tracking-wide transition ${
+            method === "links"
+              ? "border-[#d4af37] bg-[#181300] text-[#f1d36b]"
+              : "border-neutral-700 bg-black text-neutral-400 hover:text-white"
+          }`}
+        >
+          🔗 Link Images
+        </button>
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div className="grid gap-3">
+      {method === "upload" ? (
+        <div className="mt-4 grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-3">
+              <UploadBox
+                label="📷 Add Front Image"
+                description="Take a photo or select one from your photo library."
+                inputRef={frontInputRef}
+                onFiles={(files) =>
+                  addFiles(files, "front")
+                }
+              />
+
+              {frontUpload && (
+                <ImagePreview
+                  label="Front"
+                  upload={frontUpload}
+                  onRemove={() =>
+                    removeUpload(frontUpload.id)
+                  }
+                />
+              )}
+            </div>
+
+            <div className="grid gap-3">
+              <UploadBox
+                label="📷 Add Back Image"
+                description="Take a photo or select one from your photo library."
+                inputRef={backInputRef}
+                onFiles={(files) =>
+                  addFiles(files, "back")
+                }
+              />
+
+              {backUpload && (
+                <ImagePreview
+                  label="Back"
+                  upload={backUpload}
+                  onRemove={() =>
+                    removeUpload(backUpload.id)
+                  }
+                />
+              )}
+            </div>
+          </div>
+
           <UploadBox
-            label="Add Front Image"
-            description="Choose a photo, use your phone camera, or drag the front image here."
-            inputRef={frontInputRef}
+            label="📷 Add Additional Images"
+            description="Take photos or select one or more additional images."
+            multiple
+            inputRef={otherInputRef}
             onFiles={(files) =>
-              addFiles(files, "front")
+              addFiles(files, "other")
             }
           />
 
-          <ImagePreview
-            label="Front Preview"
-            upload={frontUpload}
-            url={frontImage}
-            onRemoveUpload={
-              frontUpload
-                ? () => removeUpload(frontUpload.id)
-                : undefined
-            }
-          />
-
+          {otherUploads.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-3">
+              {otherUploads.map((upload, index) => (
+                <ImagePreview
+                  key={upload.id}
+                  label={`Additional ${index + 1}`}
+                  upload={upload}
+                  onRemove={() =>
+                    removeUpload(upload.id)
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4">
           <label className="grid gap-1 text-sm">
             Front Image URL
             <input
@@ -423,28 +534,6 @@ export default function ImageSection({
               placeholder="https://..."
             />
           </label>
-        </div>
-
-        <div className="grid gap-3">
-          <UploadBox
-            label="Add Back Image"
-            description="Choose a photo, use your phone camera, or drag the back image here."
-            inputRef={backInputRef}
-            onFiles={(files) =>
-              addFiles(files, "back")
-            }
-          />
-
-          <ImagePreview
-            label="Back Preview"
-            upload={backUpload}
-            url={backImage}
-            onRemoveUpload={
-              backUpload
-                ? () => removeUpload(backUpload.id)
-                : undefined
-            }
-          />
 
           <label className="grid gap-1 text-sm">
             Back Image URL
@@ -458,47 +547,20 @@ export default function ImageSection({
               placeholder="https://..."
             />
           </label>
+
+          <label className="grid gap-1 text-sm">
+            Additional Image URLs
+            <textarea
+              value={otherImages}
+              onChange={(event) =>
+                setOtherImages(event.target.value)
+              }
+              className="min-h-24 rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="Paste one image URL per line"
+            />
+          </label>
         </div>
-      </div>
-
-      <div className="mt-4 grid gap-3">
-        <UploadBox
-          label="Add Additional Images"
-          description="Choose or drag one or more additional card, label, patch, or auction images."
-          multiple
-          inputRef={otherInputRef}
-          onFiles={(files) =>
-            addFiles(files, "other")
-          }
-        />
-
-        {otherUploads.length > 0 && (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {otherUploads.map((upload, index) => (
-              <ImagePreview
-                key={upload.id}
-                label={`Additional ${index + 1}`}
-                upload={upload}
-                onRemoveUpload={() =>
-                  removeUpload(upload.id)
-                }
-              />
-            ))}
-          </div>
-        )}
-
-        <label className="grid gap-1 text-sm">
-          Additional Image URLs
-          <textarea
-            value={otherImages}
-            onChange={(event) =>
-              setOtherImages(event.target.value)
-            }
-            className="min-h-24 rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-            placeholder="Paste one image URL per line"
-          />
-        </label>
-      </div>
+      )}
 
       {error && (
         <div className="mt-4 rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-200">
