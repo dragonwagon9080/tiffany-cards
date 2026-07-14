@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import ProjectSelector from "./ProjectSelector";
-import SubmissionActions from "./SubmissionActions";
-import SubmissionDetails from "./SubmissionDetails";
 import SubmissionQueue from "./SubmissionQueue";
+import TNCEWorkspace from "./TNCEWorkspace";
 
 import { getTNCEAdminQueue } from "@/lib/tnce/admin";
 
@@ -116,7 +115,10 @@ function statusMatches(
   return status === "all" || submission.TNCE_Status === status;
 }
 
-function searchMatches(submission: TNCEAdminSubmission, search: string) {
+function searchMatches(
+  submission: TNCEAdminSubmission,
+  search: string
+) {
   const query = search.trim().toLowerCase();
 
   if (!query) return true;
@@ -135,6 +137,7 @@ function searchMatches(submission: TNCEAdminSubmission, search: string) {
     submission.Contributor_Email,
     submission.Contributor_Notes,
     submission.Auction_Source_URL,
+    submission.Source_Page_URL,
     submission.Review_Notes,
   ]
     .join(" ")
@@ -146,39 +149,54 @@ function searchMatches(submission: TNCEAdminSubmission, search: string) {
     .every((term) => searchable.includes(term));
 }
 
-function buildStats(items: TNCEAdminSubmission[]): TNCEAdminStats {
+function buildStats(
+  items: TNCEAdminSubmission[]
+): TNCEAdminStats {
   return {
     total: items.length,
 
     pending: items.filter(
-      (submission) => submission.TNCE_Status === "Pending Review"
+      (submission) =>
+        submission.TNCE_Status === "Pending Review"
     ).length,
 
     needsInfo: items.filter(
-      (submission) => submission.TNCE_Status === "Needs Info"
+      (submission) =>
+        submission.TNCE_Status === "Needs Info"
     ).length,
 
     rejected: items.filter(
-      (submission) => submission.TNCE_Status === "Rejected"
+      (submission) =>
+        submission.TNCE_Status === "Rejected"
     ).length,
 
     published: items.filter(
-      (submission) => submission.TNCE_Status === "Published"
+      (submission) =>
+        submission.TNCE_Status === "Published"
     ).length,
   };
 }
 
 export default function TNCEDashboard() {
-  const [submissions, setSubmissions] = useState<TNCEAdminSubmission[]>([]);
-  const [stats, setStats] = useState<TNCEAdminStats>(EMPTY_STATS);
+  const [submissions, setSubmissions] = useState<
+    TNCEAdminSubmission[]
+  >([]);
 
-  const [selectedSubmissionId, setSelectedSubmissionId] = useState("");
+  const [stats, setStats] =
+    useState<TNCEAdminStats>(EMPTY_STATS);
 
-  const [project, setProject] = useState<TNCEProject | "all">("all");
+  const [
+    selectedSubmissionId,
+    setSelectedSubmissionId,
+  ] = useState("");
 
-  const [status, setStatus] = useState<TNCEReviewStatus | "all">(
-    "Pending Review"
-  );
+  const [project, setProject] = useState<
+    TNCEProject | "all"
+  >("all");
+
+  const [status, setStatus] = useState<
+    TNCEReviewStatus | "all"
+  >("Pending Review");
 
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
@@ -196,7 +214,8 @@ export default function TNCEDashboard() {
 
       if (!response.ok) {
         throw new Error(
-          response.error || "Unable to load TNCE submissions."
+          response.error ||
+            "Unable to load TNCE submissions."
         );
       }
 
@@ -205,7 +224,8 @@ export default function TNCEDashboard() {
       setSubmissions(items);
       setStats(response.stats || buildStats(items));
       setRefreshedAt(
-        response.refreshedAt || new Date().toISOString()
+        response.refreshedAt ||
+          new Date().toISOString()
       );
 
       setSelectedSubmissionId((currentId) => {
@@ -232,7 +252,8 @@ export default function TNCEDashboard() {
       });
     } catch (error: any) {
       setLoadError(
-        error?.message || "Unable to load TNCE submissions."
+        error?.message ||
+          "Unable to load TNCE submissions."
       );
 
       setSubmissions([]);
@@ -259,21 +280,25 @@ export default function TNCEDashboard() {
   const selectedSubmission = useMemo(() => {
     const selected = filteredSubmissions.find(
       (submission) =>
-        submission.Submission_ID === selectedSubmissionId
+        submission.Submission_ID ===
+        selectedSubmissionId
     );
 
     return selected || filteredSubmissions[0] || null;
   }, [filteredSubmissions, selectedSubmissionId]);
 
   useEffect(() => {
-    const nextId = selectedSubmission?.Submission_ID || "";
+    const nextId =
+      selectedSubmission?.Submission_ID || "";
 
     if (nextId !== selectedSubmissionId) {
       setSelectedSubmissionId(nextId);
     }
   }, [selectedSubmission, selectedSubmissionId]);
 
-  function selectStatus(nextStatus: TNCEReviewStatus | "all") {
+  function selectStatus(
+    nextStatus: TNCEReviewStatus | "all"
+  ) {
     setStatus(nextStatus);
     setSelectedSubmissionId("");
   }
@@ -287,64 +312,109 @@ export default function TNCEDashboard() {
   }
 
   function handleStatusChange(
-    submissionId: string,
-    nextStatus: TNCEReviewStatus,
-    reviewNotes: string
-  ) {
-    setSubmissions((current) => {
-      const updated = current.map((submission) => {
-        if (submission.Submission_ID !== submissionId) {
-          return submission;
-        }
+  submissionId: string,
+  nextStatus: TNCEReviewStatus,
+  reviewNotes: string
+) {
+  const currentIndex = filteredSubmissions.findIndex(
+    (submission) =>
+      submission.Submission_ID === submissionId
+  );
 
-        return {
-          ...submission,
-          TNCE_Status: nextStatus,
-          Review_Notes:
-            nextStatus === "Pending Review" ? "" : reviewNotes,
-          Reviewed_At:
-            nextStatus === "Pending Review"
-              ? ""
-              : new Date().toISOString(),
-          Reviewer:
-            nextStatus === "Pending Review"
-              ? ""
-              : submission.Reviewer || "Admin",
-        };
-      });
+  /*
+   * Prefer the card immediately after the current card.
+   * If the current card is last, use the card immediately before it.
+   */
+  const nextSubmission =
+    filteredSubmissions[currentIndex + 1] ||
+    filteredSubmissions[currentIndex - 1] ||
+    null;
 
-      setStats(buildStats(updated));
+  setSubmissions((current) => {
+    const updated = current.map((submission) => {
+      if (submission.Submission_ID !== submissionId) {
+        return submission;
+      }
 
-      return updated;
+      return {
+        ...submission,
+        TNCE_Status: nextStatus,
+
+        Review_Notes:
+          nextStatus === "Pending Review"
+            ? ""
+            : reviewNotes,
+
+        Reviewed_At:
+          nextStatus === "Pending Review"
+            ? ""
+            : new Date().toISOString(),
+
+        Reviewer:
+          nextStatus === "Pending Review"
+            ? ""
+            : submission.Reviewer || "Admin",
+      };
     });
 
-    /*
-     * Because the default queue is Pending Review, a submission
-     * automatically disappears after it becomes Needs Info,
-     * Rejected, or Published.
-     */
-    setSelectedSubmissionId("");
+    setStats(buildStats(updated));
+
+    return updated;
+  });
+
+  /*
+   * When publishing from Pending Review, the published card
+   * leaves the visible queue and the next visible card opens.
+   */
+  if (
+    status === "Pending Review" &&
+    nextStatus !== "Pending Review"
+  ) {
+    setSelectedSubmissionId(
+      nextSubmission?.Submission_ID || ""
+    );
+
+    return;
   }
+
+  /*
+   * For other filtered views, keep the changed card selected
+   * when it remains visible.
+   */
+  if (
+    status === "all" ||
+    status === nextStatus
+  ) {
+    setSelectedSubmissionId(submissionId);
+
+    return;
+  }
+
+  setSelectedSubmissionId(
+    nextSubmission?.Submission_ID || ""
+  );
+}
 
   return (
     <main className="min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1700px]">
+      <div className="mx-auto max-w-[1900px]">
         <header className="overflow-hidden rounded-2xl border border-[#9c7a2d] bg-neutral-950">
           <div className="border-b border-[#9c7a2d]/60 bg-gradient-to-r from-[#181300] via-neutral-950 to-[#181300] px-5 py-6 sm:px-8">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.28em] text-[#d4af37]">
-                  Tiffany Cards Network Contribution Engine
+                  Tiffany Cards Network Contribution
+                  Engine
                 </div>
 
                 <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">
-                  TNCE Admin
+                  TNCE Studio
                 </h1>
 
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-400">
-                  Review pending contributions, request additional
-                  information, reject invalid submissions, or publish
-                  approved records.
+                  Review contributions, inspect submitted
+                  evidence, prepare production records, and
+                  publish approved updates.
                 </p>
               </div>
 
@@ -364,7 +434,9 @@ export default function TNCEDashboard() {
                   disabled={loading}
                   className="rounded-lg border border-[#9c7a2d] bg-black px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-[#d4af37] transition hover:border-[#d4af37] hover:bg-[#181300] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Refreshing..." : "Refresh Queue"}
+                  {loading
+                    ? "Refreshing..."
+                    : "Refresh Queue"}
                 </button>
               </div>
             </div>
@@ -375,14 +447,18 @@ export default function TNCEDashboard() {
               label="Pending"
               value={stats.pending}
               active={status === "Pending Review"}
-              onClick={() => selectStatus("Pending Review")}
+              onClick={() =>
+                selectStatus("Pending Review")
+              }
             />
 
             <StatCard
               label="Needs Info"
               value={stats.needsInfo}
               active={status === "Needs Info"}
-              onClick={() => selectStatus("Needs Info")}
+              onClick={() =>
+                selectStatus("Needs Info")
+              }
             />
 
             <StatCard
@@ -498,29 +574,26 @@ export default function TNCEDashboard() {
             </div>
           </div>
         ) : (
-          <div className="mt-6 grid gap-6 xl:grid-cols-[390px_minmax(0,1fr)]">
-            <SubmissionQueue
-              submissions={filteredSubmissions}
-              selectedSubmissionId={
-                selectedSubmission?.Submission_ID || ""
-              }
-              onSelect={(submission) =>
-                setSelectedSubmissionId(
-                  submission.Submission_ID
-                )
-              }
-            />
-
-            <div className="min-w-0 space-y-6">
-              <SubmissionDetails
-                submission={selectedSubmission}
-              />
-
-              <SubmissionActions
-                submission={selectedSubmission}
-                onStatusChange={handleStatusChange}
+          <div className="mt-6 grid min-w-0 gap-6 xl:grid-cols-[370px_minmax(0,1fr)]">
+            <div className="min-w-0 xl:sticky xl:top-6 xl:self-start">
+              <SubmissionQueue
+                submissions={filteredSubmissions}
+                selectedSubmissionId={
+                  selectedSubmission?.Submission_ID ||
+                  ""
+                }
+                onSelect={(submission) =>
+                  setSelectedSubmissionId(
+                    submission.Submission_ID
+                  )
+                }
               />
             </div>
+
+            <TNCEWorkspace
+              submission={selectedSubmission}
+              onStatusChange={handleStatusChange}
+            />
           </div>
         )}
       </div>

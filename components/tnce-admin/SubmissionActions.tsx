@@ -1,17 +1,17 @@
 "use client";
 
-import { useState } from "react";
-
-import ProductionPreview from "./ProductionPreview";
+import { useEffect, useState } from "react";
 
 import type {
   TNCEAdminActionRequest,
   TNCEAdminSubmission,
+  TNCEProductionFields,
   TNCEReviewStatus,
 } from "@/lib/tnce/types";
 
 type Props = {
   submission: TNCEAdminSubmission | null;
+  productionRecord: TNCEProductionFields;
   onStatusChange?: (
     submissionId: string,
     status: TNCEReviewStatus,
@@ -19,21 +19,29 @@ type Props = {
   ) => void;
 };
 
-type ReviewAction = "needs-info" | "reject" | "reset-pending";
+type ReviewAction =
+  | "needs-info"
+  | "reject"
+  | "reset-pending";
 
 export default function SubmissionActions({
   submission,
+  productionRecord,
   onStatusChange,
 }: Props) {
   const [reviewNotes, setReviewNotes] = useState("");
+
   const [activeAction, setActiveAction] =
     useState<ReviewAction | null>(null);
 
-  const [showProductionPreview, setShowProductionPreview] =
-    useState(false);
-
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setReviewNotes(submission?.Review_Notes || "");
+    setActiveAction(null);
+    setMessage("");
+  }, [submission?.Submission_ID]);
 
   if (!submission) return null;
 
@@ -46,10 +54,13 @@ export default function SubmissionActions({
     const cleanedNotes = reviewNotes.trim();
 
     if (
-      (action === "needs-info" || action === "reject") &&
+      (action === "needs-info" ||
+        action === "reject") &&
       !cleanedNotes
     ) {
-      setMessage("A review note is required for this action.");
+      setMessage(
+        "A review note is required for this action."
+      );
       return;
     }
 
@@ -58,13 +69,15 @@ export default function SubmissionActions({
 
     try {
       const payload: TNCEAdminActionRequest = {
-        submissionId: currentSubmission.Submission_ID,
+        submissionId:
+          currentSubmission.Submission_ID,
         action,
         reviewNotes: cleanedNotes,
       };
 
-      // Live status endpoints will be connected next.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 300)
+      );
 
       onStatusChange?.(
         payload.submissionId,
@@ -72,31 +85,39 @@ export default function SubmissionActions({
         cleanedNotes
       );
 
-      setMessage(`Submission marked ${status}.`);
       setActiveAction(null);
       setReviewNotes("");
     } catch (error: any) {
-      setMessage(error?.message || "TNCE action failed.");
+      setMessage(
+        error?.message || "TNCE action failed."
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function applyProductionChanges() {
+  async function publishSubmission() {
+    if (submitting) return;
+
     setSubmitting(true);
     setMessage("");
 
     try {
-      const response = await fetch("/api/tnce/admin/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          submissionId: currentSubmission.Submission_ID,
-          reviewNotes: reviewNotes.trim(),
-        }),
-      });
+      const response = await fetch(
+        "/api/tnce/admin/publish",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            submissionId:
+              currentSubmission.Submission_ID,
+            reviewNotes: reviewNotes.trim(),
+            productionRecord,
+          }),
+        }
+      );
 
       const text = await response.text();
 
@@ -114,7 +135,9 @@ export default function SubmissionActions({
       }
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Publishing failed.");
+        throw new Error(
+          data.error || "Publishing failed."
+        );
       }
 
       onStatusChange?.(
@@ -123,174 +146,192 @@ export default function SubmissionActions({
         reviewNotes.trim()
       );
 
-      setShowProductionPreview(false);
       setReviewNotes("");
-
-      const changedFields = Array.isArray(data.changedFields)
-        ? data.changedFields.join(", ")
-        : "";
-
-      setMessage(
-        [
-          data.message || "Submission published successfully.",
-          data.productionRow
-            ? `DB row: ${data.productionRow}.`
-            : "",
-          changedFields
-            ? `Changes: ${changedFields}.`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" ")
-      );
     } catch (error: any) {
-  const errorMessage = error?.message || "Publishing failed.";
+      const errorMessage =
+        error?.message || "Publishing failed.";
 
-  setMessage(errorMessage);
-  window.alert(errorMessage);
-} finally {
+      setMessage(errorMessage);
+      window.alert(errorMessage);
+    } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <>
-      <section className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 sm:p-6">
-        <h2 className="text-lg font-black uppercase tracking-wide text-white">
-          Review Actions
-        </h2>
+  <>
+  {submitting && (
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="flex flex-col items-center rounded-2xl border border-[#d4af37] bg-neutral-950 px-10 py-8 shadow-2xl">
+      <div className="relative flex items-center justify-center">
+  <div className="absolute h-28 w-28 rounded-full bg-[#d4af37]/20 tnce-pulse" />
 
-        <p className="mt-2 text-sm text-neutral-400">
-          Publish the submission, request additional information, or reject it.
-        </p>
+  <img
+    src="https://storage.googleapis.com/altered-card-database/2026-06-19_230015_2026_Tiffany_Cards_logo_TCE4395C68_front.png"
+    alt="Tiffany Cards"
+    className="relative h-20 w-20 object-contain"
+  />
+</div>
 
-        <label className="mt-5 grid gap-2">
-          <span className="text-xs font-bold uppercase tracking-wide text-neutral-400">
-            Review Notes
-          </span>
+      <div className="mt-6 text-xl font-black text-white">
+        Publishing...
+      </div>
 
-          <textarea
-            value={reviewNotes}
-            onChange={(event) => setReviewNotes(event.target.value)}
-            className="min-h-28 rounded-xl border border-neutral-700 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
-            placeholder="Add verification details, rejection reason, or information needed."
-          />
-        </label>
+      <div className="mt-2 text-sm text-neutral-400">
+        Updating production database...
+      </div>
+    </div>
+  </div>
+)}
+<section className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+      <h2 className="text-sm font-black uppercase tracking-wide text-white">
+        Review Actions
+      </h2>
 
-        {currentSubmission.TNCE_Status === "Pending Review" ? (
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <label className="mt-3 grid gap-1.5">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+          Review Notes
+        </span>
+
+        <textarea
+          value={reviewNotes}
+          onChange={(event) =>
+            setReviewNotes(event.target.value)
+          }
+          className="min-h-24 resize-y rounded-xl border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
+          placeholder="Verification details or information needed."
+        />
+      </label>
+
+      {currentSubmission.TNCE_Status ===
+      "Pending Review" ? (
+        <div className="mt-4 grid gap-2">
+          <button
+            type="button"
+            onClick={publishSubmission}
+            disabled={submitting}
+            className="rounded-xl border border-[#d4af37] bg-[#9c7a2d] px-4 py-3 text-sm font-extrabold uppercase tracking-wide text-black transition hover:bg-[#b99236] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting
+              ? "Publishing..."
+              : "✔ Publish"}
+          </button>
+
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => setShowProductionPreview(true)}
-              className="rounded-xl border border-[#d4af37] bg-[#9c7a2d] px-4 py-3 text-sm font-extrabold uppercase tracking-wide text-black transition hover:bg-[#b99236]"
-            >
-              ✔ Publish
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveAction("needs-info")}
-              className="rounded-xl border border-sky-500/60 bg-sky-800 px-4 py-3 text-sm font-extrabold uppercase tracking-wide text-white transition hover:bg-sky-700"
+              onClick={() =>
+                setActiveAction("needs-info")
+              }
+              disabled={submitting}
+              className="rounded-xl border border-sky-500/60 bg-sky-800 px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide text-white transition hover:bg-sky-700 disabled:opacity-60"
             >
               Needs Info
             </button>
 
             <button
               type="button"
-              onClick={() => setActiveAction("reject")}
-              className="rounded-xl border border-red-500/60 bg-red-800 px-4 py-3 text-sm font-extrabold uppercase tracking-wide text-white transition hover:bg-red-700"
+              onClick={() =>
+                setActiveAction("reject")
+              }
+              disabled={submitting}
+              className="rounded-xl border border-red-500/60 bg-red-800 px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide text-white transition hover:bg-red-700 disabled:opacity-60"
             >
               Reject
             </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setActiveAction("reset-pending")}
-            className="mt-5 w-full rounded-xl border border-neutral-700 bg-black px-4 py-3 text-sm font-bold uppercase tracking-wide text-neutral-300 transition hover:bg-neutral-900 hover:text-white"
-          >
-            Return to Pending Review
-          </button>
-        )}
-
-        {activeAction && (
-          <div className="mt-5 rounded-xl border border-[#d4af37]/50 bg-[#181300] p-4">
-            <h3 className="font-bold text-[#f1d36b]">
-              Confirm Review Action
-            </h3>
-
-            <p className="mt-2 text-sm text-neutral-300">
-              {activeAction === "needs-info" &&
-                "Move this submission to Needs Info?"}
-
-              {activeAction === "reject" &&
-                "Reject and archive this submission?"}
-
-              {activeAction === "reset-pending" &&
-                "Return this submission to the Pending Review queue?"}
-            </p>
-
-            {(activeAction === "needs-info" ||
-              activeAction === "reject") &&
-              !reviewNotes.trim() && (
-                <p className="mt-2 text-sm font-bold text-amber-300">
-                  A review note is required.
-                </p>
-              )}
-
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => {
-                  if (activeAction === "needs-info") {
-                    submitStatusAction("needs-info", "Needs Info");
-                  }
-
-                  if (activeAction === "reject") {
-                    submitStatusAction("reject", "Rejected");
-                  }
-
-                  if (activeAction === "reset-pending") {
-                    submitStatusAction(
-                      "reset-pending",
-                      "Pending Review"
-                    );
-                  }
-                }}
-                className="flex-1 rounded-lg bg-[#d4af37] px-4 py-2.5 text-sm font-extrabold uppercase tracking-wide text-black transition hover:bg-[#f1d36b] disabled:opacity-60"
-              >
-                {submitting ? "Saving..." : "Confirm"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveAction(null)}
-                disabled={submitting}
-                className="rounded-lg border border-neutral-700 bg-black px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-neutral-900"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {message && (
-          <div className="mt-5 rounded-xl border border-neutral-700 bg-black p-4 text-sm text-neutral-200">
-            {message}
-          </div>
-        )}
-      </section>
-
-      {showProductionPreview && (
-        <ProductionPreview
-          submission={currentSubmission}
-          reviewNotes={reviewNotes}
-          applying={submitting}
-          onCancel={() => setShowProductionPreview(false)}
-          onApply={applyProductionChanges}
-        />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() =>
+            setActiveAction("reset-pending")
+          }
+          disabled={submitting}
+          className="mt-4 w-full rounded-xl border border-neutral-700 bg-black px-4 py-3 text-xs font-bold uppercase tracking-wide text-neutral-300 transition hover:bg-neutral-900 hover:text-white disabled:opacity-60"
+        >
+          Return to Pending Review
+        </button>
       )}
-    </>
-  );
+
+      {activeAction && (
+        <div className="mt-4 rounded-xl border border-[#d4af37]/50 bg-[#181300] p-3">
+          <div className="text-sm font-bold text-[#f1d36b]">
+            Confirm Review Action
+          </div>
+
+          <p className="mt-2 text-sm text-neutral-300">
+            {activeAction === "needs-info" &&
+              "Move this submission to Needs Info?"}
+
+            {activeAction === "reject" &&
+              "Reject and archive this submission?"}
+
+            {activeAction === "reset-pending" &&
+              "Return this submission to Pending Review?"}
+          </p>
+
+          {(activeAction === "needs-info" ||
+            activeAction === "reject") &&
+            !reviewNotes.trim() && (
+              <p className="mt-2 text-xs font-bold text-amber-300">
+                A review note is required.
+              </p>
+            )}
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                if (activeAction === "needs-info") {
+                  submitStatusAction(
+                    "needs-info",
+                    "Needs Info"
+                  );
+                }
+
+                if (activeAction === "reject") {
+                  submitStatusAction(
+                    "reject",
+                    "Rejected"
+                  );
+                }
+
+                if (
+                  activeAction === "reset-pending"
+                ) {
+                  submitStatusAction(
+                    "reset-pending",
+                    "Pending Review"
+                  );
+                }
+              }}
+              className="rounded-lg bg-[#d4af37] px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide text-black disabled:opacity-60"
+            >
+              {submitting ? "Saving..." : "Confirm"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setActiveAction(null)
+              }
+              disabled={submitting}
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-white disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {message && (
+        <div className="mt-4 rounded-xl border border-red-700 bg-red-950/30 p-3 text-sm text-red-200">
+          {message}
+        </div>
+      )}
+    </section>
+</>
+);
 }

@@ -4,14 +4,23 @@ import { useState } from "react";
 
 import ContributorSection from "./ContributorSection";
 import ContributionHeader from "./ContributionHeader";
-import ImageSection from "./ImageSection";
+import ImageSection, {
+  type PendingTNCEUpload,
+} from "./ImageSection";
 import ModeBanner from "./ModeBanner";
 import ProjectFields from "./ProjectFields";
 import SubmitButton from "./SubmitButton";
 
-import { TNCE_MODE_CONFIG, type ContributionMode } from "./modeConfig";
+import {
+  TNCE_MODE_CONFIG,
+  type ContributionMode,
+} from "./modeConfig";
 
-type Project = "rpa-tracker" | "cards-alert" | "tiffany-cards" | "guides";
+type Project =
+  | "rpa-tracker"
+  | "cards-alert"
+  | "tiffany-cards"
+  | "guides";
 
 type ActiveObject = {
   id?: string;
@@ -28,9 +37,14 @@ type Props = {
   onSuccess: (submissionId: string) => void;
 };
 
-function valueFromActiveObject(activeObject: ActiveObject, keys: string[]) {
+function valueFromActiveObject(
+  activeObject: ActiveObject,
+  keys: string[]
+) {
   for (const key of keys) {
-    if (activeObject[key]) return String(activeObject[key]);
+    if (activeObject[key]) {
+      return String(activeObject[key]);
+    }
   }
 
   return "";
@@ -46,8 +60,11 @@ export default function ContributionForm({
 }: Props) {
   const modeConfig = TNCE_MODE_CONFIG[mode];
 
-  const [contributorName, setContributorName] = useState("");
-  const [contributorEmail, setContributorEmail] = useState("");
+  const [contributorName, setContributorName] =
+    useState("");
+
+  const [contributorEmail, setContributorEmail] =
+    useState("");
 
   const [cardTitle, setCardTitle] = useState(
     valueFromActiveObject(activeObject, [
@@ -57,31 +74,57 @@ export default function ContributionForm({
     ])
   );
 
-  const [serialNumber, setSerialNumber] = useState(
+  const [serialNumber, setSerialNumber] =
+    useState(
+      valueFromActiveObject(activeObject, [
+        "Serial_Number",
+        "serialNumber",
+        "serial",
+      ])
+    );
+
+  const [grade, setGrade] = useState(
     valueFromActiveObject(activeObject, [
-      "Serial_Number",
-      "serialNumber",
-      "serial",
+      "Grade",
+      "grade",
     ])
   );
 
-  const [grade, setGrade] = useState(
-    valueFromActiveObject(activeObject, ["Grade", "grade"])
-  );
-
   const [certNumber, setCertNumber] = useState(
-    valueFromActiveObject(activeObject, ["Cert_Number", "certNumber", "cert"])
+    valueFromActiveObject(activeObject, [
+      "Cert_Number",
+      "certNumber",
+      "cert",
+    ])
   );
 
-  const [frontImage, setFrontImage] = useState("");
-  const [backImage, setBackImage] = useState("");
-  const [otherImages, setOtherImages] = useState("");
-  const [auctionSourceUrl, setAuctionSourceUrl] = useState("");
+  const [frontImage, setFrontImage] =
+    useState("");
+
+  const [backImage, setBackImage] =
+    useState("");
+
+  const [otherImages, setOtherImages] =
+    useState("");
+
+  const [uploadedImages, setUploadedImages] =
+    useState<PendingTNCEUpload[]>([]);
+
+  const [
+    auctionSourceUrl,
+    setAuctionSourceUrl,
+  ] = useState("");
+
   const [notes, setNotes] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [submitError, setSubmitError] =
+    useState("");
 
   async function submitContribution() {
+    if (submitting) return;
+
     setSubmitting(true);
     setSubmitError("");
 
@@ -94,21 +137,22 @@ export default function ContributionForm({
         body: JSON.stringify({
           project,
 
-          // Kept for backward compatibility with the current TNCE payload.
-          submissionType: modeConfig.submissionType,
+          submissionType:
+            modeConfig.submissionType,
 
-          // This is the actual TNCE workflow mode:
-          // new, update, or missing.
           submissionMode: mode,
 
           sourcePageUrl:
-            typeof window !== "undefined" ? window.location.href : "",
+            typeof window !== "undefined"
+              ? window.location.href
+              : "",
 
-          auctionSourceUrl: auctionSourceUrl.trim(),
+          auctionSourceUrl:
+            auctionSourceUrl.trim(),
 
           contributor: {
-            name: contributorName,
-            email: contributorEmail,
+            name: contributorName.trim(),
+            email: contributorEmail.trim(),
           },
 
           activeObject,
@@ -117,46 +161,81 @@ export default function ContributionForm({
             Card_Title: cardTitle,
             Serial_Number: serialNumber,
 
-            Card_id: valueFromActiveObject(activeObject, [
-              "Card_id",
-              "card_id",
-              "id",
-            ]),
+            Card_id: valueFromActiveObject(
+              activeObject,
+              [
+                "Card_id",
+                "card_id",
+                "id",
+              ]
+            ),
 
-            Variation_Input: valueFromActiveObject(activeObject, [
-              "Variation_Input",
-              "Variation",
-              "variation",
-            ]),
+            Variation_Input:
+              valueFromActiveObject(
+                activeObject,
+                [
+                  "Variation_Input",
+                  "Variation",
+                  "variation",
+                ]
+              ),
 
             Grade: grade,
             Cert_Number: certNumber,
-            Auction_Source_URL: auctionSourceUrl.trim(),
+
+            Auction_Source_URL:
+              auctionSourceUrl.trim(),
           },
 
           imageUrls: {
-            front: frontImage,
-            back: backImage,
+            front: frontImage.trim(),
+            back: backImage.trim(),
+
             other: otherImages
               .split(/\r?\n/)
               .map((url) => url.trim())
               .filter(Boolean),
           },
 
-          uploadedImages: [],
+          uploadedImages: uploadedImages.map(
+            (image) => ({
+              fileName: image.fileName,
+              contentType: image.contentType,
+              base64: image.base64,
+              slot: image.slot,
+            })
+          ),
+
           notes,
         }),
       });
 
-      const json = await res.json();
+      const text = await res.text();
+
+      let json: any;
+
+      try {
+        json = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `Submission returned invalid JSON. First response text: ${text.slice(
+            0,
+            300
+          )}`
+        );
+      }
 
       if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Submission failed.");
+        throw new Error(
+          json.error || "Submission failed."
+        );
       }
 
       onSuccess(json.submissionId);
     } catch (error: any) {
-      setSubmitError(error?.message || "Submission failed.");
+      setSubmitError(
+        error?.message || "Submission failed."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -193,30 +272,40 @@ export default function ContributionForm({
           setBackImage={setBackImage}
           otherImages={otherImages}
           setOtherImages={setOtherImages}
+          uploadedImages={uploadedImages}
+          setUploadedImages={setUploadedImages}
         />
 
         <label className="grid gap-1 text-sm">
           Auction / Source URL
+
           <input
             type="url"
             value={auctionSourceUrl}
-            onChange={(event) => setAuctionSourceUrl(event.target.value)}
+            onChange={(event) =>
+              setAuctionSourceUrl(
+                event.target.value
+              )
+            }
             className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
             placeholder="https://www.ebay.com/... or https://goldin.co/..."
           />
 
           <span className="text-xs leading-5 text-neutral-400">
-            Paste the auction, marketplace, social-media, or other webpage where
-            the card was found. Leave blank when the card was submitted directly
-            by its owner or another collector.
+            Paste the auction, marketplace,
+            social-media, or other webpage where the
+            card was found.
           </span>
         </label>
 
         <label className="grid gap-1 text-sm">
           Notes
+
           <textarea
             value={notes}
-            onChange={(event) => setNotes(event.target.value)}
+            onChange={(event) =>
+              setNotes(event.target.value)
+            }
             className="min-h-28 rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
             placeholder="Tell us what should be added, corrected, or reviewed."
           />

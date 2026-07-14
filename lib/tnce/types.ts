@@ -42,6 +42,7 @@ export interface TNCEUploadedImage {
   fileName: string;
   contentType: string;
   base64: string;
+  slot?: "front" | "back" | "other";
 }
 
 export interface TNCEActiveObject {
