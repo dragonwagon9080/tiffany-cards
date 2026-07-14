@@ -3,6 +3,8 @@ import RichText from "@/components/site/RichText";
 import PageHero from "@/components/site/PageHero";
 import PageContent from "@/components/site/PageContent";
 
+export const dynamic = "force-dynamic";
+
 /* =========================================================
    TYPES
    ========================================================= */
