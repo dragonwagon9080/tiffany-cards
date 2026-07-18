@@ -9,9 +9,15 @@ import type {
   TNCEReviewStatus,
 } from "@/lib/tnce/types";
 
+import type {
+  OrganizedImage,
+} from "@/components/shared/ImageOrganizer";
+
 type Props = {
   submission: TNCEAdminSubmission | null;
   productionRecord: TNCEProductionFields;
+  organizedImages: OrganizedImage[];
+
   onStatusChange?: (
     submissionId: string,
     status: TNCEReviewStatus,
@@ -27,6 +33,7 @@ type ReviewAction =
 export default function SubmissionActions({
   submission,
   productionRecord,
+  organizedImages,
   onStatusChange,
 }: Props) {
   const [reviewNotes, setReviewNotes] = useState("");
@@ -111,11 +118,22 @@ export default function SubmissionActions({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            submissionId:
-              currentSubmission.Submission_ID,
-            reviewNotes: reviewNotes.trim(),
-            productionRecord,
-          }),
+  submissionId:
+    currentSubmission.Submission_ID,
+
+  reviewNotes: reviewNotes.trim(),
+
+  productionRecord,
+
+  organizedImages: organizedImages.map(
+    (image) => ({
+      id: image.id,
+      url: image.url,
+      role: image.role,
+      rotation: image.rotation || 0,
+    })
+  ),
+}),
         }
       );
 

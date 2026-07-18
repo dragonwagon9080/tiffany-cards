@@ -101,11 +101,50 @@ export default function TNCEWorkspace({
       buildProductionRecord(submission)
     );
 
+    const [organizedImages, setOrganizedImages] =
+  useState<any[]>([]);
+
   useEffect(() => {
-    setProductionRecord(
-      buildProductionRecord(submission)
-    );
-  }, [submission?.Submission_ID]);
+  const record =
+    buildProductionRecord(submission);
+
+  setProductionRecord(record);
+
+  const images = [];
+
+  if (record.Front_Image) {
+    images.push({
+      id: "front",
+      url: record.Front_Image,
+      role: "front",
+      rotation: 0,
+    });
+  }
+
+  if (record.Back_Image) {
+    images.push({
+      id: "back",
+      url: record.Back_Image,
+      role: "back",
+      rotation: 0,
+    });
+  }
+
+  record.Other_Images
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .forEach((url, index) => {
+      images.push({
+        id: `other-${index}`,
+        url,
+        role: "additional",
+        rotation: 0,
+      });
+    });
+
+  setOrganizedImages(images);
+
+}, [submission?.Submission_ID]);
 
   if (!submission) {
     return <EmptyWorkspace />;
@@ -116,19 +155,22 @@ export default function TNCEWorkspace({
       <div className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="min-w-0">
           <SubmissionDetails
-            submission={submission}
-            productionRecord={productionRecord}
-            onProductionChange={setProductionRecord}
-          />
+  submission={submission}
+  productionRecord={productionRecord}
+  organizedImages={organizedImages}
+  onOrganizedImagesChange={setOrganizedImages}
+  onProductionChange={setProductionRecord}
+/>
         </div>
 
         <aside className="min-w-0">
           <div className="2xl:sticky 2xl:top-6">
             <SubmissionActions
-              submission={submission}
-              productionRecord={productionRecord}
-              onStatusChange={onStatusChange}
-            />
+  submission={submission}
+  productionRecord={productionRecord}
+  organizedImages={organizedImages}
+  onStatusChange={onStatusChange}
+/>
           </div>
         </aside>
       </div>

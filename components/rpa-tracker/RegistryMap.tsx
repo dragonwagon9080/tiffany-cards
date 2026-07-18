@@ -106,47 +106,76 @@ export default function RegistryMap({
   }
 
   function buildMissingCardContext({
+  variation,
+  number,
+  denominator,
+}: {
+  variation: string;
+  number: number;
+  denominator: number;
+}) {
+  const sample = cards?.[0] || {};
+  const serialNumber = `${number}/${denominator}`;
+
+  /*
+   * Some stored card titles include another card's serial
+   * number and variation, such as:
+   *
+   * 2023 Bijan Robinson #158 National Treasures 06/25 Silver
+   *
+   * Remove that trailing serial/variation before building
+   * the selected missing-card context.
+   */
+  const sampleTitle = String(
+    sample.Card_Title_Display ||
+      sample.Card_Title ||
+      sample.title ||
+      "Missing RPA Card"
+  ).trim();
+
+  const baseCardTitle = sampleTitle
+    .replace(
+      /\s+\d+\s*\/\s*\d+\s+[^/]+$/i,
+      ""
+    )
+    .trim();
+
+  const selectedCardTitle = [
+    baseCardTitle,
+    serialNumber,
     variation,
-    number,
-    denominator,
-  }: {
-    variation: string;
-    number: number;
-    denominator: number;
-  }) {
-    const sample = cards?.[0] || {};
-    const serialNumber = `${number}/${denominator}`;
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-    return {
-      title:
-        sample.Card_Title_Display ||
-        sample.Card_Title ||
-        "Missing RPA Card",
+  return {
+    title: selectedCardTitle,
 
-      Card_Title: sample.Card_Title || "",
+    Card_Title: baseCardTitle,
 
-      Card_Title_Display:
-        sample.Card_Title_Display ||
-        sample.Card_Title ||
-        "",
+    Card_Title_Display: selectedCardTitle,
 
-      Serial_Number: serialNumber,
-      Variation_Input: variation,
-      Variation: variation,
-      Numerator: String(number),
-      Denominator: String(denominator),
-      Player: sample.Player || "",
-      First: sample.First || "",
-      Last: sample.Last || "",
-      Year: sample.Year || "",
-      Brand: sample.Brand || "",
-      Set: sample.Set || "",
-      Sport: sample.Sport || "",
-      Material: sample.Material || "",
-      Slug: sample.Slug || "",
-      Missing_From_Registry: "true",
-    };
-  }
+    Serial_Number: serialNumber,
+
+    Variation_Input: variation,
+    Variation: variation,
+
+    Numerator: String(number),
+    Denominator: String(denominator),
+
+    Player: sample.Player || "",
+    First: sample.First || "",
+    Last: sample.Last || "",
+    Year: sample.Year || "",
+    Brand: sample.Brand || "",
+    Set: sample.Set || "",
+    Sport: sample.Sport || "",
+    Material: sample.Material || "",
+    Slug: sample.Slug || "",
+
+    Missing_From_Registry: "true",
+  };
+}
 
   const printRuns = buildRegistryRuns(
     cards || [],

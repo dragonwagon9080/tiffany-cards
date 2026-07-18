@@ -85,7 +85,14 @@ export function buildRegistryRuns(cards: any[], activeVariation = "All") {
 
     const serial = parseSerial(card.Serial_Number);
     if (!serial) return;
-    if (!serial.denominator || serial.denominator > 250) return;
+    const MAX_REGISTRY_MAP_SIZE = 1000;
+
+if (
+  !serial.denominator ||
+  serial.denominator > MAX_REGISTRY_MAP_SIZE
+) {
+  return;
+}
 
     const key = `${cardVariation}__${serial.denominator}`;
 
