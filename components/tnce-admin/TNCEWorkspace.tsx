@@ -151,9 +151,9 @@ export default function TNCEWorkspace({
   }
 
   return (
-    <section className="min-w-0">
-      <div className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="min-w-0">
+  <section className="min-w-0 pb-[calc(7rem+env(safe-area-inset-bottom))] 2xl:pb-8">
+      <div className="grid min-w-0 grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_390px] 2xl:gap-6">
+        <div className="order-1 min-w-0">
           <SubmissionDetails
   submission={submission}
   productionRecord={productionRecord}
@@ -163,7 +163,7 @@ export default function TNCEWorkspace({
 />
         </div>
 
-        <aside className="min-w-0">
+        <aside className="order-2 min-w-0 2xl:order-none">
           <div className="2xl:sticky 2xl:top-6">
             <SubmissionActions
   submission={submission}

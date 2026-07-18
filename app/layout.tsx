@@ -14,6 +14,7 @@ import {
 import SiteHeader from "@/components/site/SiteHeader";
 import SiteFooter from "@/components/site/SiteFooter";
 import BackToTopButton from "@/components/site/BackToTopButton";
+import AdSenseScript from "@/components/site/AdSenseScript";
 
 const cinzel = Cinzel({
   subsets: ["latin"],
@@ -98,12 +99,8 @@ export default async function RootLayout({
           `}
         </Script>
 
-        {/* Google AdSense */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7543808952594105"
-          crossOrigin="anonymous"
-        />
+       {/* Google AdSense — excluded from all TNCE routes */}
+<AdSenseScript />
 
         <SiteHeader
           settings={settings}

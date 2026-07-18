@@ -143,11 +143,11 @@ useEffect(() => {
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {images.map((image, index) => (
         <div
           key={image.id}
-          className="overflow-hidden rounded-xl border border-neutral-800 bg-black"
+          className="w-full min-w-0 overflow-hidden rounded-xl border border-neutral-800 bg-black"
         >
           <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
             <span className="text-xs font-black uppercase tracking-wide text-neutral-400">
@@ -163,7 +163,7 @@ useEffect(() => {
             href={image.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-56 items-center justify-center overflow-hidden p-3"
+            className="flex h-60 w-full items-center justify-center overflow-hidden p-2 sm:h-56 sm:p-3"
           >
             <img
               src={image.url}
@@ -175,7 +175,7 @@ useEffect(() => {
     0
   }deg)`,
 }}
-              className="max-h-full max-w-full object-contain transition-transform duration-200"
+              className="block max-h-full max-w-full object-contain transition-transform duration-200"
             />
           </a>
 

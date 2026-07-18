@@ -198,7 +198,7 @@ export default function SubmissionDetails({
   }
 
   return (
-    <section className="rounded-2xl border border-neutral-800 bg-neutral-950">
+    <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
       <div className="border-b border-neutral-800 px-5 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -245,9 +245,9 @@ export default function SubmissionDetails({
         </div>
       </div>
 
-      <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(330px,.85fr)]">
-        <div className="space-y-5">
-          <div>
+      <div className="grid min-w-0 max-w-full grid-cols-1 gap-4 p-3 sm:p-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(330px,.85fr)] xl:gap-5">
+        <div className="min-w-0 max-w-full space-y-5">
+  <div className="min-w-0 max-w-full overflow-hidden">
             <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-white">
               Images
             </h3>
@@ -314,7 +314,7 @@ export default function SubmissionDetails({
           </div>
         </div>
 
-        <aside className="space-y-4">
+        <aside className="min-w-0 max-w-full space-y-4">
           <details className="rounded-xl border border-neutral-800 bg-black p-4">
             <summary className="cursor-pointer text-sm font-black uppercase tracking-wide text-white">
               Submission Information
