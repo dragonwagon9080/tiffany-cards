@@ -52,6 +52,7 @@ export default function RPATrackerClient({
   const [brand, setBrand] = useState("");
   const [variation, setVariation] = useState("");
   const [sort, setSort] = useState("");
+const [limit, setLimit] = useState(50);
 
   const [showContribute, setShowContribute] = useState(false);
 
@@ -67,7 +68,9 @@ export default function RPATrackerClient({
     if (year) params.set("year", year);
     if (brand) params.set("brand", brand);
     if (variation) params.set("variation", variation);
-    if (sort) params.set("sort", sort);
+   if (sort) params.set("sort", sort);
+
+params.set("limit", String(limit));
 
     const res = await fetch(`/api/rpa-tracker?${params.toString()}`, {
       cache: "no-store",
@@ -90,8 +93,8 @@ export default function RPATrackerClient({
   }
 
   useEffect(() => {
-    loadData();
-  }, [search, sport, player, year, brand, variation, sort]);
+  loadData();
+}, [search, sport, player, year, brand, variation, sort, limit]);
 
   useEffect(() => {
     const q = searchParams.get("q") || "";
@@ -142,7 +145,19 @@ export default function RPATrackerClient({
 
       <RegistryGrid groups={groups} theme={theme} />
 
-      <ContributionModal
+{meta?.hasMore && (
+  <div className="mt-10 flex justify-center">
+    <button
+      type="button"
+      onClick={() => setLimit((current) => current + 50)}
+      className="rounded-lg border border-blue-500 bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500"
+    >
+      Show More Registries
+    </button>
+  </div>
+)}
+
+<ContributionModal
         open={showContribute}
         onClose={() => setShowContribute(false)}
         project="rpa-tracker"

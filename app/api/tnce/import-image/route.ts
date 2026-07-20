@@ -73,36 +73,69 @@ export async function POST(req: NextRequest) {
     }
 
     const imageResponse = await fetch(parsedUrl.toString(), {
-      cache: "no-store",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; TiffanyCards/1.0)",
-        Accept: "image/avif,image/webp,image/jpeg,image/png,image/*",
-      },
-    });
+  cache: "no-store",
+  headers: {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36",
+    Accept:
+      "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    Referer: "https://goldin.co/",
+     },
+});
 
     if (!imageResponse.ok) {
-      throw new Error(
-        `Unable to retrieve image (${imageResponse.status}).`
-      );
-    }
-
-    const contentType =
-      imageResponse.headers.get("content-type") ||
-      "image/jpeg";
-
-    if (!contentType.startsWith("image/")) {
-      throw new Error(
-        "The imported URL did not return an image."
-      );
-    }
+  throw new Error(
+    `Unable to retrieve image (${imageResponse.status}) from ${parsedUrl.hostname}\n${parsedUrl}`
+  );
+}
 
     const arrayBuffer =
-      await imageResponse.arrayBuffer();
+  await imageResponse.arrayBuffer();
 
-    const base64 = Buffer.from(arrayBuffer).toString(
-      "base64"
-    );
+const buffer = Buffer.from(arrayBuffer);
+
+let contentType =
+  imageResponse.headers.get("content-type") || "";
+
+if (!contentType.startsWith("image/")) {
+  const firstBytes = buffer.subarray(0, 12);
+
+  const isJpeg =
+    firstBytes[0] === 0xff &&
+    firstBytes[1] === 0xd8 &&
+    firstBytes[2] === 0xff;
+
+  const isPng =
+    firstBytes[0] === 0x89 &&
+    firstBytes[1] === 0x50 &&
+    firstBytes[2] === 0x4e &&
+    firstBytes[3] === 0x47;
+
+  const isWebp =
+    firstBytes.toString("ascii", 0, 4) === "RIFF" &&
+    firstBytes.toString("ascii", 8, 12) === "WEBP";
+
+  const isGif =
+    firstBytes.toString("ascii", 0, 3) === "GIF";
+
+  if (isJpeg) {
+    contentType = "image/jpeg";
+  } else if (isPng) {
+    contentType = "image/png";
+  } else if (isWebp) {
+    contentType = "image/webp";
+  } else if (isGif) {
+    contentType = "image/gif";
+  } else {
+    throw new Error(
+  `The imported URL did not return a recognized image.
+Content-Type: ${contentType || "unknown"}
+First bytes: ${buffer.subarray(0, 16).toString("hex")}`
+);
+  }
+}
+
+const base64 = buffer.toString("base64");
 
     return NextResponse.json({
       ok: true,

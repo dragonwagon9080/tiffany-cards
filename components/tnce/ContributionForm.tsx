@@ -46,16 +46,26 @@ type Props = {
 
 type AuctionImportResult = {
   ok: boolean;
+
   marketplace?: string;
   sourceUrl?: string;
   listingId?: string;
+
   title?: string;
   seller?: string;
+
   price?: string;
   currency?: string;
   endDate?: string;
+
+  certNumber?: string;
+  grade?: string;
+  serialNumber?: string;
+  lotNumber?: string;
+
   frontImage?: string;
   additionalImages?: string[];
+
   aspects?: Record<string, string[]>;
   error?: string;
 };
@@ -121,7 +131,8 @@ async function importImageAsUpload(
   slot: "front" | "back" | "other",
   index: number
 ): Promise<PendingTNCEUpload> {
-  const response = await fetch(
+ 
+   const response = await fetch(
     "/api/tnce/import-image",
     {
       method: "POST",
@@ -134,18 +145,19 @@ async function importImageAsUpload(
 
   const result = await response.json();
 
-  if (
-    !response.ok ||
-    !result.ok ||
-    !result.base64
-  ) {
-    throw new Error(
-      result.error ||
-        `Unable to import listing image ${
-          index + 1
-        }.`
-    );
-  }
+if (
+  !response.ok ||
+  !result.ok ||
+  !result.base64
+) {
+ 
+  throw new Error(
+    result.error ||
+      `Unable to import listing image ${
+        index + 1
+      }.`
+  );
+}
 
   const id = `${Date.now()}-${index}-${Math.random()
     .toString(36)
@@ -365,7 +377,8 @@ setVariation(
 
       try {
         data = JSON.parse(text);
-      } catch {
+
+              } catch {
         throw new Error(
           `Auction import returned invalid JSON. First response text: ${text.slice(
             0,
@@ -403,6 +416,7 @@ const remainingImportedImages =
 const importedUploads: PendingTNCEUpload[] = [];
 
 if (importedFront) {
+  
   importedUploads.push(
     await importImageAsUpload(
       importedFront,
@@ -413,6 +427,7 @@ if (importedFront) {
 }
 
 if (importedBack) {
+  
   importedUploads.push(
     await importImageAsUpload(
       importedBack,
@@ -479,6 +494,20 @@ if (
   !grade.trim()
 ) {
   setGrade(parsedTitle.grade);
+}
+
+if (
+  data.certNumber &&
+  !certNumber.trim()
+) {
+  setCertNumber(data.certNumber);
+}
+
+if (
+  data.serialNumber &&
+  !serialNumber.trim()
+) {
+  setSerialNumber(data.serialNumber);
 }
 
       setFrontImage("");
@@ -705,8 +734,11 @@ setUploadedImages(importedUploads);
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-700 border-t-[#d4af37]" />
 
               <div className="text-sm text-neutral-300">
-                Loading listing information from
-                eBay...
+               Loading listing information from{" "}
+{marketplace === "unknown"
+  ? "the marketplace"
+  : marketplace.toUpperCase()}
+...
               </div>
             </div>
           )}
