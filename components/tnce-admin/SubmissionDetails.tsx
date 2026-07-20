@@ -16,6 +16,11 @@ type Props = {
   submission: TNCEAdminSubmission;
   productionRecord: TNCEProductionFields;
 
+  contributorNotes: string;
+  onContributorNotesChange: (
+    notes: string
+  ) => void;
+
   organizedImages: OrganizedImage[];
   onOrganizedImagesChange: (
     images: OrganizedImage[]
@@ -126,6 +131,8 @@ function UrlRow({
 export default function SubmissionDetails({
   submission,
   productionRecord,
+  contributorNotes,
+  onContributorNotesChange,
   organizedImages,
   onOrganizedImagesChange,
   onProductionChange,
@@ -260,15 +267,30 @@ export default function SubmissionDetails({
           </div>
 
           <div className="rounded-xl border border-neutral-800 bg-black p-4">
-            <h3 className="text-xs font-black uppercase tracking-wide text-white">
-              Contributor Notes
-            </h3>
+  <div className="flex items-center justify-between">
+    <h3 className="text-xs font-black uppercase tracking-wide text-white">
+      Contributor Notes
+    </h3>
 
-            <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-sm leading-5 text-neutral-300">
-              {submission.Contributor_Notes ||
-                "No notes provided."}
-            </p>
-          </div>
+    <span className="text-[10px] font-bold uppercase tracking-wide text-[#d4af37]">
+      Added to History
+    </span>
+  </div>
+
+  <textarea
+    value={contributorNotes}
+    onChange={(e) =>
+      onContributorNotesChange(e.target.value)
+    }
+    rows={5}
+    className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 p-3 text-sm text-neutral-200 outline-none focus:border-[#d4af37]"
+    placeholder="Add or edit the note that will appear beneath the new history entry..."
+  />
+
+  <p className="mt-2 text-xs text-neutral-500">
+    This note will appear directly beneath the new dated history entry.
+  </p>
+</div>
 
           <div className="rounded-xl border border-[#9c7a2d] bg-[#181300] p-4">
             <h3 className="text-sm font-black uppercase tracking-wide text-[#f1d36b]">

@@ -290,13 +290,17 @@ export async function POST(
     ).trim();
 
     const reviewNotes = String(
-      body?.reviewNotes || ""
-    ).trim();
+  body?.reviewNotes || ""
+).trim();
 
-    const productionRecord =
-      cleanProductionRecord(
-        body?.productionRecord
-      );
+const contributorNotes = String(
+  body?.contributorNotes || ""
+).trim();
+
+const productionRecord =
+  cleanProductionRecord(
+    body?.productionRecord
+  );
 
     const organizedImages =
       cleanOrganizedImages(
@@ -329,14 +333,15 @@ export async function POST(
         },
 
         body: JSON.stringify({
-          action: "publish",
-          adminSecret,
-          submissionId,
-          reviewNotes,
-          productionRecord,
-          organizedImages,
-          rotatedImages,
-        }),
+  action: "publish",
+  adminSecret,
+  submissionId,
+  reviewNotes,
+  contributorNotes,
+  productionRecord,
+  organizedImages,
+  rotatedImages,
+}),
 
         cache: "no-store",
         redirect: "follow",

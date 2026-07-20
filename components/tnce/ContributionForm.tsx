@@ -78,16 +78,11 @@ function cleanCardTitle(value: unknown) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const serialMatch = text.match(
-    /\s+(?:\(\d+\)\s*)?\d+\s*\/\s*\d+/i
-  );
-
-  if (!serialMatch || serialMatch.index === undefined) {
-    return text;
-  }
-
   return text
-    .slice(0, serialMatch.index)
+    .replace(
+      /\s+(?:\(\d+\)\s*)?\d+\s*\/\s*(?:\d+|xx)\s*$/i,
+      ""
+    )
     .trim();
 }
 
@@ -119,6 +114,53 @@ function uniqueLines(values: string[]) {
       seen.add(key);
       return true;
     });
+}
+
+async function importImageAsUpload(
+  url: string,
+  slot: "front" | "back" | "other",
+  index: number
+): Promise<PendingTNCEUpload> {
+  const response = await fetch(
+    "/api/tnce/import-image",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url }),
+    }
+  );
+
+  const result = await response.json();
+
+  if (
+    !response.ok ||
+    !result.ok ||
+    !result.base64
+  ) {
+    throw new Error(
+      result.error ||
+        `Unable to import listing image ${
+          index + 1
+        }.`
+    );
+  }
+
+  const id = `${Date.now()}-${index}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+
+  return {
+    id,
+    slot,
+    fileName: `${slot}-listing-image-${
+      index + 1
+    }.jpg`,
+    contentType: "image/jpeg",
+    base64: result.base64,
+    previewUrl: result.base64,
+  };
 }
 
 export default function ContributionForm({
@@ -343,38 +385,56 @@ const parsedTitle = parseAuctionTitle(
 );
 
       const importedFront =
-        String(data.frontImage || "").trim();
+  String(data.frontImage || "").trim();
 
-      const importedAdditional =
+const importedAdditional =
   Array.isArray(data.additionalImages)
     ? data.additionalImages
         .map((url) => String(url || "").trim())
         .filter(Boolean)
     : [];
 
-/*
- * eBay normally returns the card front as the primary image
- * and the card back as the first additional image.
- */
 const importedBack =
   importedAdditional[0] || "";
 
 const remainingImportedImages =
   importedAdditional.slice(1);
 
-const existingOther = otherImages
-  .split(/\r?\n/)
-  .map((url) => url.trim())
-  .filter(Boolean);
+const importedUploads: PendingTNCEUpload[] = [];
 
-const mergedOtherImages = uniqueLines([
-  ...remainingImportedImages,
-  ...existingOther,
-]).filter(
-  (url) =>
-    url !== importedFront &&
-    url !== importedBack
-);
+if (importedFront) {
+  importedUploads.push(
+    await importImageAsUpload(
+      importedFront,
+      "front",
+      0
+    )
+  );
+}
+
+if (importedBack) {
+  importedUploads.push(
+    await importImageAsUpload(
+      importedBack,
+      "back",
+      1
+    )
+  );
+}
+
+for (
+  let i = 0;
+  i < remainingImportedImages.length;
+  i++
+) {
+  importedUploads.push(
+    await importImageAsUpload(
+      remainingImportedImages[i],
+      "other",
+      i + 2
+    )
+  );
+}
 
       setAuctionSourceUrl(
         String(data.sourceUrl || sourceUrl)
@@ -421,23 +481,10 @@ if (
   setGrade(parsedTitle.grade);
 }
 
-      if (importedFront) {
-  setFrontImage(importedFront);
-}
-
-if (importedBack) {
-  setBackImage(importedBack);
-}
-
-setOtherImages(
-  mergedOtherImages.join("\n")
-);
-
-      /*
-       * Auction-imported images are URL-based, so clear any
-       * previously selected local uploads.
-       */
-      setUploadedImages([]);
+      setFrontImage("");
+setBackImage("");
+setOtherImages("");
+setUploadedImages(importedUploads);
 
       setImportedListing(data);
     } catch (error: any) {
@@ -569,18 +616,18 @@ setOtherImages(
         onClose={onClose}
       />
 
-      <div className="mt-6 grid gap-4">
+      <div className="mt-6 grid gap-4 pb-32 sm:pb-12">
         <ModeBanner mode={mode} />
 
         <section className="rounded-xl border border-[#9c7a2d] bg-[#181300] p-4">
           <h3 className="text-sm font-black uppercase tracking-wide text-[#f1d36b]">
-            Import From Listing
-          </h3>
+  Import Auction / Source URL
+</h3>
 
           <p className="mt-1 text-xs leading-5 text-neutral-400">
-            Paste an eBay listing URL to import its
-            title and images automatically.
-          </p>
+  Paste an auction or marketplace URL to import available card
+  information and images automatically.
+</p>
 
           <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             <input
@@ -601,7 +648,7 @@ setOtherImages(
                 }
               }}
               className="h-11 min-w-0 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
-              placeholder="https://www.ebay.com/itm/..."
+              placeholder="https://www.ebay.com/... or https://goldin.co/..."
             />
 
             <button
@@ -615,9 +662,43 @@ setOtherImages(
             >
               {importing
   ? "Importing..."
-  : "⚡ Import Listing"}
+  : "⚡ Import URL"}
             </button>
           </div>
+
+<div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+  ...
+</div>
+
+{auctionSourceUrl.trim() && (
+  <div className="mt-2">
+    <span
+      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
+        marketplace === "ebay"
+          ? "bg-blue-900 text-blue-200"
+          : marketplace === "goldin"
+          ? "bg-yellow-900 text-yellow-200"
+          : marketplace === "heritage"
+          ? "bg-purple-900 text-purple-200"
+          : marketplace === "fanatics"
+          ? "bg-red-900 text-red-200"
+          : marketplace === "pwcc"
+          ? "bg-indigo-900 text-indigo-200"
+          : "bg-neutral-800 text-neutral-300"
+      }`}
+    >
+      {marketplace === "unknown"
+        ? "❓ Source URL Entered"
+        : `✔ ${marketplace.toUpperCase()} Detected`}
+    </span>
+  </div>
+)}
+
+{importing && (
+  <div className="mt-3 flex items-center gap-3 rounded-lg border border-[#d4af37]/40 bg-black p-3">
+    ...
+  </div>
+)}
 
           {importing && (
             <div className="mt-3 flex items-center gap-3 rounded-lg border border-[#d4af37]/40 bg-black p-3">
@@ -673,37 +754,7 @@ setOtherImages(
                   </span>
                 )}
               </div>
-
-              {(importedListing.frontImage ||
-                importedListing
-                  .additionalImages?.length) && (
-                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                  {importedListing.frontImage && (
-                    <img
-                      src={
-                        importedListing.frontImage
-                      }
-                      alt="Imported listing front"
-                      className="h-24 w-24 shrink-0 rounded-lg border border-neutral-700 bg-black object-contain p-1"
-                    />
-                  )}
-
-                  {(
-                    importedListing.additionalImages ||
-                    []
-                  ).map((url, index) => (
-                    <img
-                      key={`${url}-${index}`}
-                      src={url}
-                      alt={`Imported listing image ${
-                        index + 2
-                      }`}
-                      className="h-24 w-24 shrink-0 rounded-lg border border-neutral-700 bg-black object-contain p-1"
-                    />
-                  ))}
-                </div>
-              )}
-
+              
               {(() => {
   const parsed = parseAuctionTitle(
     importedListing.title
@@ -768,49 +819,7 @@ setOtherImages(
           setUploadedImages={setUploadedImages}
         />
 
-        <label className="grid gap-1 text-sm">
-  Auction / Source URL
-
-  <input
-    type="url"
-    value={auctionSourceUrl}
-    onChange={(event) =>
-      setAuctionSourceUrl(event.target.value)
-    }
-    className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-    placeholder="https://www.ebay.com/... or https://goldin.co/..."
-  />
-
-  {auctionSourceUrl.trim() && (
-    <div className="mt-2">
-      <span
-        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
-          marketplace === "ebay"
-            ? "bg-blue-900 text-blue-200"
-            : marketplace === "goldin"
-            ? "bg-yellow-900 text-yellow-200"
-            : marketplace === "heritage"
-            ? "bg-purple-900 text-purple-200"
-            : marketplace === "fanatics"
-            ? "bg-red-900 text-red-200"
-            : marketplace === "pwcc"
-            ? "bg-indigo-900 text-indigo-200"
-            : "bg-neutral-800 text-neutral-300"
-        }`}
-      >
-        {marketplace === "unknown"
-          ? "❓ Unknown Marketplace"
-          : `✔ ${marketplace.toUpperCase()} Detected`}
-      </span>
-    </div>
-  )}
-
-  <span className="text-xs leading-5 text-neutral-400">
-    Paste the auction, marketplace, social media, or other webpage where the
-    card was found.
-  </span>
-</label>
-
+        
 <label className="grid gap-1 text-sm">
   Notes
 

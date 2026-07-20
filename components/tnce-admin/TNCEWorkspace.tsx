@@ -104,13 +104,22 @@ export default function TNCEWorkspace({
     const [organizedImages, setOrganizedImages] =
   useState<any[]>([]);
 
+const [contributorNotes, setContributorNotes] =
+  useState<string>(
+    String(submission?.Contributor_Notes || "")
+  );
+
   useEffect(() => {
   const record =
     buildProductionRecord(submission);
 
   setProductionRecord(record);
 
-  const images = [];
+setContributorNotes(
+  String(submission?.Contributor_Notes || "")
+);
+
+const images = [];
 
   if (record.Front_Image) {
     images.push({
@@ -154,10 +163,12 @@ export default function TNCEWorkspace({
   <section className="min-w-0 pb-[calc(7rem+env(safe-area-inset-bottom))] 2xl:pb-8">
       <div className="grid min-w-0 grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_390px] 2xl:gap-6">
         <div className="order-1 min-w-0">
-          <SubmissionDetails
+  <SubmissionDetails
   submission={submission}
   productionRecord={productionRecord}
   organizedImages={organizedImages}
+  contributorNotes={contributorNotes}
+  onContributorNotesChange={setContributorNotes}
   onOrganizedImagesChange={setOrganizedImages}
   onProductionChange={setProductionRecord}
 />
@@ -169,6 +180,7 @@ export default function TNCEWorkspace({
   submission={submission}
   productionRecord={productionRecord}
   organizedImages={organizedImages}
+  contributorNotes={contributorNotes}
   onStatusChange={onStatusChange}
 />
           </div>

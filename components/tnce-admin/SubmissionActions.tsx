@@ -18,6 +18,8 @@ type Props = {
   productionRecord: TNCEProductionFields;
   organizedImages: OrganizedImage[];
 
+  contributorNotes: string;
+
   onStatusChange?: (
     submissionId: string,
     status: TNCEReviewStatus,
@@ -34,6 +36,7 @@ export default function SubmissionActions({
   submission,
   productionRecord,
   organizedImages,
+  contributorNotes,
   onStatusChange,
 }: Props) {
   const [reviewNotes, setReviewNotes] = useState("");
@@ -122,6 +125,8 @@ export default function SubmissionActions({
     currentSubmission.Submission_ID,
 
   reviewNotes: reviewNotes.trim(),
+
+  contributorNotes,
 
   productionRecord,
 
