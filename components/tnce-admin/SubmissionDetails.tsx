@@ -137,17 +137,17 @@ export default function SubmissionDetails({
   onOrganizedImagesChange,
   onProductionChange,
 }: Props) {
-  const originalProductionRecord: TNCEProductionFields = {
-    Card_Title: submission.Card_Title || "",
-    Serial_Number: submission.Serial_Number || "",
-    Variation_Input:
-      submission.Variation_Input || "",
-    Card_History: submission.Card_History || "",
-    Grade: submission.Grade || "",
-    Cert_Number: submission.Cert_Number || "",
-    Front_Image: submission.Front_Image || "",
-    Back_Image: submission.Back_Image || "",
-    Other_Images: submission.Other_Images || "",
+  const originalProductionRecord: TNCEProductionFields =
+  submission.Existing_Production_Record || {
+    Card_Title: "",
+    Serial_Number: "",
+    Variation_Input: "",
+    Card_History: "",
+    Grade: "",
+    Cert_Number: "",
+    Front_Image: "",
+    Back_Image: "",
+    Other_Images: "",
   };
 
   const additionalImages = splitImages(
@@ -264,6 +264,47 @@ export default function SubmissionDetails({
               images={organizedImages}
               onChange={updateImages}
             />
+            {submission.Existing_Production_Record && (
+  <div className="mt-6 rounded-xl border border-neutral-800 bg-black p-4">
+    <h3 className="mb-4 text-sm font-black uppercase tracking-wide text-white">
+      Current Registry Images
+    </h3>
+
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+  {submission.Existing_Production_Record.Front_Image && (
+    <div className="min-w-0">
+      <div className="mb-2 text-xs font-bold uppercase text-neutral-500">
+        Front
+      </div>
+
+      <div className="flex min-h-[320px] items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+        <img
+          src={submission.Existing_Production_Record.Front_Image}
+          alt="Current Front"
+          className="max-h-80 max-w-full rounded-lg object-contain"
+        />
+      </div>
+    </div>
+  )}
+
+  {submission.Existing_Production_Record.Back_Image && (
+    <div className="min-w-0">
+      <div className="mb-2 text-xs font-bold uppercase text-neutral-500">
+        Back
+      </div>
+
+      <div className="flex min-h-[320px] items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+        <img
+          src={submission.Existing_Production_Record.Back_Image}
+          alt="Current Back"
+          className="max-h-80 max-w-full rounded-lg object-contain"
+        />
+      </div>
+    </div>
+  )}
+</div>
+  </div>
+)}
           </div>
 
           <div className="rounded-xl border border-neutral-800 bg-black p-4">
@@ -293,47 +334,37 @@ export default function SubmissionDetails({
 </div>
 
           <div className="rounded-xl border border-[#9c7a2d] bg-[#181300] p-4">
-            <h3 className="text-sm font-black uppercase tracking-wide text-[#f1d36b]">
-              Verification
-            </h3>
+  <h3 className="text-sm font-black uppercase tracking-wide text-[#f1d36b]">
+    Verification
+  </h3>
 
-            {verificationUrl ? (
-              <UrlRow
-                label="Auction / Source URL"
-                url={verificationUrl}
-              />
-            ) : (
-              <div className="mt-2 text-sm text-neutral-500">
-                No verification URL provided.
-              </div>
-            )}
+  {verificationUrl ? (
+    <UrlRow
+      label="Auction / Source URL"
+      url={verificationUrl}
+    />
+  ) : (
+    <div className="mt-2 text-sm text-neutral-500">
+      No verification URL provided.
+    </div>
+  )}
 
-            <UrlRow
-              label="Front Image"
-              url={
-                productionRecord.Front_Image
-              }
-            />
-
-            <UrlRow
-              label="Back Image"
-              url={
-                productionRecord.Back_Image
-              }
-            />
-
-            {allAdditionalImages.map(
-              (url, index) => (
-                <UrlRow
-                  key={`${url}-verify-${index}`}
-                  label={`Other Image ${
-                    index + 1
-                  }`}
-                  url={url}
-                />
-              )
-            )}
-          </div>
+  {String(submission.Uploaded_Image_URLs || "")
+    .split(/\r?\n/)
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .map((url, index) => (
+      <UrlRow
+        key={`${url}-${index}`}
+        label={
+          index === 0
+            ? "Submitted Image"
+            : `Submitted Image ${index + 1}`
+        }
+        url={url}
+      />
+    ))}
+</div>
         </div>
 
         <aside className="min-w-0 max-w-full space-y-4">
@@ -396,12 +427,11 @@ export default function SubmissionDetails({
           </details>
 
           <ProductionEditor
-            original={
-              originalProductionRecord
-            }
-            value={productionRecord}
-            onChange={onProductionChange}
-          />
+  original={originalProductionRecord}
+  submitted={submission}
+  value={productionRecord}
+  onChange={onProductionChange}
+/>
         </aside>
       </div>
     </section>

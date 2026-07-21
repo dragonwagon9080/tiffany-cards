@@ -801,7 +801,18 @@ function normalizeAspects(
 async function importEbayAuction(
   sourceUrl: string
 ): Promise<AuctionImportResult> {
-  const listingId = extractEbayItemId(sourceUrl);
+  // Support shortened ebay.io mobile links
+if (sourceUrl.includes("ebay.io/")) {
+  const redirect = await fetch(sourceUrl, {
+    method: "GET",
+    redirect: "follow",
+    cache: "no-store",
+  });
+
+  sourceUrl = redirect.url;
+}
+
+const listingId = extractEbayItemId(sourceUrl);
   const token = await getEbayApplicationToken();
 
   const requestUrl = new URL(EBAY_ITEM_URL);

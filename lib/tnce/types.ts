@@ -113,10 +113,25 @@ export interface TNCEReviewMetadata {
   Raw_Submission_JSON: string;
 }
 
+export interface TNCESubmittedImages {
+  Front_Image: string;
+  Back_Image: string;
+  Other_Images: string[];
+  Uploaded_Images: Array<{
+    fileName?: string;
+    contentType?: string;
+    slot?: "front" | "back" | "other";
+    uploaded?: boolean;
+  }>;
+}
+
 export interface TNCEAdminSubmission
   extends TNCEProductionFields,
     TNCEReviewMetadata {
   rowNumber?: number;
+
+  Existing_Production_Record?: TNCEProductionFields;
+  Submitted_Images?: TNCESubmittedImages;
 }
 
 export interface TNCEAdminStats {

@@ -51,9 +51,12 @@ function buildProductionRecord(
       submission.Card_History || ""
     ),
     Grade: String(submission.Grade || ""),
-    Cert_Number: String(
-      submission.Cert_Number || ""
-    ),
+    Cert_Number:
+  String(submission.Grade || "")
+    .trim()
+    .toLowerCase() === "raw"
+    ? ""
+    : String(submission.Cert_Number || ""),
     Front_Image: String(
       submission.Front_Image || ""
     ),
@@ -119,39 +122,101 @@ setContributorNotes(
   String(submission?.Contributor_Notes || "")
 );
 
-const images = [];
+const images: any[] = [];
 
-  if (record.Front_Image) {
-    images.push({
-      id: "front",
-      url: record.Front_Image,
-      role: "front",
-      rotation: 0,
-    });
+let raw: any = {};
+
+try {
+  raw = JSON.parse(
+    String(submission?.Raw_Submission_JSON || "{}")
+  );
+} catch {
+  raw = {};
+}
+
+const uploadedUrls = String(
+  submission?.Uploaded_Image_URLs || ""
+)
+  .split(/\r?\n/)
+  .map((url) => url.trim())
+  .filter(Boolean);
+
+const uploadedFiles = Array.isArray(
+  raw.uploadedImages
+)
+  ? raw.uploadedImages
+  : [];
+
+uploadedFiles.forEach((file: any, index: number) => {
+  const url = uploadedUrls[index];
+
+  if (!url) {
+    return;
   }
 
-  if (record.Back_Image) {
-    images.push({
-      id: "back",
-      url: record.Back_Image,
-      role: "back",
-      rotation: 0,
-    });
+  const role =
+    file.slot === "front"
+      ? "front"
+      : file.slot === "back"
+      ? "back"
+      : "additional";
+
+  images.push({
+    id: `uploaded-${file.slot || "other"}-${index}`,
+    url,
+    role,
+    rotation: 0,
+  });
+});
+
+const pastedFront = String(
+  raw.imageUrls?.front || ""
+).trim();
+
+if (pastedFront) {
+  images.push({
+    id: "submitted-front-url",
+    url: pastedFront,
+    role: "front",
+    rotation: 0,
+  });
+}
+
+const pastedBack = String(
+  raw.imageUrls?.back || ""
+).trim();
+
+if (pastedBack) {
+  images.push({
+    id: "submitted-back-url",
+    url: pastedBack,
+    role: "back",
+    rotation: 0,
+  });
+}
+
+const pastedOther = Array.isArray(
+  raw.imageUrls?.other
+)
+  ? raw.imageUrls.other
+  : [];
+
+pastedOther.forEach((url: string, index: number) => {
+  const cleanUrl = String(url || "").trim();
+
+  if (!cleanUrl) {
+    return;
   }
 
-  record.Other_Images
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .forEach((url, index) => {
-      images.push({
-        id: `other-${index}`,
-        url,
-        role: "additional",
-        rotation: 0,
-      });
-    });
+  images.push({
+    id: `submitted-other-url-${index}`,
+    url: cleanUrl,
+    role: "additional",
+    rotation: 0,
+  });
+});
 
-  setOrganizedImages(images);
+setOrganizedImages(images);
 
 }, [submission?.Submission_ID]);
 
@@ -161,8 +226,8 @@ const images = [];
 
   return (
   <section className="min-w-0 pb-[calc(7rem+env(safe-area-inset-bottom))] 2xl:pb-8">
-      <div className="grid min-w-0 grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_390px] 2xl:gap-6">
-        <div className="order-1 min-w-0">
+      <div className="space-y-6">
+        <div className="min-w-0">
   <SubmissionDetails
   submission={submission}
   productionRecord={productionRecord}
@@ -174,17 +239,15 @@ const images = [];
 />
         </div>
 
-        <aside className="order-2 min-w-0 2xl:order-none">
-          <div className="2xl:sticky 2xl:top-6">
-            <SubmissionActions
-  submission={submission}
-  productionRecord={productionRecord}
-  organizedImages={organizedImages}
-  contributorNotes={contributorNotes}
-  onStatusChange={onStatusChange}
-/>
-          </div>
-        </aside>
+        <div className="min-w-0">
+  <SubmissionActions
+    submission={submission}
+    productionRecord={productionRecord}
+    organizedImages={organizedImages}
+    contributorNotes={contributorNotes}
+    onStatusChange={onStatusChange}
+  />
+</div>
       </div>
     </section>
   );
