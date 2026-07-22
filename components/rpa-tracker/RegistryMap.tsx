@@ -1,60 +1,73 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import {
+  useMemo,
+  useState,
+} from "react";
 
 import {
   buildRegistryRuns,
-  parseSerial,
-  variationName,
+  normalizeVariationKey,
+  type RegistryRun,
 } from "@/lib/rpaSort";
 
-function buildVariationOptions(cards: any[]) {
-  const map = new Map<string, Map<number, number>>();
+type VariationOption = {
+  name: string;
+  label: string;
+};
 
-  cards.forEach((card) => {
-    const name = variationName(card);
-    const serial = parseSerial(card.Serial_Number);
+function buildVariationOptions(
+  runs: RegistryRun[]
+): VariationOption[] {
+  const map = new Map<
+    string,
+    {
+      name: string;
+      labels: string[];
+    }
+  >();
 
-    if (!map.has(name)) {
-      map.set(name, new Map<number, number>());
+  runs.forEach((run) => {
+    const key = normalizeVariationKey(
+      run.variation
+    );
+
+    if (!map.has(key)) {
+      map.set(key, {
+        name: run.variation,
+        labels: [],
+      });
     }
 
-    if (
-      serial?.denominator &&
-      serial.denominator <= 250
-    ) {
-      const runs = map.get(name)!;
+    const item = map.get(key)!;
 
-      runs.set(
-        serial.denominator,
-        (runs.get(serial.denominator) || 0) + 1
-      );
-    }
+    const runLabel =
+      run.denominator === null
+        ? `(${run.foundByNumber.size} tracked, total unknown)`
+        : `(${run.foundByNumber.size}/${run.denominator})`;
+
+    item.labels.push(runLabel);
   });
 
-  const options = Array.from(map.entries())
-    .map(([name, runs]) => {
-      const runLabel = Array.from(runs.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(
-          ([denominator, tracked]) =>
-            `(${tracked}/${denominator})`
-        )
-        .join(" ");
-
-      return {
-        name,
-        label: runLabel
-          ? `${name} ${runLabel}`
-          : name,
-      };
-    })
+  const options = Array.from(
+    map.values()
+  )
+    .map((item) => ({
+      name: item.name,
+      label: `${item.name} ${item.labels.join(
+        " "
+      )}`,
+    }))
     .sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, {
-        sensitivity: "base",
-        numeric: true,
-      })
+      a.name.localeCompare(
+        b.name,
+        undefined,
+        {
+          sensitivity: "base",
+          numeric: true,
+        }
+      )
     );
 
   return [
@@ -69,6 +82,7 @@ function buildVariationOptions(cards: any[]) {
 export default function RegistryMap({
   variation,
   cards,
+  description = "",
   showVariationPicker = false,
   onVariationChange,
   onTrackedCardClick,
@@ -78,111 +92,137 @@ export default function RegistryMap({
 }: {
   variation: string;
   cards: any[];
+  description?: string;
   showVariationPicker?: boolean;
-  onVariationChange?: (variation: string) => void;
-  onTrackedCardClick?: (card: any) => void;
-  onMissingCardClick?: (missingCard: any) => void;
+  onVariationChange?: (
+    variation: string
+  ) => void;
+  onTrackedCardClick?: (
+    card: any
+  ) => void;
+  onMissingCardClick?: (
+    missingCard: any
+  ) => void;
   selectionMode?: boolean;
   selectionTitle?: string;
 }) {
+  const allRuns = useMemo(
+    () =>
+      buildRegistryRuns(
+        cards || [],
+        "All",
+        description
+      ),
+    [cards, description]
+  );
+
   const variationOptions = useMemo(
-    () => buildVariationOptions(cards || []),
-    [cards]
+    () => buildVariationOptions(allRuns),
+    [allRuns]
   );
 
   const [internalVariation, setInternalVariation] =
     useState(variation || "All");
 
-  const activeVariation = onVariationChange
-    ? variation || "All"
-    : internalVariation || variation || "All";
+  const activeVariation =
+    onVariationChange
+      ? variation || "All"
+      : internalVariation ||
+        variation ||
+        "All";
 
-  function handleVariationChange(value: string) {
+  const printRuns = useMemo(
+    () =>
+      buildRegistryRuns(
+        cards || [],
+        activeVariation,
+        description
+      ),
+    [
+      cards,
+      activeVariation,
+      description,
+    ]
+  );
+
+  function handleVariationChange(
+    value: string
+  ) {
     if (onVariationChange) {
       onVariationChange(value);
-    } else {
-      setInternalVariation(value);
+      return;
     }
+
+    setInternalVariation(value);
   }
 
   function buildMissingCardContext({
-  variation,
-  number,
-  denominator,
-}: {
-  variation: string;
-  number: number;
-  denominator: number;
-}) {
-  const sample = cards?.[0] || {};
-  const serialNumber = `${number}/${denominator}`;
-
-  /*
-   * Some stored card titles include another card's serial
-   * number and variation, such as:
-   *
-   * 2023 Bijan Robinson #158 National Treasures 06/25 Silver
-   *
-   * Remove that trailing serial/variation before building
-   * the selected missing-card context.
-   */
-  const sampleTitle = String(
-    sample.Card_Title_Display ||
-      sample.Card_Title ||
-      sample.title ||
-      "Missing RPA Card"
-  ).trim();
-
-  const baseCardTitle = sampleTitle
-    .replace(
-      /\s+\d+\s*\/\s*\d+\s+[^/]+$/i,
-      ""
-    )
-    .trim();
-
-  const selectedCardTitle = [
-    baseCardTitle,
-    serialNumber,
     variation,
-  ]
-    .filter(Boolean)
-    .join(" ");
+    number,
+    denominator,
+  }: {
+    variation: string;
+    number: number;
+    denominator: number;
+  }) {
+    const sample = cards?.[0] || {};
+    const serialNumber = `${number}/${denominator}`;
 
-  return {
-    title: selectedCardTitle,
+    const sampleTitle = String(
+      sample.Card_Title_Display ||
+        sample.Card_Title ||
+        sample.title ||
+        "Missing RPA Card"
+    ).trim();
 
-    Card_Title: baseCardTitle,
+    const baseCardTitle = sampleTitle
+      .replace(
+        /\s+\d+\s*\/\s*(?:\d+|xx)\s+[^/]+$/i,
+        ""
+      )
+      .trim();
 
-    Card_Title_Display: selectedCardTitle,
+    const selectedCardTitle = [
+      baseCardTitle,
+      serialNumber,
+      variation,
+    ]
+      .filter(Boolean)
+      .join(" ");
 
-    Serial_Number: serialNumber,
+    return {
+      title: selectedCardTitle,
 
-    Variation_Input: variation,
-    Variation: variation,
+      Card_Title: baseCardTitle,
 
-    Numerator: String(number),
-    Denominator: String(denominator),
+      Card_Title_Display:
+        selectedCardTitle,
 
-    Player: sample.Player || "",
-    First: sample.First || "",
-    Last: sample.Last || "",
-    Year: sample.Year || "",
-    Brand: sample.Brand || "",
-    Set: sample.Set || "",
-    Sport: sample.Sport || "",
-    Material: sample.Material || "",
-    Slug: sample.Slug || "",
+      Serial_Number: serialNumber,
 
-    Missing_From_Registry: "true",
-  };
-}
+      Variation_Input: variation,
+      Variation: variation,
 
-  const printRuns = buildRegistryRuns(
-    cards || [],
-    activeVariation
-  );
+      Numerator: String(number),
+      Denominator: String(denominator),
 
-  if (!printRuns.length) return null;
+      Player: sample.Player || "",
+      First: sample.First || "",
+      Last: sample.Last || "",
+      Year: sample.Year || "",
+      Brand: sample.Brand || "",
+      Set: sample.Set || "",
+      Sport: sample.Sport || "",
+      Material: sample.Material || "",
+      Slug: sample.Slug || "",
+
+      Missing_From_Registry: "true",
+    };
+  }
+
+  if (!printRuns.length) {
+    return null;
+  }
 
   const heading =
     selectionMode && selectionTitle
@@ -205,8 +245,10 @@ export default function RegistryMap({
 
           {selectionMode && (
             <p className="mt-2 text-sm text-zinc-400">
-              Select a blue tracked card to update it,
-              or select a yellow missing card to add it.
+              Select a blue tracked card
+              to update it, or select a
+              yellow missing card to add
+              it.
             </p>
           )}
         </div>
@@ -222,28 +264,114 @@ export default function RegistryMap({
               }
               className="h-10 rounded border border-blue-700 bg-black px-4 text-sm font-bold text-white outline-none transition focus:border-blue-400"
             >
-              {variationOptions.map((item) => (
-                <option
-                  key={item.name}
-                  value={item.name}
-                >
-                  {item.label}
-                </option>
-              ))}
+              {variationOptions.map(
+                (item) => (
+                  <option
+                    key={item.name}
+                    value={item.name}
+                  >
+                    {item.label}
+                  </option>
+                )
+              )}
             </select>
           )}
       </div>
 
       <div className="space-y-8">
-        {printRuns.map(
-          ({
+        {printRuns.map((run) => {
+          const {
+            id,
             variation,
             denominator,
             foundByNumber,
-          }) => (
-            <div
-              key={`${variation}-${denominator}`}
-            >
+          } = run;
+
+          if (denominator === null) {
+            const trackedCards =
+              Array.from(
+                foundByNumber.entries()
+              ).sort(
+                ([numberA], [numberB]) =>
+                  numberA - numberB
+              );
+
+            return (
+              <div key={id}>
+                <div className="mb-4 text-lg font-bold sm:text-xl">
+                  <span className="text-blue-400">
+                    {variation}
+                  </span>{" "}
+                  <span className="text-zinc-300">
+                    ({foundByNumber.size}{" "}
+                    tracked, total unknown)
+                  </span>
+                </div>
+
+                {trackedCards.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 sm:gap-3">
+                    {trackedCards.map(
+                      ([number, card]) => {
+                        const label = `${number}/xx`;
+
+                        const inner = (
+                          <span className="flex h-full w-full flex-col items-center justify-center px-2 leading-none">
+                            <span className="text-xs font-black sm:text-sm">
+                              {number}
+                            </span>
+
+                            <span className="mt-0.5 text-[8px] font-bold opacity-90 sm:text-[10px]">
+                              /xx
+                            </span>
+                          </span>
+                        );
+
+                        if (
+                          selectionMode &&
+                          onTrackedCardClick
+                        ) {
+                          return (
+                            <button
+                              key={`${id}-${number}`}
+                              type="button"
+                              title={`Update tracked card • ${variation} • ${label}`}
+                              onClick={() =>
+                                onTrackedCardClick(
+                                  card
+                                )
+                              }
+                              className="flex h-10 min-w-20 items-center justify-center rounded-full border border-blue-300 bg-blue-700 text-white transition hover:scale-105 hover:shadow-[0_0_18px_rgba(59,130,246,.85)] sm:h-12"
+                            >
+                              {inner}
+                            </button>
+                          );
+                        }
+
+                        return (
+                          <Link
+                            key={`${id}-${number}`}
+                            href={`/rpa-tracker/card/${card.Card_id}`}
+                            title={`${variation} ${label} tracked`}
+                            className="flex h-10 min-w-20 items-center justify-center rounded-full border border-blue-300 bg-blue-700 text-white transition hover:scale-105 hover:shadow-[0_0_18px_rgba(59,130,246,.85)] sm:h-12"
+                          >
+                            {inner}
+                          </Link>
+                        );
+                      }
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-zinc-500">
+                    No Base cards have
+                    been tracked yet.
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <div key={id}>
               <div className="mb-4 text-lg font-bold sm:text-xl">
                 <span className="text-blue-400">
                   {variation} /{denominator}
@@ -259,6 +387,7 @@ export default function RegistryMap({
                   length: denominator,
                 }).map((_, index) => {
                   const number = index + 1;
+
                   const card =
                     foundByNumber.get(number);
 
@@ -283,11 +412,13 @@ export default function RegistryMap({
                     ) {
                       return (
                         <button
-                          key={label}
+                          key={`${id}-${label}`}
                           type="button"
                           title={`Update tracked card • ${variation} • ${label}`}
                           onClick={() =>
-                            onTrackedCardClick(card)
+                            onTrackedCardClick(
+                              card
+                            )
                           }
                           className="flex h-9 w-9 items-center justify-center rounded-full border border-blue-300 bg-blue-700 text-white transition hover:scale-110 hover:shadow-[0_0_18px_rgba(59,130,246,.85)] sm:h-12 sm:w-12"
                         >
@@ -298,7 +429,7 @@ export default function RegistryMap({
 
                     return (
                       <Link
-                        key={label}
+                        key={`${id}-${label}`}
                         href={`/rpa-tracker/card/${card.Card_id}`}
                         title={`${variation} ${label} tracked`}
                         className="flex h-9 w-9 items-center justify-center rounded-full border border-blue-300 bg-blue-700 text-white transition hover:scale-110 hover:shadow-[0_0_18px_rgba(59,130,246,.85)] sm:h-12 sm:w-12"
@@ -310,16 +441,18 @@ export default function RegistryMap({
 
                   return (
                     <button
-                      key={label}
+                      key={`${id}-${label}`}
                       type="button"
                       title={`Add missing card • ${variation} • ${label}`}
                       onClick={() =>
                         onMissingCardClick?.(
-                          buildMissingCardContext({
-                            variation,
-                            number,
-                            denominator,
-                          })
+                          buildMissingCardContext(
+                            {
+                              variation,
+                              number,
+                              denominator,
+                            }
+                          )
                         )
                       }
                       className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d4af37] bg-black text-[#d4af37] transition hover:scale-110 hover:bg-[#181300] hover:shadow-[0_0_18px_rgba(212,175,55,.75)] sm:h-12 sm:w-12"
@@ -330,8 +463,8 @@ export default function RegistryMap({
                 })}
               </div>
             </div>
-          )
-        )}
+          );
+        })}
       </div>
 
       <div className="mt-6 flex flex-wrap gap-6 border-t border-zinc-800 pt-4 text-sm text-zinc-300">

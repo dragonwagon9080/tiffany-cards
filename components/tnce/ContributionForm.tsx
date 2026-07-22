@@ -29,6 +29,11 @@ type Project =
   | "tiffany-cards"
   | "guides";
 
+  type ContributionAction =
+  | "update"
+  | "similar"
+  | "removal";
+
 type ActiveObject = {
   id?: string;
   title?: string;
@@ -37,6 +42,7 @@ type ActiveObject = {
 
 type Props = {
   mode: ContributionMode;
+  action: ContributionAction;
   project: Project;
   projectLabel: string;
   activeObject: ActiveObject;
@@ -177,6 +183,7 @@ if (
 
 export default function ContributionForm({
   mode,
+  action,
   project,
   projectLabel,
   activeObject,
@@ -184,6 +191,23 @@ export default function ContributionForm({
   onSuccess,
 }: Props) {
   const modeConfig = TNCE_MODE_CONFIG[mode];
+
+  const actionConfig = {
+  update: {
+    title: "Update Existing Card",
+    subtitle: "Correct information or add details for this card.",
+  },
+  similar: {
+    title: "Report Similar Card",
+    subtitle:
+      "Report the same card with a different grade, cert, or serial number.",
+  },
+  removal: {
+    title: "Request Removal",
+    subtitle:
+      "Request a review or removal of this listing and provide supporting information.",
+  },
+}[action];
 
   const [contributorName, setContributorName] =
     useState("");
@@ -231,6 +255,44 @@ const [variation, setVariation] = useState(
       "cert",
     ])
   );
+
+/* ============================================
+   Cards Alert Fields
+============================================ */
+
+const [cardYear, setCardYear] = useState("");
+const [firstName, setFirstName] = useState("");
+const [lastName, setLastName] = useState("");
+const [cardNumber, setCardNumber] = useState("");
+
+const [brand, setBrand] = useState("");
+const [manufacturer, setManufacturer] = useState("");
+const [setName, setSetName] = useState("");
+const [subset, setSubset] = useState("");
+const [parallel, setParallel] = useState("");
+const [sport, setSport] = useState("");
+
+const [status, setStatus] = useState("");
+const [suspect, setSuspect] = useState("");
+const [description, setDescription] = useState("");
+const [cost, setCost] = useState("");
+
+const [previousGrade, setPreviousGrade] =
+  useState("");
+
+const [previousCertNumber, setPreviousCertNumber] =
+  useState("");
+
+const [previousSourceUrl, setPreviousSourceUrl] =
+  useState("");
+
+const [attributionType, setAttributionType] =
+  useState<
+    "anonymous" | "public-source" | "my-post"
+  >("anonymous");
+
+const [publicSourceUrl, setPublicSourceUrl] =
+  useState("");
 
   const [frontImage, setFrontImage] =
     useState("");
@@ -640,13 +702,27 @@ setUploadedImages(importedUploads);
   return (
     <>
       <ContributionHeader
-        mode={mode}
-        projectLabel={projectLabel}
-        onClose={onClose}
-      />
+  mode={mode}
+  project={project}
+  projectLabel={projectLabel}
+  onClose={onClose}
+/>
 
       <div className="mt-6 grid gap-4 pb-32 sm:pb-12">
-        <ModeBanner mode={mode} />
+        <ModeBanner
+  mode={mode}
+  project={project}
+/>
+
+<section className="rounded-xl border border-blue-700/50 bg-blue-950/20 p-4">
+  <h3 className="text-base font-bold text-blue-200">
+    {actionConfig.title}
+  </h3>
+
+  <p className="mt-1 text-sm text-blue-100/80">
+    {actionConfig.subtitle}
+  </p>
+</section>
 
         <section className="rounded-xl border border-[#9c7a2d] bg-[#181300] p-4">
           <h3 className="text-sm font-black uppercase tracking-wide text-[#f1d36b]">
@@ -828,14 +904,78 @@ setUploadedImages(importedUploads);
         <ProjectFields
   project={project}
   activeObject={activeObject}
+
+  cardsAlertFields={{
+    cardYear,
+    setCardYear,
+
+    firstName,
+    setFirstName,
+
+    lastName,
+    setLastName,
+
+    cardNumber,
+    setCardNumber,
+
+    brand,
+    setBrand,
+
+    manufacturer,
+    setManufacturer,
+
+    setName,
+    setSetName,
+
+    subset,
+    setSubset,
+
+    parallel,
+    setParallel,
+
+    sport,
+    setSport,
+
+    status,
+    setStatus,
+
+    suspect,
+    setSuspect,
+
+    description,
+    setDescription,
+
+    cost,
+    setCost,
+
+    previousGrade,
+    setPreviousGrade,
+
+    previousCertNumber,
+    setPreviousCertNumber,
+
+    previousSourceUrl,
+    setPreviousSourceUrl,
+
+    attributionType,
+    setAttributionType,
+
+    publicSourceUrl,
+    setPublicSourceUrl,
+  }}
+
   cardTitle={cardTitle}
   setCardTitle={setCardTitle}
+
   serialNumber={serialNumber}
   setSerialNumber={setSerialNumber}
+
   variation={variation}
   setVariation={setVariation}
+
   grade={grade}
   setGrade={setGrade}
+
   certNumber={certNumber}
   setCertNumber={setCertNumber}
 />

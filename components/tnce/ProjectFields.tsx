@@ -1,9 +1,79 @@
 "use client";
 
+import RPAProjectForm from "./projects/RPAProjectForm";
+
 type ActiveObject = {
   id?: string;
   title?: string;
   [key: string]: any;
+};
+
+type CardsAlertFields = {
+  cardYear: string;
+  setCardYear: (value: string) => void;
+
+  firstName: string;
+  setFirstName: (value: string) => void;
+
+  lastName: string;
+  setLastName: (value: string) => void;
+
+  cardNumber: string;
+  setCardNumber: (value: string) => void;
+
+  brand: string;
+  setBrand: (value: string) => void;
+
+  manufacturer: string;
+  setManufacturer: (value: string) => void;
+
+  setName: string;
+  setSetName: (value: string) => void;
+
+  subset: string;
+  setSubset: (value: string) => void;
+
+  parallel: string;
+  setParallel: (value: string) => void;
+
+  sport: string;
+  setSport: (value: string) => void;
+
+  status: string;
+  setStatus: (value: string) => void;
+
+  suspect: string;
+  setSuspect: (value: string) => void;
+
+  description: string;
+  setDescription: (value: string) => void;
+
+  cost: string;
+  setCost: (value: string) => void;
+
+  previousGrade: string;
+  setPreviousGrade: (value: string) => void;
+
+  previousCertNumber: string;
+  setPreviousCertNumber: (value: string) => void;
+
+  previousSourceUrl: string;
+  setPreviousSourceUrl: (value: string) => void;
+
+  attributionType:
+    | "anonymous"
+    | "public-source"
+    | "my-post";
+
+  setAttributionType: (
+    value:
+      | "anonymous"
+      | "public-source"
+      | "my-post"
+  ) => void;
+
+  publicSourceUrl: string;
+  setPublicSourceUrl: (value: string) => void;
 };
 
 type Props = {
@@ -14,6 +84,8 @@ type Props = {
     | "guides";
 
   activeObject: ActiveObject;
+
+  cardsAlertFields?: CardsAlertFields;
 
   cardTitle: string;
   setCardTitle: (value: string) => void;
@@ -66,6 +138,7 @@ function isPlaceholderContext(
 export default function ProjectFields({
   project,
   activeObject,
+  cardsAlertFields,
   cardTitle,
   setCardTitle,
   serialNumber,
@@ -77,6 +150,7 @@ export default function ProjectFields({
   certNumber,
   setCertNumber,
 }: Props) {
+
   const activeTitle = valueFromActiveObject(
     activeObject,
     [
@@ -111,192 +185,204 @@ export default function ProjectFields({
       "variation",
     ]);
 
-  const isContextAware =
-    !isPlaceholderContext(activeObject) &&
-    (Boolean(activeTitle) ||
-      Boolean(activeSerial) ||
-      Boolean(activeCardId) ||
-      Boolean(activeVariation));
+const isContextAware =
+  !isPlaceholderContext(activeObject) &&
+  (Boolean(activeTitle) ||
+    Boolean(activeSerial) ||
+    Boolean(activeCardId) ||
+    Boolean(activeVariation));
 
-  if (
-    project === "rpa-tracker" &&
-    isContextAware
-  ) {
-    return (
-      <div className="rounded-xl border border-blue-500/40 bg-blue-950/20 p-4">
-        <div className="mb-3 text-xs font-bold uppercase tracking-widest text-blue-300">
-          Contribution Context
-        </div>
+  const {
+  cardYear,
+  setCardYear,
+  firstName,
+  setFirstName,
+  lastName,
+  setLastName,
+  cardNumber,
+  setCardNumber,
+  brand,
+  setBrand,
+  manufacturer,
+  setManufacturer,
+  setName,
+  setSetName,
+  subset,
+  setSubset,
+  parallel,
+  setParallel,
+  sport,
+  setSport,
+  status,
+  setStatus,
+  suspect,
+  setSuspect,
+  description,
+  setDescription,
+  cost,
+  setCost,
+  previousGrade,
+  setPreviousGrade,
+  previousCertNumber,
+  setPreviousCertNumber,
+  previousSourceUrl,
+  setPreviousSourceUrl,
+  attributionType,
+  setAttributionType,
+  publicSourceUrl,
+  setPublicSourceUrl,
+} = cardsAlertFields ?? {};
 
-        <div className="grid gap-3 text-sm">
-          {cardTitle && (
-  <div>
-    <div className="text-xs uppercase tracking-wide text-neutral-400">
-      Card
-    </div>
-
-    <div className="mt-1 rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white">
-      {cardTitle}
-    </div>
-  </div>
-)}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {activeSerial && (
-              <div>
-                <div className="text-xs uppercase tracking-wide text-neutral-400">
-                  Serial Number
-                </div>
-
-                <div className="mt-1 rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white">
-                  {activeSerial}
-                </div>
-              </div>
-            )}
-
-            {activeVariation && (
-              <div>
-                <div className="text-xs uppercase tracking-wide text-neutral-400">
-                  Variation
-                </div>
-
-                <div className="mt-1 rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white">
-                  {activeVariation}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-1">
-              <span className="text-xs uppercase tracking-wide text-neutral-400">
-                Updated Grade
-              </span>
-
-              <input
-                value={grade}
-                onChange={(event) =>
-                  setGrade(event.target.value)
-                }
-                className="rounded-lg border border-blue-500/50 bg-black px-3 py-2 text-white"
-                placeholder="Example: PSA 10"
-              />
-            </label>
-
-            <label className="grid gap-1">
-              <span className="text-xs uppercase tracking-wide text-neutral-400">
-                Updated Cert #
-              </span>
-
-              <input
-                value={certNumber}
-                onChange={(event) =>
-                  setCertNumber(
-                    event.target.value
-                  )
-                }
-                className="rounded-lg border border-blue-500/50 bg-black px-3 py-2 text-white"
-                placeholder="Example: 123456789"
-              />
-            </label>
-          </div>
-
-          {activeCardId && (
-            <div>
-              <div className="text-xs uppercase tracking-wide text-neutral-400">
-                Card ID
-              </div>
-
-              <div className="mt-1 rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white">
-                {activeCardId}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <p className="mt-3 text-xs text-neutral-400">
-          This card was detected from the page you
-          are viewing. Update the grade, cert
-          number, notes, or images as needed.
-        </p>
-      </div>
-    );
-  }
-
+if (project === "rpa-tracker") {
   return (
-    <>
-      <label className="grid gap-1 text-sm">
-        Card Title / Player / Set
-
-        <input
-          value={cardTitle}
-          onChange={(event) =>
-            setCardTitle(event.target.value)
-          }
-          className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-          placeholder="Example: 2024 Caitlin Clark National Treasures RPA"
-        />
-      </label>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-1 text-sm">
-          Serial Number
-
-          <input
-            value={serialNumber}
-            onChange={(event) =>
-              setSerialNumber(
-                event.target.value
-              )
-            }
-            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-            placeholder="Example: 4/5"
-          />
-        </label>
-
-        <label className="grid gap-1 text-sm">
-          Variation
-
-          <input
-            value={variation}
-            onChange={(event) =>
-              setVariation(event.target.value)
-            }
-            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-            placeholder="Example: Gold"
-          />
-        </label>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-1 text-sm">
-          Grade
-
-          <input
-            value={grade}
-            onChange={(event) =>
-              setGrade(event.target.value)
-            }
-            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-            placeholder="Example: PSA 10"
-          />
-        </label>
-
-        <label className="grid gap-1 text-sm">
-          Cert #
-
-          <input
-            value={certNumber}
-            onChange={(event) =>
-              setCertNumber(
-                event.target.value
-              )
-            }
-            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-            placeholder="Example: 123456789"
-          />
-        </label>
-      </div>
-    </>
+    <RPAProjectForm
+      activeObject={activeObject}
+      cardTitle={cardTitle}
+      serialNumber={serialNumber}
+      setSerialNumber={setSerialNumber}
+      variation={variation}
+      setVariation={setVariation}
+      grade={grade}
+      setGrade={setGrade}
+      certNumber={certNumber}
+      setCertNumber={setCertNumber}
+    />
   );
+}
+
+if (project === "cards-alert") {
+  return (
+    <div className="grid gap-6">
+      <section className="rounded-xl border border-red-500/40 bg-red-950/20 p-4">
+        <h3 className="mb-4 text-sm font-black uppercase tracking-widest text-red-300">
+          Card Identity
+        </h3>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm">
+            Year
+            <input
+              value={cardYear ?? ""}
+              onChange={(e) =>
+                setCardYear?.(e.target.value)
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="2024"
+            />
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            Sport
+            <input
+              value={sport ?? ""}
+              onChange={(e) =>
+                setSport?.(e.target.value)
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="Basketball"
+            />
+          </label>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm">
+            First Name
+            <input
+              value={firstName ?? ""}
+              onChange={(e) =>
+                setFirstName?.(e.target.value)
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+            />
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            Last Name
+            <input
+              value={lastName ?? ""}
+              onChange={(e) =>
+                setLastName?.(e.target.value)
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+            />
+          </label>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm">
+            Card Number
+            <input
+              value={cardNumber ?? ""}
+              onChange={(e) =>
+                setCardNumber?.(e.target.value)
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="123"
+            />
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            Brand
+            <input
+              value={brand ?? ""}
+              onChange={(e) =>
+                setBrand?.(e.target.value)
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="Topps"
+            />
+          </label>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm">
+            Manufacturer
+            <input
+              value={manufacturer ?? ""}
+              onChange={(e) =>
+                setManufacturer?.(e.target.value)
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+            />
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            Set
+            <input
+              value={setName ?? ""}
+              onChange={(e) =>
+                setSetName?.(e.target.value)
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+            />
+          </label>
+        </div>
+
+        <label className="grid gap-1 text-sm">
+          Subset
+          <input
+            value={subset ?? ""}
+            onChange={(e) =>
+              setSubset?.(e.target.value)
+            }
+            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+          />
+        </label>
+
+        <label className="grid gap-1 text-sm">
+          Parallel
+          <input
+            value={parallel ?? ""}
+            onChange={(e) =>
+              setParallel?.(e.target.value)
+            }
+            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+          />
+        </label>
+      </section>
+    </div>
+  );
+}
+return null;
+    
 }

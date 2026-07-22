@@ -25,8 +25,8 @@ type GroupData = {
 function variationName(card: any) {
   return String(
     card.Variation_Input ||
-    card.Variation ||
-    "Base"
+      card.Variation ||
+      "Base"
   ).trim();
 }
 
@@ -40,12 +40,15 @@ export default function GroupClient({
   const [data, setData] =
     useState<GroupData | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
   const [searchDraft, setSearchDraft] =
     useState("");
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] =
+    useState("");
+
   const [variation, setVariation] =
     useState("All");
 
@@ -86,19 +89,29 @@ export default function GroupClient({
     async function load() {
       setLoading(true);
 
-      const res = await fetch(
-        `/api/rpa-tracker?mode=group&slug=${encodeURIComponent(
-          slug
-        )}`,
-        {
-          cache: "no-store",
+      try {
+        const res = await fetch(
+          `/api/rpa-tracker?mode=group&slug=${encodeURIComponent(
+            slug
+          )}`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        if (!res.ok) {
+          setData(null);
+          return;
         }
-      );
 
-      const json = await res.json();
+        const json = await res.json();
 
-      setData(json);
-      setLoading(false);
+        setData(json);
+      } catch {
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
     }
 
     load();
@@ -109,8 +122,9 @@ export default function GroupClient({
       return [];
     }
 
-    const query =
-      search.trim().toLowerCase();
+    const query = search
+      .trim()
+      .toLowerCase();
 
     return data.cards.filter((card) => {
       const cardVariation =
@@ -118,7 +132,7 @@ export default function GroupClient({
 
       const variationMatch =
         variation &&
-          variation !== "All"
+        variation !== "All"
           ? cardVariation === variation
           : true;
 
@@ -134,7 +148,7 @@ export default function GroupClient({
 
       return query
         ? searchable.includes(query) &&
-        variationMatch
+            variationMatch
         : variationMatch;
     });
   }, [data, search, variation]);
@@ -186,21 +200,28 @@ export default function GroupClient({
             <div className="text-lg font-bold leading-tight text-white sm:text-xl">
               {filteredCards.length} of{" "}
               {group.Count} tracked card
-              {group.Count === 1 ? "" : "s"}
+              {group.Count === 1
+                ? ""
+                : "s"}
             </div>
 
             <div className="flex justify-center gap-3 sm:justify-end">
               <button
                 type="button"
                 onClick={() => {
-                  setRegistrySelectionMode(true);
+                  setRegistrySelectionMode(
+                    true
+                  );
+
                   setShowRegistryMap(true);
 
                   window.setTimeout(() => {
-                    registryMapRef.current?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    });
+                    registryMapRef.current?.scrollIntoView(
+                      {
+                        behavior: "smooth",
+                        block: "start",
+                      }
+                    );
                   }, 50);
                 }}
                 className="inline-flex items-center justify-center rounded-xl border-2 border-blue-300 bg-blue-600 px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-white shadow-lg shadow-blue-900/40 transition hover:scale-105 hover:bg-blue-500"
@@ -211,10 +232,13 @@ export default function GroupClient({
               <ShareButton
                 type="registry"
                 title={title}
-                url={`${process.env
-                    .NEXT_PUBLIC_SITE_URL || ""
-                  }/rpa-tracker/group/${group.Slug
-                  }`}
+                url={`${
+                  process.env
+                    .NEXT_PUBLIC_SITE_URL ||
+                  ""
+                }/rpa-tracker/group/${
+                  group.Slug
+                }`}
               />
             </div>
           </div>
@@ -236,7 +260,9 @@ export default function GroupClient({
           }
           sortMode={sortMode}
           setSortMode={setSortMode}
-          variations={data.variations || []}
+          variations={
+            data.variations || []
+          }
           registryTitle={title}
           onReset={() => {
             setSearchDraft("");
@@ -271,11 +297,13 @@ export default function GroupClient({
               <div className="mb-3 flex flex-col gap-3 rounded-xl border border-blue-500/60 bg-blue-950/20 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="font-black text-white">
-                    Select a card to update or add
+                    Select a card to
+                    update or add
                   </div>
 
                   <div className="mt-1 text-sm text-neutral-400">
-                    Blue cards are tracked. Yellow cards
+                    Blue cards are
+                    tracked. Yellow cards
                     are missing.
                   </div>
                 </div>
@@ -283,7 +311,9 @@ export default function GroupClient({
                 <button
                   type="button"
                   onClick={() =>
-                    setRegistrySelectionMode(false)
+                    setRegistrySelectionMode(
+                      false
+                    )
                   }
                   className="rounded-lg border border-neutral-700 bg-black px-4 py-2 text-xs font-bold uppercase tracking-wide text-neutral-300 hover:text-white"
                 >
@@ -294,25 +324,54 @@ export default function GroupClient({
 
             <RegistryMap
               variation={variation}
-              cards={data.cards}
+              cards={data.cards || []}
+              description={
+                group.Description || ""
+              }
               showVariationPicker
-              onVariationChange={setVariation}
-              selectionMode={registrySelectionMode}
+              onVariationChange={
+                setVariation
+              }
+              selectionMode={
+                registrySelectionMode
+              }
               selectionTitle={
                 registrySelectionMode
                   ? "Select a card"
                   : undefined
               }
-              onTrackedCardClick={(card) => {
-                setContributionMode("update");
-                setContributionObject(card);
-                setRegistrySelectionMode(false);
+              onTrackedCardClick={(
+                card
+              ) => {
+                setContributionMode(
+                  "update"
+                );
+
+                setContributionObject(
+                  card
+                );
+
+                setRegistrySelectionMode(
+                  false
+                );
+
                 setShowContribute(true);
               }}
-              onMissingCardClick={(missingCard) => {
-                setContributionMode("missing");
-                setContributionObject(missingCard);
-                setRegistrySelectionMode(false);
+              onMissingCardClick={(
+                missingCard
+              ) => {
+                setContributionMode(
+                  "missing"
+                );
+
+                setContributionObject(
+                  missingCard
+                );
+
+                setRegistrySelectionMode(
+                  false
+                );
+
                 setShowContribute(true);
               }}
             />

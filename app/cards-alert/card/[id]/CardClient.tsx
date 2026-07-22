@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import StatusBadge from "@/components/cards-alert/StatusBadge";
 import CardWorkspace from "@/components/shared/media/CardWorkspace";
 import type { ImageItem } from "@/types/image";
 import UniversalPageHeader from "@/components/shared/UniversalPageHeader";
+import ShareButton from "@/components/shared/ShareButton";
+import ContributionModal from "@/components/tnce/ContributionModal";
+import TNCEContributeButton from "@/components/shared/TNCEContributeButton";
+import TNCEActionMenu from "@/components/shared/TNCEActionMenu";
 
 function sourceLabel(url: string) {
   const lower = url.toLowerCase();
@@ -106,6 +111,14 @@ export default function CardClient({
   const [card, setCard] = useState<any>(initialCard || null);
   const [loading, setLoading] = useState(!initialCard);
   const [error, setError] = useState("");
+const [showContributionModal, setShowContributionModal] = useState(false);
+
+const [contributionMode, setContributionMode] =
+  useState<"update" | "new">("update");
+
+const [contributionAction, setContributionAction] = useState<
+  "update" | "similar" | "removal"
+>("update");
 
   const [leftIndex, setLeftIndex] = useState(0);
   const [rightIndex, setRightIndex] = useState(0);
@@ -228,15 +241,11 @@ export default function CardClient({
       />
 
       <div className="mx-auto w-full max-w-[1800px] px-2">
-        <UniversalPageHeader
+        
+<UniversalPageHeader
   section="Cards Alert"
   title={title}
   defaultTarget="cardsalert"
-  backHref="/cards-alert"
-  shareType="alert"
-  shareUrl={`https://www.tiffanycards.com/cards-alert/card/${encodeURIComponent(
-    id
-  )}`}
   badge={
     card.Status ? (
       <StatusBadge
@@ -246,7 +255,74 @@ export default function CardClient({
       />
     ) : undefined
   }
+>
+  <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <Link
+      href="/cards-alert"
+      className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#b99236] sm:w-auto sm:justify-start"
+    >
+      ← Back
+    </Link>
+
+    <div className="flex flex-col gap-3 sm:flex-row">
+      <TNCEActionMenu
+  button={
+    <TNCEContributeButton
+      theme={{
+        report_bg_color: "#dc2626",
+        report_hover_color: "#991b1b",
+        report_border_color: "#fca5a5",
+        report_text_color: "#ffffff",
+      }}
+      label="+ Contribute"
+    />
+  }
+  actions={[
+    {
+  icon: "📝",
+  label: "Update Existing Card",
+  description: "Correct information or add details",
+  onClick: () => {
+    setContributionMode("update");
+setContributionAction("update");
+setShowContributionModal(true);
+  },
+},
+{
+  icon: "🆕",
+  label: "Report Similar Card",
+  description: "Same card with a different grade, cert, or serial number",
+  onClick: () => {
+    setContributionMode("new");
+setContributionAction("similar");
+setShowContributionModal(true);
+  },
+},
+{
+  icon: "🚫",
+  label: "Request Removal",
+  description: "Request review or removal of this listing",
+  danger: true,
+  onClick: () => {
+    setContributionMode("update");
+setContributionAction("removal");
+setShowContributionModal(true);
+  },
+},
+  ]}
 />
+
+      <ShareButton
+        type="alert"
+        title={title}
+        url={`https://www.tiffanycards.com/cards-alert/card/${encodeURIComponent(
+          id
+        )}`}
+      />
+    </div>
+  </div>
+</UniversalPageHeader>
+
         <section className="mt-8 overflow-hidden rounded-xl border border-[#9c7a2d]/80 bg-zinc-950 shadow-2xl">
           <div className="h-[820px] bg-black xl:h-[940px]">
             <CardWorkspace
@@ -324,7 +400,20 @@ export default function CardClient({
           cards that may be altered, fake, mislabeled, stolen, or otherwise
           questionable. Information is provided for research and discussion only.
         </section>
-      </div>
+           </div>
+
+      <ContributionModal
+        open={showContributionModal}
+        onClose={() => setShowContributionModal(false)}
+       mode={contributionMode}
+        project="cards-alert"
+        projectLabel="Cards Alert"
+        activeObject={{
+          ...card,
+          id: card.ID || id,
+          title,
+        }}
+      />
     </main>
   );
 }

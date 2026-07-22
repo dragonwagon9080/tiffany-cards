@@ -15,6 +15,7 @@ type Props = {
   shareUrl?: string;
   badge?: React.ReactNode;
 
+  actionButton?: React.ReactNode;
   children?: React.ReactNode;
 };
 
@@ -28,6 +29,7 @@ export default function UniversalPageHeader({
   shareType,
   shareUrl,
   badge,
+  actionButton,
   children,
 }: Props) {
   const sectionColor =
@@ -60,9 +62,9 @@ export default function UniversalPageHeader({
 
         {title && <GradientTitle>{title}</GradientTitle>}
 
-        {(backHref || shareUrl || badge || children) && (
+        {(backHref || shareUrl || badge || actionButton || children) && (
           <div className="mt-5">
-            {(backHref || shareUrl) && (
+            {(backHref || shareUrl || actionButton) && (
               <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="w-full sm:w-auto">
                   {backHref && (
@@ -75,14 +77,22 @@ export default function UniversalPageHeader({
                   )}
                 </div>
 
-                <div className="w-full sm:w-auto [&_button]:w-full sm:[&_button]:w-auto">
-                  {shareUrl && shareType && title && (
-                    <ShareButton
-                      type={shareType}
-                      title={title}
-                      url={shareUrl}
-                    />
+                <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
+                  {actionButton && (
+                    <div className="w-full sm:w-auto">
+                      {actionButton}
+                    </div>
                   )}
+
+                  <div className="w-full sm:w-auto [&_button]:w-full sm:[&_button]:w-auto">
+                    {shareUrl && shareType && title && (
+                      <ShareButton
+                        type={shareType}
+                        title={title}
+                        url={shareUrl}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             )}

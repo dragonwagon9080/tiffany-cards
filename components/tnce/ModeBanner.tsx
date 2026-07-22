@@ -1,18 +1,32 @@
 "use client";
 
-import { TNCE_MODE_CONFIG, type ContributionMode } from "./modeConfig";
+import {
+  TNCE_MODE_CONFIG,
+  type ContributionMode,
+} from "./modeConfig";
+
+import {
+  PROJECT_THEME,
+  type TNCEProject,
+} from "@/lib/tnce/projectTheme";
 
 type Props = {
   mode: ContributionMode;
+  project?: TNCEProject;
 };
 
-export default function ModeBanner({ mode }: Props) {
+export default function ModeBanner({
+  mode,
+  project = "rpa-tracker",
+}: Props) {
   const config = TNCE_MODE_CONFIG[mode];
+  const theme = PROJECT_THEME[project];
 
-  const className =
-    config.accent === "gold"
-      ? "rounded-xl border border-[#d4af37]/60 bg-[#181300] p-4 text-sm text-[#f1d36b]"
-      : "rounded-xl border border-blue-500/40 bg-blue-950/20 p-4 text-sm text-blue-200";
-
-  return <div className={className}>{config.banner}</div>;
+  return (
+    <div
+      className={`rounded-xl border ${theme.border} ${theme.background} p-4 text-sm ${theme.text}`}
+    >
+      {config.banner}
+    </div>
+  );
 }

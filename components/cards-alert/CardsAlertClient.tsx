@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import StatusBadge from "@/components/cards-alert/StatusBadge";
 import UniversalSearchBar from "@/components/shared/UniversalSearchBar";
+import ContributionModal from "@/components/tnce/ContributionModal";
+import TNCEContributeButton from "@/components/shared/TNCEContributeButton";
 
 type FilterOptions = {
   sports?: string[];
@@ -83,6 +85,9 @@ export default function CardsAlertClient({
   const [cardNumberFilter, setCardNumberFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortFilter, setSortFilter] = useState("");
+  const [showContributionModal, setShowContributionModal] =
+  useState(false);
+
 
   const filterBg = theme.filter_bg_color || "#9c7a2d";
   const filterHover = theme.filter_hover_color || "#b99236";
@@ -537,25 +542,11 @@ function filterMouseLeave(
           Showing {cards.length} of {totalResults} reported cards
         </div>
 
-        <a
-          href="/cards-alert/submit"
-          className="rounded border px-5 py-2 text-sm font-bold uppercase tracking-wide transition hover:opacity-90"
-          style={{
-            backgroundColor: theme.report_bg_color || "#991b1b",
-            borderColor: theme.report_border_color || "#7f1d1d",
-            color: theme.report_text_color || "#ffffff",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor =
-              theme.report_hover_color || "#dc2626";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor =
-              theme.report_bg_color || "#991b1b";
-          }}
-        >
-          Report / Remove Card
-        </a>
+        <TNCEContributeButton
+  theme={theme}
+  label="+ Contribute"
+  onClick={() => setShowContributionModal(true)}
+/>
       </div>
 
       <div className="grid grid-cols-1 gap-6 py-6 md:grid-cols-3 lg:grid-cols-4">
@@ -623,7 +614,19 @@ function filterMouseLeave(
             Load More
           </button>
         </div>
-      )}
+            )}
+
+      <ContributionModal
+        open={showContributionModal}
+        onClose={() => setShowContributionModal(false)}
+        project="cards-alert"
+        projectLabel="Cards Alert"
+        mode="new"
+        activeObject={{
+          id: "cards-alert-main-page",
+          title: "Cards Alert Main Page",
+        }}
+      />
     </section>
   );
 }

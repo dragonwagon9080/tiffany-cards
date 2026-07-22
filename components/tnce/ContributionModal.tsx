@@ -6,6 +6,10 @@ import SuccessScreen from "./SuccessScreen";
 
 type Project = "rpa-tracker" | "cards-alert" | "tiffany-cards" | "guides";
 type ContributionMode = "new" | "update" | "missing";
+type ContributionAction =
+  | "update"
+  | "similar"
+  | "removal";
 
 type ActiveObject = {
   id?: string;
@@ -17,7 +21,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   mode?: ContributionMode;
-  project: Project;
+action?: ContributionAction;
+project: Project;
   projectLabel: string;
   logoUrl?: string;
   activeObject: ActiveObject;
@@ -27,7 +32,8 @@ export default function ContributionModal({
   open,
   onClose,
   mode = "new",
-  project,
+action = "update",
+project,
   projectLabel,
   logoUrl,
   activeObject,
@@ -57,8 +63,9 @@ export default function ContributionModal({
           />
         ) : (
           <ContributionForm
-            mode={mode}
-            project={project}
+  mode={mode}
+  action={action}
+  project={project}
             projectLabel={projectLabel}
             activeObject={activeObject}
             onClose={closeModal}
