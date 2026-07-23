@@ -231,6 +231,12 @@ const [contributionAction, setContributionAction] = useState<
   const goldButtonClass =
     "inline-flex w-fit items-center rounded border border-[#d4af37] bg-[#9c7a2d] px-3 py-1.5 text-sm font-bold text-[#111111] transition hover:bg-[#b99236]";
 
+console.log("TNCE Active Object", {
+  ...card,
+  id: card.ID || id,
+  title,
+});
+
   return (
     <main className="min-h-screen bg-black px-4 py-8 text-white md:px-8">
       <script
@@ -403,17 +409,18 @@ setShowContributionModal(true);
            </div>
 
       <ContributionModal
-        open={showContributionModal}
-        onClose={() => setShowContributionModal(false)}
-       mode={contributionMode}
-        project="cards-alert"
-        projectLabel="Cards Alert"
-        activeObject={{
-          ...card,
-          id: card.ID || id,
-          title,
-        }}
-      />
+  open={showContributionModal}
+  onClose={() => setShowContributionModal(false)}
+  mode={contributionMode}
+  action={contributionAction}
+  project="cards-alert"
+  projectLabel="Cards Alert"
+  activeObject={{
+    ...card,
+    id: card.ID || id,
+    title,
+  }}
+/>
     </main>
   );
 }

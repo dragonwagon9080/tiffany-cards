@@ -259,7 +259,7 @@ if (project === "cards-alert") {
         </h3>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm">
+         <label className="grid gap-1 text-sm"> 
             Year
             <input
               value={cardYear ?? ""}
@@ -358,27 +358,57 @@ if (project === "cards-alert") {
           </label>
         </div>
 
-        <label className="grid gap-1 text-sm">
-          Subset
-          <input
-            value={subset ?? ""}
-            onChange={(e) =>
-              setSubset?.(e.target.value)
-            }
-            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-          />
-        </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+  <label className="grid gap-1 text-sm">
+    Parallel
+    <input
+      value={parallel ?? ""}
+      onChange={(e) =>
+        setParallel?.(e.target.value)
+      }
+      className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+    />
+  </label>
 
-        <label className="grid gap-1 text-sm">
-          Parallel
-          <input
-            value={parallel ?? ""}
-            onChange={(e) =>
-              setParallel?.(e.target.value)
-            }
-            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-          />
-        </label>
+  <label className="grid gap-1 text-sm">
+    Serial Number
+    <input
+      value={serialNumber}
+      onChange={(e) =>
+        setSerialNumber(e.target.value)
+      }
+      className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+      placeholder="1/3, 14/35, 1230/1250, etc."
+    />
+  </label>
+</div>
+
+<div className="grid gap-4 sm:grid-cols-2">
+  <label className="grid gap-1 text-sm">
+    Grade
+    <input
+      value={grade}
+      onChange={(e) =>
+        setGrade(e.target.value)
+      }
+      className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+      placeholder="PSA 9, BGS 9.5, Raw, etc."
+    />
+  </label>
+
+  <label className="grid gap-1 text-sm">
+    Cert #
+    <input
+      value={certNumber}
+      onChange={(e) =>
+        setCertNumber(e.target.value)
+      }
+      className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+      placeholder="Certification Number"
+    />
+  </label>
+</div>
+
       </section>
     </div>
   );

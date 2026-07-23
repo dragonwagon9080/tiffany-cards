@@ -22,6 +22,7 @@ import {
   TNCE_MODE_CONFIG,
   type ContributionMode,
 } from "./modeConfig";
+import NewCardsAlertForm from "./forms/NewCardsAlertForm";
 
 type Project =
   | "rpa-tracker"
@@ -190,22 +191,52 @@ export default function ContributionForm({
   onClose,
   onSuccess,
 }: Props) {
+
+  if (
+  project === "cards-alert" &&
+  mode === "new" &&
+  activeObject?.id === "cards-alert-main-page"
+) {
+  return (
+    <NewCardsAlertForm
+      mode={mode}
+      action={action}
+      project="cards-alert"
+      projectLabel={projectLabel}
+      activeObject={activeObject}
+      onClose={onClose}
+      onSuccess={onSuccess}
+    />
+  );
+}
+
   const modeConfig = TNCE_MODE_CONFIG[mode];
 
   const actionConfig = {
   update: {
     title: "Update Existing Card",
     subtitle: "Correct information or add details for this card.",
+    notesPlaceholder:
+      "Tell us what should be added or corrected.",
+    submitText: "Submit Update",
   },
+
   similar: {
     title: "Report Similar Card",
     subtitle:
       "Report the same card with a different grade, cert, or serial number.",
+    notesPlaceholder:
+      "Explain how this card differs from the current listing.",
+    submitText: "Report Similar Card",
   },
+
   removal: {
     title: "Request Removal",
     subtitle:
       "Request a review or removal of this listing and provide supporting information.",
+    notesPlaceholder:
+      "Tell us why this listing should be reviewed or removed.",
+    submitText: "Submit Removal Request",
   },
 }[action];
 
@@ -343,62 +374,314 @@ const [
 
 useEffect(() => {
   setCardTitle(
-  cleanCardTitle(
+    cleanCardTitle(
+      valueFromActiveObject(activeObject, [
+        "Card_Title",
+        "Card_Title_Display",
+        "title",
+      ])
+    )
+  );
+
+  setVariation(
     valueFromActiveObject(activeObject, [
-      "Card_Title",
-      "Card_Title_Display",
-      "title",
+      "Variation_Input",
+      "Variation",
+      "variation",
     ])
-  )
-);
-setVariation(
+  );
+
+setCardYear(
   valueFromActiveObject(activeObject, [
-    "Variation_Input",
-    "Variation",
-    "variation",
+    "Year",
+    "year",
   ])
 );
 
-  setSerialNumber(
-    valueFromActiveObject(activeObject, [
-      "Serial_Number",
-      "serialNumber",
-      "serial",
-    ])
+setFirstName(
+  valueFromActiveObject(activeObject, [
+    "First",
+    "first",
+  ])
+);
+
+setLastName(
+  valueFromActiveObject(activeObject, [
+    "Last",
+    "last",
+  ])
+);
+
+setCardNumber(
+  valueFromActiveObject(activeObject, [
+    "Num",
+    "Number",
+    "number",
+  ])
+);
+
+const originalBrand = valueFromActiveObject(
+  activeObject,
+  [
+    "Brand",
+    "brand",
+  ]
+);
+
+const originalParallel = valueFromActiveObject(
+  activeObject,
+  [
+    "Parallel",
+    "parallel",
+  ]
+);
+
+const cleanedParallel =
+  action === "similar"
+    ? originalParallel
+        .replace(
+          /\s+\d+\s*\/\s*(?:\d+|xx)\s*$/i,
+          ""
+        )
+        .trim()
+    : originalParallel;
+
+let cleanedBrand = originalBrand;
+
+if (action === "similar") {
+  cleanedBrand = cleanedBrand
+    .replace(
+      /\s+\d+\s*\/\s*(?:\d+|xx)\s*$/i,
+      ""
+    )
+    .trim();
+
+  if (cleanedParallel) {
+    const escapedParallel =
+      cleanedParallel.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+    cleanedBrand = cleanedBrand
+      .replace(
+        new RegExp(
+          `\\s*-\\s*${escapedParallel}\\s*$`,
+          "i"
+        ),
+        ""
+      )
+      .trim();
+  }
+}
+
+setBrand(cleanedBrand);
+
+setManufacturer(
+  valueFromActiveObject(activeObject, [
+    "Manufacturer",
+    "manufacturer",
+  ])
+);
+
+setSetName(
+  valueFromActiveObject(activeObject, [
+    "Set",
+    "set",
+  ])
+);
+
+setSubset(
+  valueFromActiveObject(activeObject, [
+    "Subset",
+    "subset",
+  ])
+);
+
+setParallel(cleanedParallel);
+
+setSport(
+  valueFromActiveObject(activeObject, [
+    "Sport",
+    "sport",
+  ])
+);
+
+setStatus(
+  valueFromActiveObject(activeObject, [
+    "Status",
+    "status",
+  ])
+);
+
+setSuspect(
+  valueFromActiveObject(activeObject, [
+    "Suspect",
+    "suspect",
+  ])
+);
+
+setDescription(
+  valueFromActiveObject(activeObject, [
+    "Description",
+    "description",
+  ])
+);
+
+setCost(
+  valueFromActiveObject(activeObject, [
+    "Cost",
+    "cost",
+  ])
+);
+
+setPreviousGrade(
+  valueFromActiveObject(activeObject, [
+    "Grade",
+    "grade",
+  ])
+);
+
+setPreviousCertNumber(
+  valueFromActiveObject(activeObject, [
+    "Cert_Number",
+    "certNumber",
+    "cert",
+  ])
+);
+
+setPreviousSourceUrl(
+  valueFromActiveObject(activeObject, [
+    "Site_Link",
+    "siteLink",
+  ])
+);
+
+  if (action === "similar") {
+    setSerialNumber("");
+    setGrade("");
+    setCertNumber("");
+
+    setFrontImage("");
+    setBackImage("");
+    setOtherImages("");
+    setUploadedImages([]);
+    setOrganizedImages([]);
+  } else {
+    const existingSerialNumber =
+  valueFromActiveObject(activeObject, [
+    "Serial_Number",
+    "serialNumber",
+    "serial",
+  ]);
+
+const brandSerialMatch =
+  originalBrand.match(
+    /(\d+\s*\/\s*(?:\d+|xx))\s*$/i
   );
 
-  setGrade(
-    valueFromActiveObject(activeObject, [
-      "Grade",
-      "grade",
-    ])
-  );
+setSerialNumber(
+  existingSerialNumber ||
+    brandSerialMatch?.[1] ||
+    ""
+);
 
-  setCertNumber(
-    valueFromActiveObject(activeObject, [
-      "Cert_Number",
-      "certNumber",
-      "cert",
-    ])
-  );
+    setGrade(
+      valueFromActiveObject(activeObject, [
+        "Grade",
+        "grade",
+      ])
+    );
 
-  setFrontImage("");
-  setBackImage("");
-  setOtherImages("");
-  setUploadedImages([]);
-  setOrganizedImages([]);
+    setCertNumber(
+      valueFromActiveObject(activeObject, [
+        "Cert_Number",
+        "certNumber",
+        "cert",
+      ])
+    );
+
+    setFrontImage(
+      valueFromActiveObject(activeObject, [
+        "front_image",
+        "Front_Image",
+        "frontImage",
+      ])
+    );
+
+    setBackImage(
+      valueFromActiveObject(activeObject, [
+        "back_image",
+        "Back_Image",
+        "backImage",
+      ])
+    );
+
+    setOtherImages(
+      valueFromActiveObject(activeObject, [
+        "additional_images",
+        "Other_Images",
+        "otherImages",
+      ])
+    );
+
+    setUploadedImages([]);
+    setOrganizedImages([]);
+  }
+
   setAuctionSourceUrl("");
   setImportedListing(null);
   setImportError("");
   setNotes("");
   setSubmitError("");
 }, [
+  action,
+
+  activeObject?.ID,
+  activeObject?.id,
+
+  activeObject?.Year,
+  activeObject?.First,
+  activeObject?.Last,
+  activeObject?.Num,
+  activeObject?.Brand,
+  activeObject?.Manufacturer,
+  activeObject?.Set,
+  activeObject?.Subset,
+  activeObject?.Parallel,
+  activeObject?.Sport,
+
   activeObject?.Card_id,
   activeObject?.Card_Title,
   activeObject?.Card_Title_Display,
+  activeObject?.title,
+
   activeObject?.Serial_Number,
+  activeObject?.serialNumber,
+  activeObject?.serial,
+
   activeObject?.Variation_Input,
   activeObject?.Variation,
+  activeObject?.variation,
+
+  activeObject?.Grade,
+  activeObject?.grade,
+
+  activeObject?.Cert_Number,
+  activeObject?.certNumber,
+  activeObject?.cert,
+
+  activeObject?.front_image,
+  activeObject?.Front_Image,
+  activeObject?.frontImage,
+
+  activeObject?.back_image,
+  activeObject?.Back_Image,
+  activeObject?.backImage,
+
+  activeObject?.additional_images,
+  activeObject?.Other_Images,
+  activeObject?.otherImages,
 ]);
 
   async function importAuctionListing() {
@@ -589,45 +872,78 @@ setUploadedImages(importedUploads);
   }
 
   async function submitContribution() {
-    if (submitting) return;
+  if (submitting) return;
 
-    setSubmitting(true);
-    setSubmitError("");
+  setSubmitting(true);
+  setSubmitError("");
 
-    try {
-      const res = await fetch("/api/tnce", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          project,
+  try {
+    const cleanedSerialNumber =
+      serialNumber.trim();
 
-          submissionType:
-            modeConfig.submissionType,
+    const cleanedBrand =
+      brand.trim();
 
-          submissionMode: mode,
+    const cleanedParallel =
+      parallel.trim();
 
-          sourcePageUrl:
-            typeof window !== "undefined"
-              ? window.location.href
+    const submittedBrand =
+      action === "similar"
+        ? [
+            cleanedBrand,
+            cleanedParallel
+              ? `- ${cleanedParallel}`
               : "",
+            cleanedSerialNumber,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim()
+        : cleanedBrand;
 
-          auctionSourceUrl:
-            auctionSourceUrl.trim(),
+    const submittedParallel =
+  cleanedParallel;
 
-          contributor: {
-            name: contributorName.trim(),
-            email: contributorEmail.trim(),
-          },
+    const res = await fetch("/api/tnce", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
 
-          activeObject,
+      body: JSON.stringify({
+        project,
 
-          fields: {
-  Card_Title: cleanCardTitle(cardTitle),
-  Serial_Number: serialNumber.trim(),
+        submissionType:
+          modeConfig.submissionType,
 
-            Card_id: valueFromActiveObject(
+        submissionMode: mode,
+
+        submissionAction: action,
+
+        sourcePageUrl:
+          typeof window !== "undefined"
+            ? window.location.href
+            : "",
+
+        auctionSourceUrl:
+          auctionSourceUrl.trim(),
+
+        contributor: {
+          name: contributorName.trim(),
+          email: contributorEmail.trim(),
+        },
+
+        activeObject,
+
+        fields: {
+          Card_Title:
+            cleanCardTitle(cardTitle),
+
+          Serial_Number:
+            cleanedSerialNumber,
+
+          Card_id:
+            valueFromActiveObject(
               activeObject,
               [
                 "Card_id",
@@ -636,73 +952,140 @@ setUploadedImages(importedUploads);
               ]
             ),
 
-            Variation_Input: variation.trim(),
+          Variation_Input:
+            variation.trim(),
 
-            Grade: grade,
-            Cert_Number: certNumber,
+          Year:
+            cardYear.trim(),
 
-            Auction_Source_URL:
-              auctionSourceUrl.trim(),
-          },
+          First:
+            firstName.trim(),
 
-          imageUrls: {
-            front: frontImage.trim(),
-            back: backImage.trim(),
+          Last:
+            lastName.trim(),
 
-            other: otherImages
+          Num:
+            cardNumber.trim(),
+
+          Brand:
+            submittedBrand,
+
+          Manufacturer:
+            manufacturer.trim(),
+
+          Set:
+            setName.trim(),
+
+          Subset:
+            subset.trim(),
+
+          Parallel:
+            submittedParallel,
+
+          Sport:
+            sport.trim(),
+
+          Grade:
+            grade.trim(),
+
+          Cert_Number:
+            certNumber.trim(),
+
+          Status:
+            status.trim(),
+
+          Suspect:
+            suspect.trim(),
+
+          Description:
+            description.trim(),
+
+          Cost:
+            cost.trim(),
+
+          Previous_Grade:
+            previousGrade.trim(),
+
+          Previous_Cert_Number:
+            previousCertNumber.trim(),
+
+          Previous_Source_URL:
+            previousSourceUrl.trim(),
+
+          Attribution_Type:
+            attributionType,
+
+          Public_Source_URL:
+            publicSourceUrl.trim(),
+
+          Auction_Source_URL:
+            auctionSourceUrl.trim(),
+        },
+
+        imageUrls: {
+          front:
+            frontImage.trim(),
+
+          back:
+            backImage.trim(),
+
+          other:
+            otherImages
               .split(/\r?\n/)
               .map((url) => url.trim())
               .filter(Boolean),
-          },
+        },
 
-          uploadedImages: uploadedImages.map(
-            (image) => ({
-              fileName: image.fileName,
-              contentType: image.contentType,
-              base64: image.base64,
-              slot: image.slot,
-            })
-          ),
+        uploadedImages:
+          uploadedImages.map((image) => ({
+            fileName: image.fileName,
+            contentType: image.contentType,
+            base64: image.base64,
+            slot: image.slot,
+          })),
 
-          notes,
-        }),
-      });
+        notes: notes.trim(),
+      }),
+    });
 
-      const text = await res.text();
+    const text = await res.text();
 
-      let json: any;
+    let json: any;
 
-      try {
-        json = JSON.parse(text);
-      } catch {
-        throw new Error(
-          `Submission returned invalid JSON. First response text: ${text.slice(
-            0,
-            300
-          )}`
-        );
-      }
-
-      if (!res.ok || !json.ok) {
-        throw new Error(
-          json.error || "Submission failed."
-        );
-      }
-
-      onSuccess(json.submissionId);
-    } catch (error: any) {
-      setSubmitError(
-        error?.message || "Submission failed."
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `Submission returned invalid JSON. First response text: ${text.slice(
+          0,
+          300
+        )}`
       );
-    } finally {
-      setSubmitting(false);
     }
+
+    if (!res.ok || !json.ok) {
+      throw new Error(
+        json.error ||
+          "Submission failed."
+      );
+    }
+
+    onSuccess(json.submissionId);
+  } catch (error: any) {
+    setSubmitError(
+      error?.message ||
+        "Submission failed."
+    );
+  } finally {
+    setSubmitting(false);
   }
+}
 
   return (
     <>
       <ContributionHeader
   mode={mode}
+  action={action}
   project={project}
   projectLabel={projectLabel}
   onClose={onClose}
@@ -1001,7 +1384,7 @@ setUploadedImages(importedUploads);
       setNotes(event.target.value)
     }
     className="min-h-28 rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-    placeholder="Tell us what should be added, corrected, or reviewed."
+    placeholder={actionConfig.notesPlaceholder}
   />
 </label>
 
@@ -1019,9 +1402,10 @@ setUploadedImages(importedUploads);
         )}
 
         <SubmitButton
-          submitting={submitting}
-          onClick={submitContribution}
-        />
+  submitting={submitting}
+  label={actionConfig.submitText}
+  onClick={submitContribution}
+/>
       </div>
     </>
   );

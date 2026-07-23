@@ -544,7 +544,7 @@ function filterMouseLeave(
 
         <TNCEContributeButton
   theme={theme}
-  label="+ Contribute"
+  label="+ Add New Card"
   onClick={() => setShowContributionModal(true)}
 />
       </div>

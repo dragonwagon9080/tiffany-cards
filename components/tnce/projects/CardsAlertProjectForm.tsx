@@ -13,23 +13,20 @@ type Props = {
   cardNumber?: string;
   setCardNumber?: (value: string) => void;
 
-  brand?: string;
-  setBrand?: (value: string) => void;
-
-  manufacturer?: string;
-  setManufacturer?: (value: string) => void;
-
-  setName?: string;
-  setSetName?: (value: string) => void;
-
-  subset?: string;
-  setSubset?: (value: string) => void;
-
   parallel?: string;
   setParallel?: (value: string) => void;
 
+  serialNumber?: string;
+  setSerialNumber?: (value: string) => void;
+
+  brand?: string;
+  setBrand?: (value: string) => void;
+
   sport?: string;
   setSport?: (value: string) => void;
+
+  status?: string;
+  setStatus?: (value: string) => void;
 };
 
 export default function CardsAlertProjectForm({
@@ -41,18 +38,16 @@ export default function CardsAlertProjectForm({
   setLastName,
   cardNumber,
   setCardNumber,
-  brand,
-  setBrand,
-  manufacturer,
-  setManufacturer,
-  setName,
-  setSetName,
-  subset,
-  setSubset,
   parallel,
   setParallel,
+  serialNumber,
+  setSerialNumber,
+  brand,
+  setBrand,
   sport,
   setSport,
+  status,
+  setStatus,
 }: Props) {
   return (
     <div className="grid gap-6">
@@ -64,27 +59,21 @@ export default function CardsAlertProjectForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             Year
-
             <input
               value={cardYear ?? ""}
-              onChange={(event) =>
-                setCardYear?.(event.target.value)
-              }
+              onChange={(event) => setCardYear?.(event.target.value)}
               className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
               placeholder="2024"
             />
           </label>
 
           <label className="grid gap-1 text-sm">
-            Sport
-
+            Card #
             <input
-              value={sport ?? ""}
-              onChange={(event) =>
-                setSport?.(event.target.value)
-              }
+              value={cardNumber ?? ""}
+              onChange={(event) => setCardNumber?.(event.target.value)}
               className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-              placeholder="Basketball"
+              placeholder="123"
             />
           </label>
         </div>
@@ -92,24 +81,18 @@ export default function CardsAlertProjectForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             First Name
-
             <input
               value={firstName ?? ""}
-              onChange={(event) =>
-                setFirstName?.(event.target.value)
-              }
+              onChange={(event) => setFirstName?.(event.target.value)}
               className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
             />
           </label>
 
           <label className="grid gap-1 text-sm">
             Last Name
-
             <input
               value={lastName ?? ""}
-              onChange={(event) =>
-                setLastName?.(event.target.value)
-              }
+              onChange={(event) => setLastName?.(event.target.value)}
               className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
             />
           </label>
@@ -117,81 +100,57 @@ export default function CardsAlertProjectForm({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
-            Card Number
-
+            Parallel
             <input
-              value={cardNumber ?? ""}
-              onChange={(event) =>
-                setCardNumber?.(event.target.value)
-              }
+              value={parallel ?? ""}
+              onChange={(event) => setParallel?.(event.target.value)}
               className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-              placeholder="123"
+              placeholder="Gold"
             />
           </label>
 
           <label className="grid gap-1 text-sm">
-            Brand
-
+            Serial #
             <input
-              value={brand ?? ""}
-              onChange={(event) =>
-                setBrand?.(event.target.value)
-              }
+              value={serialNumber ?? ""}
+              onChange={(event) => setSerialNumber?.(event.target.value)}
               className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-              placeholder="Topps"
+              placeholder="12/25"
             />
           </label>
         </div>
+
+        <label className="grid gap-1 text-sm">
+          Brand
+          <input
+            value={brand ?? ""}
+            onChange={(event) => setBrand?.(event.target.value)}
+            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+            placeholder="Panini National Treasures or Topps Chrome - Diamond Moments"
+          />
+        </label>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
-            Manufacturer
-
+            Sport
             <input
-              value={manufacturer ?? ""}
-              onChange={(event) =>
-                setManufacturer?.(event.target.value)
-              }
+              value={sport ?? ""}
+              onChange={(event) => setSport?.(event.target.value)}
               className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="Basketball"
             />
           </label>
 
           <label className="grid gap-1 text-sm">
-            Set
-
+            Status
             <input
-              value={setName ?? ""}
-              onChange={(event) =>
-                setSetName?.(event.target.value)
-              }
+              value={status ?? ""}
+              onChange={(event) => setStatus?.(event.target.value)}
               className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="Altered"
             />
           </label>
         </div>
-
-        <label className="grid gap-1 text-sm">
-          Subset
-
-          <input
-            value={subset ?? ""}
-            onChange={(event) =>
-              setSubset?.(event.target.value)
-            }
-            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-          />
-        </label>
-
-        <label className="grid gap-1 text-sm">
-          Parallel
-
-          <input
-            value={parallel ?? ""}
-            onChange={(event) =>
-              setParallel?.(event.target.value)
-            }
-            className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-          />
-        </label>
       </section>
     </div>
   );

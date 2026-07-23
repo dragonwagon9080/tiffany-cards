@@ -19,7 +19,15 @@ export type TNCESubmissionType =
   | "image"
   | "other";
 
-export type TNCESubmissionMode = "new" | "update" | "missing";
+export type TNCESubmissionMode =
+  | "new"
+  | "update"
+  | "missing";
+
+export type TNCESubmissionAction =
+  | "update"
+  | "similar"
+  | "removal";
 
 export type TNCEReviewStatus =
   | "Pending Review"
@@ -55,7 +63,8 @@ export interface TNCESubmission {
   project: TNCEProject;
   submissionType: TNCESubmissionType;
   submissionMode?: TNCESubmissionMode;
-  sourcePageUrl: string;
+submissionAction?: TNCESubmissionAction;
+sourcePageUrl: string;
   auctionSourceUrl?: string;
   contributor: TNCEContributor;
   activeObject: TNCEActiveObject;
