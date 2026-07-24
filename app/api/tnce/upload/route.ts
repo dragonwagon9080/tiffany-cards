@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 type UploadRequestBody = {
   project?: string;
   submissionId?: string;
-  images?: Array<{
+  files?: Array<{
     slot?: TNCEImageSlot;
     fileName?: string;
     contentType?: string;
@@ -19,61 +19,93 @@ type UploadRequestBody = {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as UploadRequestBody;
+    const body =
+      (await request.json()) as UploadRequestBody;
 
-    const project = String(body.project || "").trim();
-    const submissionId = String(body.submissionId || "").trim();
+    const project = String(
+      body.project || ""
+    ).trim();
 
-    const images = Array.isArray(body.images)
-      ? body.images.map((image) => ({
-          slot: image.slot || "other",
-          fileName: String(image.fileName || "image.jpg"),
-          contentType: String(image.contentType || ""),
+    const submissionId = String(
+      body.submissionId || ""
+    ).trim();
+
+    const files = Array.isArray(body.files)
+      ? body.files.map((file) => ({
+          slot: file.slot || "other",
+          fileName: String(
+            file.fileName || "image.jpg"
+          ),
+          contentType: String(
+            file.contentType || ""
+          ),
         }))
       : [];
 
     if (!project) {
       return NextResponse.json(
-        { error: "Missing project." },
-        { status: 400 }
+        {
+          ok: false,
+          error: "Missing project.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
     if (!submissionId) {
       return NextResponse.json(
-        { error: "Missing submission ID." },
-        { status: 400 }
+        {
+          ok: false,
+          error: "Missing submission ID.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    if (images.length === 0) {
+    if (files.length === 0) {
       return NextResponse.json(
-        { error: "No images received." },
-        { status: 400 }
+        {
+          ok: false,
+          error: "No images received.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    const uploads = await createSignedImageUploads({
-      project,
-      submissionId,
-      images,
-    });
+    const signedFiles =
+      await createSignedImageUploads({
+        project,
+        submissionId,
+        images: files,
+      });
 
     return NextResponse.json({
       ok: true,
-      uploads,
+      files: signedFiles,
     });
   } catch (error) {
-    console.error("TNCE signed upload error:", error);
+    console.error(
+      "TNCE signed upload error:",
+      error
+    );
 
     return NextResponse.json(
       {
+        ok: false,
         error:
           error instanceof Error
             ? error.message
             : "Unable to prepare image uploads.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

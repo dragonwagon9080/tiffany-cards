@@ -138,8 +138,7 @@ async function importImageAsUpload(
   slot: "front" | "back" | "other",
   index: number
 ): Promise<PendingTNCEUpload> {
- 
-   const response = await fetch(
+  const response = await fetch(
     "/api/tnce/import-image",
     {
       method: "POST",
@@ -152,33 +151,86 @@ async function importImageAsUpload(
 
   const result = await response.json();
 
-if (
-  !response.ok ||
-  !result.ok ||
-  !result.base64
-) {
- 
-  throw new Error(
-    result.error ||
-      `Unable to import listing image ${
-        index + 1
-      }.`
-  );
-}
+  if (
+    !response.ok ||
+    !result.ok ||
+    !result.base64
+  ) {
+    throw new Error(
+      result.error ||
+        `Unable to import listing image ${
+          index + 1
+        }.`
+    );
+  }
 
-  const id = `${Date.now()}-${index}-${Math.random()
-    .toString(36)
-    .slice(2)}`;
+  const dataUrl = String(result.base64);
+
+  const dataUrlMatch = dataUrl.match(
+    /^data:([^;,]+);base64,(.+)$/
+  );
+
+  if (!dataUrlMatch) {
+    throw new Error(
+      `Imported image ${
+        index + 1
+      } returned invalid image data.`
+    );
+  }
+
+  const contentType =
+    dataUrlMatch[1] || "image/jpeg";
+
+  const base64Data = dataUrlMatch[2];
+
+  const binaryString =
+    window.atob(base64Data);
+
+  const bytes =
+    new Uint8Array(binaryString.length);
+
+  for (
+    let byteIndex = 0;
+    byteIndex < binaryString.length;
+    byteIndex++
+  ) {
+    bytes[byteIndex] =
+      binaryString.charCodeAt(byteIndex);
+  }
+
+  const extension =
+    contentType === "image/png"
+      ? "png"
+      : contentType === "image/webp"
+      ? "webp"
+      : "jpg";
+
+  const fileName =
+    `${slot}-listing-image-${
+      index + 1
+    }.${extension}`;
+
+  const file = new File(
+    [bytes],
+    fileName,
+    {
+      type: contentType,
+    }
+  );
+
+  const id =
+    `${Date.now()}-${index}-${Math.random()
+      .toString(36)
+      .slice(2)}`;
 
   return {
     id,
     slot,
-    fileName: `${slot}-listing-image-${
-      index + 1
-    }.jpg`,
-    contentType: "image/jpeg",
-    base64: result.base64,
-    previewUrl: result.base64,
+    fileName,
+    contentType,
+    file,
+    previewUrl: URL.createObjectURL(file),
+    uploaded: false,
   };
 }
 
@@ -871,6 +923,80 @@ setUploadedImages(importedUploads);
     }
   }
 
+async function uploadPendingImages(
+  submissionId: string
+): Promise<PendingTNCEUpload[]> {
+  const pending = uploadedImages.filter(
+    (image) => image.file && !image.uploaded
+  );
+
+  if (pending.length === 0) {
+    return uploadedImages;
+  }
+
+  // Request signed upload URLs.
+  const response = await fetch("/api/tnce/upload", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      project,
+      submissionId,
+      files: pending.map((image) => ({
+        slot: image.slot,
+        fileName: image.fileName,
+        contentType: image.contentType,
+      })),
+    }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok || !result.ok) {
+    throw new Error(
+      result.error || "Unable to prepare image uploads."
+    );
+  }
+
+  const uploads = [...uploadedImages];
+
+  for (const signed of result.files) {
+    const image = uploads.find(
+      (x) =>
+        x.fileName === signed.fileName &&
+        x.slot === signed.slot
+    );
+
+    if (!image?.file) continue;
+
+    const uploadResponse = await fetch(
+      signed.uploadUrl,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": image.contentType,
+        },
+        body: image.file,
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      throw new Error(
+        `Failed uploading ${image.fileName}.`
+      );
+    }
+
+    image.uploaded = true;
+    image.objectPath = signed.objectPath;
+    image.publicUrl = signed.publicUrl;
+  }
+
+  setUploadedImages([...uploads]);
+
+  return uploads;
+}
+
   async function submitContribution() {
   if (submitting) return;
 
@@ -903,6 +1029,14 @@ setUploadedImages(importedUploads);
 
     const submittedParallel =
   cleanedParallel;
+
+const submissionId =
+  crypto.randomUUID();
+
+const uploadedFiles =
+  await uploadPendingImages(
+    submissionId
+  );
 
     const res = await fetch("/api/tnce", {
       method: "POST",
@@ -1036,13 +1170,16 @@ setUploadedImages(importedUploads);
               .filter(Boolean),
         },
 
-        uploadedImages:
-          uploadedImages.map((image) => ({
-            fileName: image.fileName,
-            contentType: image.contentType,
-            base64: image.base64,
-            slot: image.slot,
-          })),
+        submissionId,
+
+uploadedImages:
+  uploadedFiles.map((image) => ({
+    slot: image.slot,
+    fileName: image.fileName,
+    contentType: image.contentType,
+    objectPath: image.objectPath,
+    publicUrl: image.publicUrl,
+  })),
 
         notes: notes.trim(),
       }),

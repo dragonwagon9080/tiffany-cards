@@ -49,8 +49,13 @@ export interface TNCEImageUrls {
 export interface TNCEUploadedImage {
   fileName: string;
   contentType: string;
-  base64: string;
+
   slot?: "front" | "back" | "other";
+
+  objectPath?: string;
+  publicUrl?: string;
+
+  uploaded?: boolean;
 }
 
 export interface TNCEActiveObject {
@@ -68,7 +73,9 @@ sourcePageUrl: string;
   auctionSourceUrl?: string;
   contributor: TNCEContributor;
   activeObject: TNCEActiveObject;
-  fields: Record<string, any>;
+  submissionId?: string;
+
+fields: Record<string, any>;
   imageUrls: TNCEImageUrls;
   uploadedImages: TNCEUploadedImage[];
   notes?: string;
