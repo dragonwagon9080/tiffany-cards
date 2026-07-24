@@ -11,10 +11,11 @@ type UploadRequestBody = {
   project?: string;
   submissionId?: string;
   files?: Array<{
-    slot?: TNCEImageSlot;
-    fileName?: string;
-    contentType?: string;
-  }>;
+  id?: string;
+  slot?: TNCEImageSlot;
+  fileName?: string;
+  contentType?: string;
+}>;
 };
 
 export async function POST(request: NextRequest) {
@@ -31,16 +32,17 @@ export async function POST(request: NextRequest) {
     ).trim();
 
     const files = Array.isArray(body.files)
-      ? body.files.map((file) => ({
-          slot: file.slot || "other",
-          fileName: String(
-            file.fileName || "image.jpg"
-          ),
-          contentType: String(
-            file.contentType || ""
-          ),
-        }))
-      : [];
+  ? body.files.map((file) => ({
+      id: String(file.id || ""),
+      slot: file.slot || "other",
+      fileName: String(
+        file.fileName || "image.jpg"
+      ),
+      contentType: String(
+        file.contentType || ""
+      ),
+    }))
+  : [];
 
     if (!project) {
       return NextResponse.json(

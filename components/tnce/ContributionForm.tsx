@@ -934,7 +934,6 @@ async function uploadPendingImages(
     return uploadedImages;
   }
 
-  // Request signed upload URLs.
   const response = await fetch("/api/tnce/upload", {
     method: "POST",
     headers: {
@@ -961,33 +960,38 @@ async function uploadPendingImages(
 
   const uploads = [...uploadedImages];
 
-  for (const signed of result.files) {
-    const image = uploads.find(
-      (x) =>
-        x.fileName === signed.fileName &&
-        x.slot === signed.slot
-    );
+  for (let index = 0; index < result.files.length; index++) {
+    const signed = result.files[index];
+    const pendingImage = pending[index];
 
-    if (!image?.file) continue;
+    if (!pendingImage?.file) {
+      throw new Error("Unable to match image upload.");
+    }
 
-    const uploadResponse = await fetch(
-      signed.uploadUrl,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": image.contentType,
-        },
-        body: image.file,
-      }
-    );
+    const uploadResponse = await fetch(signed.uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": pendingImage.contentType,
+      },
+      body: pendingImage.file,
+    });
 
     if (!uploadResponse.ok) {
       throw new Error(
-        `Failed uploading ${image.fileName}.`
+        `Failed uploading ${pendingImage.fileName}.`
       );
     }
 
+    const image = uploads.find(
+      (item) => item.id === pendingImage.id
+    );
+
+    if (!image) {
+      throw new Error("Unable to save uploaded image.");
+    }
+
     image.uploaded = true;
+    image.fileName = signed.fileName;
     image.objectPath = signed.objectPath;
     image.publicUrl = signed.publicUrl;
   }
@@ -1033,10 +1037,12 @@ async function uploadPendingImages(
 const submissionId =
   crypto.randomUUID();
 
+  console.log("Starting uploadPendingImages");
 const uploadedFiles =
   await uploadPendingImages(
     submissionId
   );
+console.log(uploadedFiles);
 
     const res = await fetch("/api/tnce", {
       method: "POST",
@@ -1172,13 +1178,19 @@ const uploadedFiles =
 
         submissionId,
 
-uploadedImages:
-  uploadedFiles.map((image) => ({
+uploadedImages: uploadedFiles
+  .filter(
+    (image) =>
+      image.uploaded &&
+      typeof image.publicUrl === "string" &&
+      image.publicUrl.trim()
+  )
+  .map((image) => ({
     slot: image.slot,
     fileName: image.fileName,
     contentType: image.contentType,
     objectPath: image.objectPath,
-    publicUrl: image.publicUrl,
+    publicUrl: image.publicUrl!.trim(),
   })),
 
         notes: notes.trim(),

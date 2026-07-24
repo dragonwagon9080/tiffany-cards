@@ -42,8 +42,8 @@ export async function submitRPAContribution(
 
   if (!response.ok || !data.ok) {
     throw new Error(
-      data.error || "RPA contribution submission failed."
-    );
+  JSON.stringify(data, null, 2)
+);
   }
 
   return data;

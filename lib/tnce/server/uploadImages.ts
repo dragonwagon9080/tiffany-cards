@@ -13,10 +13,11 @@ export interface UploadImageRequest {
   project: string;
   submissionId: string;
   images: Array<{
-    slot: TNCEImageSlot;
-    fileName: string;
-    contentType: string;
-  }>;
+  id: string;
+  slot: TNCEImageSlot;
+  fileName: string;
+  contentType: string;
+}>;
 }
 
 export interface SignedUploadResult {
@@ -109,12 +110,12 @@ export async function createSignedImageUploads(
 
   return Promise.all(
     request.images.map(async (image, index) => {
-      const id = randomUUID();
+      const uploadId = randomUUID();
       const extension = extensionForContentType(image.contentType);
       const sequence = String(index + 1).padStart(2, "0");
 
       const finalFileName =
-        `${sequence}-${image.slot}-${id.slice(0, 8)}.${extension}`;
+        `${sequence}-${image.slot}-${uploadId.slice(0, 8)}.${extension}`;
 
       const objectPath =
         `contributions/${safeProject}/${safeSubmissionId}/${finalFileName}`;
@@ -129,7 +130,7 @@ export async function createSignedImageUploads(
       });
 
       return {
-        id,
+        id: image.id,
         slot: image.slot,
         fileName: finalFileName,
         contentType: image.contentType,
