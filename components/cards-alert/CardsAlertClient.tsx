@@ -62,9 +62,13 @@ function CopyText({ value }: { value: any }) {
 export default function CardsAlertClient({
   theme = {},
   statuses = [],
+  sports = [],
+  reasons = [],
 }: {
   theme?: CardsAlertTheme;
   statuses?: any[];
+  sports?: string[];
+  reasons?: string[];
 }) {
   
   const searchParams = useSearchParams();
@@ -622,6 +626,8 @@ function filterMouseLeave(
         project="cards-alert"
         projectLabel="Cards Alert"
         mode="new"
+        sports={sports}
+        reasons={reasons}
         activeObject={{
           id: "cards-alert-main-page",
           title: "Cards Alert Main Page",

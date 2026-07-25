@@ -137,17 +137,37 @@ export default function SubmissionDetails({
   onOrganizedImagesChange,
   onProductionChange,
 }: Props) {
-  const originalProductionRecord: TNCEProductionFields =
-  submission.Existing_Production_Record || {
-    Card_Title: "",
-    Serial_Number: "",
-    Variation_Input: "",
-    Card_History: "",
-    Grade: "",
-    Cert_Number: "",
-    Front_Image: "",
-    Back_Image: "",
-    Other_Images: "",
+  const existingProductionRecord =
+    submission.Existing_Production_Record;
+
+  const originalProductionRecord: TNCEProductionFields = {
+    Card_Title: String(
+      existingProductionRecord?.Card_Title || ""
+    ),
+    Serial_Number: String(
+      existingProductionRecord?.Serial_Number || ""
+    ),
+    Variation_Input: String(
+      existingProductionRecord?.Variation_Input || ""
+    ),
+    Card_History: String(
+      existingProductionRecord?.Card_History || ""
+    ),
+    Grade: String(
+      existingProductionRecord?.Grade || ""
+    ),
+    Cert_Number: String(
+      existingProductionRecord?.Cert_Number || ""
+    ),
+    Front_Image: String(
+      existingProductionRecord?.Front_Image || ""
+    ),
+    Back_Image: String(
+      existingProductionRecord?.Back_Image || ""
+    ),
+    Other_Images: String(
+      existingProductionRecord?.Other_Images || ""
+    ),
   };
 
   const additionalImages = splitImages(

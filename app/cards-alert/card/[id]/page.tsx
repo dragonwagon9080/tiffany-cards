@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import CardClient from "./CardClient";
 import { getCachedCardsAlertData } from "@/lib/cards-alert/cache";
 import { getCardsAlertStatuses } from "@/lib/cms";
+import { getCardsAlertLists } from "@/lib/cards-alert/lists";
 
 function findCardById(cards: any[], id: string) {
   const decodedId = decodeURIComponent(id);
@@ -61,7 +62,7 @@ export async function generateMetadata({
   const description = buildCardDescription(card);
   const image = card.front_image || card.back_image || "";
   const url = `https://www.tiffanycards.com/cards-alert/card/${encodeURIComponent(
-    id
+    id,
   )}`;
 
   return {
@@ -103,16 +104,21 @@ export default async function Page({
 }) {
   const { id } = await params;
 
-  const data = await getCachedCardsAlertData();
-  const card = findCardById(data.cards || [], id);
+  const [data, statuses, lists] = await Promise.all([
+    getCachedCardsAlertData(),
+    getCardsAlertStatuses(),
+    getCardsAlertLists(),
+  ]);
 
-  const statuses = await getCardsAlertStatuses();
+  const card = findCardById(data.cards || [], id);
 
   return (
     <CardClient
       id={id}
       initialCard={card || null}
       statuses={statuses}
-         />
+      sports={lists.sports}
+      reasons={lists.reasons}
+    />
   );
 }

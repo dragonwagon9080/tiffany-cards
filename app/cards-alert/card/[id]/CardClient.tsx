@@ -23,20 +23,19 @@ function sourceLabel(url: string) {
   if (lower.includes("comc")) return "COMC →";
   if (lower.includes("facebook")) return "Facebook →";
   if (lower.includes("instagram")) return "Instagram →";
-  if (lower.includes("x.com") || lower.includes("twitter"))
-    return "X →";
+  if (lower.includes("x.com") || lower.includes("twitter")) return "X →";
 
   return "View Source →";
 }
 function formatDescription(text: string) {
   return String(text || "")
     .replace(
-  /(https?:\/\/[^\s<]+)/g,
-  (url) =>
-    `<a href="${url}" target="_blank" rel="noopener noreferrer" class="font-bold text-blue-400 underline hover:text-blue-300">${sourceLabel(
-      url
-    )}</a>`
-)
+      /(https?:\/\/[^\s<]+)/g,
+      (url) =>
+        `<a href="${url}" target="_blank" rel="noopener noreferrer" class="font-bold text-blue-400 underline hover:text-blue-300">${sourceLabel(
+          url,
+        )}</a>`,
+    )
     .replace(/\n/g, "<br />");
 }
 
@@ -47,13 +46,7 @@ function splitImages(value: any) {
     .filter(Boolean);
 }
 
-function InfoBox({
-  label,
-  value,
-}: {
-  label: string;
-  value: any;
-}) {
+function InfoBox({ label, value }: { label: string; value: any }) {
   const [copied, setCopied] = useState(false);
 
   const text = String(value || "").trim() || "—";
@@ -103,22 +96,27 @@ export default function CardClient({
   id,
   initialCard,
   statuses = [],
+  sports = [],
+  reasons = [],
 }: {
   id: string;
   initialCard?: any;
   statuses?: any[];
+  sports?: string[];
+  reasons?: string[];
 }) {
   const [card, setCard] = useState<any>(initialCard || null);
   const [loading, setLoading] = useState(!initialCard);
   const [error, setError] = useState("");
-const [showContributionModal, setShowContributionModal] = useState(false);
+  const [showContributionModal, setShowContributionModal] = useState(false);
 
-const [contributionMode, setContributionMode] =
-  useState<"update" | "new">("update");
+  const [contributionMode, setContributionMode] = useState<"update" | "new">(
+    "update",
+  );
 
-const [contributionAction, setContributionAction] = useState<
-  "update" | "similar" | "removal"
->("update");
+  const [contributionAction, setContributionAction] = useState<
+    "update" | "similar" | "removal"
+  >("update");
 
   const [leftIndex, setLeftIndex] = useState(0);
   const [rightIndex, setRightIndex] = useState(0);
@@ -128,7 +126,9 @@ const [contributionAction, setContributionAction] = useState<
 
     async function loadCard() {
       try {
-        const res = await fetch(`/api/cards-alert/card/${encodeURIComponent(id)}`);
+        const res = await fetch(
+          `/api/cards-alert/card/${encodeURIComponent(id)}`,
+        );
 
         if (!res.ok) {
           setError("Card not found");
@@ -185,12 +185,12 @@ const [contributionAction, setContributionAction] = useState<
     });
   });
 
-  const additionalImages: ImageItem[] = splitImages(card?.additional_images).map(
-    (url, index) => ({
-      url,
-      label: `Additional ${index + 1}`,
-    })
-  );
+  const additionalImages: ImageItem[] = splitImages(
+    card?.additional_images,
+  ).map((url, index) => ({
+    url,
+    label: `Additional ${index + 1}`,
+  }));
 
   const allCompareImages: ImageItem[] = [...leftImages, ...additionalImages];
 
@@ -202,8 +202,8 @@ const [contributionAction, setContributionAction] = useState<
       additionalImages.length > 0
         ? leftImages.length
         : leftImages.length > 1
-        ? 1
-        : 0
+          ? 1
+          : 0,
     );
   }, [card?.ID, card?.Cert_Number]);
 
@@ -231,11 +231,11 @@ const [contributionAction, setContributionAction] = useState<
   const goldButtonClass =
     "inline-flex w-fit items-center rounded border border-[#d4af37] bg-[#9c7a2d] px-3 py-1.5 text-sm font-bold text-[#111111] transition hover:bg-[#b99236]";
 
-console.log("TNCE Active Object", {
-  ...card,
-  id: card.ID || id,
-  title,
-});
+  console.log("TNCE Active Object", {
+    ...card,
+    id: card.ID || id,
+    title,
+  });
 
   return (
     <main className="min-h-screen bg-black px-4 py-8 text-white md:px-8">
@@ -247,87 +247,87 @@ console.log("TNCE Active Object", {
       />
 
       <div className="mx-auto w-full max-w-[1800px] px-2">
-        
-<UniversalPageHeader
-  section="Cards Alert"
-  title={title}
-  defaultTarget="cardsalert"
-  badge={
-    card.Status ? (
-      <StatusBadge
-        status={card.Status}
-        statuses={statuses}
-        size="large"
-      />
-    ) : undefined
-  }
->
-  <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-    <Link
-      href="/cards-alert"
-      className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#b99236] sm:w-auto sm:justify-start"
-    >
-      ← Back
-    </Link>
+        <UniversalPageHeader
+          section="Cards Alert"
+          title={title}
+          defaultTarget="cardsalert"
+          badge={
+            card.Status ? (
+              <StatusBadge
+                status={card.Status}
+                statuses={statuses}
+                size="large"
+              />
+            ) : undefined
+          }
+        >
+          <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Link
+              href="/cards-alert"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d4af37] bg-[#9c7a2d] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#b99236] sm:w-auto sm:justify-start"
+            >
+              ← Back
+            </Link>
 
-    <div className="flex flex-col gap-3 sm:flex-row">
-      <TNCEActionMenu
-  button={
-    <TNCEContributeButton
-      theme={{
-        report_bg_color: "#dc2626",
-        report_hover_color: "#991b1b",
-        report_border_color: "#fca5a5",
-        report_text_color: "#ffffff",
-      }}
-      label="+ Contribute"
-    />
-  }
-  actions={[
-    {
-  icon: "📝",
-  label: "Update Existing Card",
-  description: "Correct information or add details",
-  onClick: () => {
-    setContributionMode("update");
-setContributionAction("update");
-setShowContributionModal(true);
-  },
-},
-{
-  icon: "🆕",
-  label: "Report Similar Card",
-  description: "Same card with a different grade, cert, or serial number",
-  onClick: () => {
-    setContributionMode("new");
-setContributionAction("similar");
-setShowContributionModal(true);
-  },
-},
-{
-  icon: "🚫",
-  label: "Request Removal",
-  description: "Request review or removal of this listing",
-  danger: true,
-  onClick: () => {
-    setContributionMode("update");
-setContributionAction("removal");
-setShowContributionModal(true);
-  },
-},
-  ]}
-/>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <TNCEActionMenu
+                button={
+                  <TNCEContributeButton
+                    theme={{
+                      report_bg_color: "#dc2626",
+                      report_hover_color: "#991b1b",
+                      report_border_color: "#fca5a5",
+                      report_text_color: "#ffffff",
+                    }}
+                    label="+ Contribute"
+                  />
+                }
+                actions={[
+                  {
+                    icon: "📝",
+                    label: "Update Existing Card",
+                    description: "Correct information or add details",
+                    onClick: () => {
+                      setContributionMode("update");
+                      setContributionAction("update");
+                      setShowContributionModal(true);
+                    },
+                  },
+                  {
+                    icon: "🆕",
+                    label: "Report Similar Card",
+                    description:
+                      "Same card with a different grade, cert, or serial number",
+                    onClick: () => {
+                      setContributionMode("new");
+                      setContributionAction("similar");
+                      setShowContributionModal(true);
+                    },
+                  },
+                  {
+                    icon: "🚫",
+                    label: "Request Removal",
+                    description: "Request review or removal of this listing",
+                    danger: true,
+                    onClick: () => {
+                      setContributionMode("update");
+                      setContributionAction("removal");
+                      setShowContributionModal(true);
+                    },
+                  },
+                ]}
+              />
 
-      <ShareButton
-        type="alert"
-        title={title}
-        url={`https://www.tiffanycards.com/cards-alert/card/${encodeURIComponent(
-          id
-        )}`}
-      />
-    </div>
-  </div>
-</UniversalPageHeader>
+              <ShareButton
+                type="alert"
+                title={title}
+                url={`https://www.tiffanycards.com/cards-alert/card/${encodeURIComponent(
+                  id,
+                )}`}
+              />
+            </div>
+          </div>
+        </UniversalPageHeader>
 
         <section className="mt-8 overflow-hidden rounded-xl border border-[#9c7a2d]/80 bg-zinc-950 shadow-2xl">
           <div className="h-[820px] bg-black xl:h-[940px]">
@@ -344,25 +344,25 @@ setShowContributionModal(true);
         <Divider />
 
         <section className="mt-8 overflow-hidden rounded-lg border border-[#9c7a2d] bg-black">
-  <div className="grid grid-cols-2 divide-x divide-y divide-[#9c7a2d]/60 sm:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
-    <InfoBox label="Grade" value={card.Grade} />
+          <div className="grid grid-cols-2 divide-x divide-y divide-[#9c7a2d]/60 sm:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
+            <InfoBox label="Grade" value={card.Grade} />
 
-    <InfoBox label="Cert #" value={card.Cert_Number} />
+            <InfoBox label="Cert #" value={card.Cert_Number} />
 
-    <InfoBox
-      label="Player"
-      value={`${card.First || ""} ${card.Last || ""}`.trim()}
-    />
+            <InfoBox
+              label="Player"
+              value={`${card.First || ""} ${card.Last || ""}`.trim()}
+            />
 
-    <InfoBox label="Year" value={card.Year} />
+            <InfoBox label="Year" value={card.Year} />
 
-    <InfoBox label="Brand" value={card.Brand} />
+            <InfoBox label="Brand" value={card.Brand} />
 
-    <InfoBox label="Card #" value={card.Num} />
+            <InfoBox label="Card #" value={card.Num} />
 
-    <InfoBox label="Sport" value={card.Sport} />
-  </div>
-</section>
+            <InfoBox label="Sport" value={card.Sport} />
+          </div>
+        </section>
 
         <Divider />
 
@@ -404,23 +404,26 @@ setShowContributionModal(true);
           </a>{" "}
           Cards Alert is a community-driven resource for sharing opinions about
           cards that may be altered, fake, mislabeled, stolen, or otherwise
-          questionable. Information is provided for research and discussion only.
+          questionable. Information is provided for research and discussion
+          only.
         </section>
-           </div>
+      </div>
 
       <ContributionModal
-  open={showContributionModal}
-  onClose={() => setShowContributionModal(false)}
-  mode={contributionMode}
-  action={contributionAction}
-  project="cards-alert"
-  projectLabel="Cards Alert"
-  activeObject={{
-    ...card,
-    id: card.ID || id,
-    title,
-  }}
-/>
+        open={showContributionModal}
+        onClose={() => setShowContributionModal(false)}
+        mode={contributionMode}
+        action={contributionAction}
+        project="cards-alert"
+        projectLabel="Cards Alert"
+        sports={sports}
+        reasons={reasons}
+        activeObject={{
+          ...card,
+          id: card.ID || id,
+          title,
+        }}
+      />
     </main>
   );
 }

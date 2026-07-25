@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { TNCESubmission } from "@/lib/tnce/types";
 import { submitRPAContribution } from "@/lib/tnce/server/submitRPA";
+import { submitCardsAlertContribution } from "@/lib/tnce/server/submitCardsAlert";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,8 +12,11 @@ export async function POST(req: NextRequest) {
 
     if (!submission.project) {
       return NextResponse.json(
-        { ok: false, error: "Missing TNCE project." },
-        { status: 400 }
+        {
+          ok: false,
+          error: "Missing TNCE project.",
+        },
+        { status: 400 },
       );
     }
 
@@ -26,12 +30,22 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (submission.project === "cards-alert") {
+      const result = await submitCardsAlertContribution(submission);
+
+      return NextResponse.json({
+        ok: true,
+        submissionId: result.submissionId,
+        message: "Cards Alert contribution submitted for review.",
+      });
+    }
+
     return NextResponse.json(
       {
         ok: false,
         error: `TNCE project not implemented yet: ${submission.project}`,
       },
-      { status: 400 }
+      { status: 400 },
     );
   } catch (error: any) {
     return NextResponse.json(
@@ -39,7 +53,7 @@ export async function POST(req: NextRequest) {
         ok: false,
         error: error?.message || "TNCE submission failed.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

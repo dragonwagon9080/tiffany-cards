@@ -4,8 +4,17 @@ import { useState } from "react";
 import ContributionForm from "./ContributionForm";
 import SuccessScreen from "./SuccessScreen";
 
-type Project = "rpa-tracker" | "cards-alert" | "tiffany-cards" | "guides";
-type ContributionMode = "new" | "update" | "missing";
+type Project =
+  | "rpa-tracker"
+  | "cards-alert"
+  | "tiffany-cards"
+  | "guides";
+
+type ContributionMode =
+  | "new"
+  | "update"
+  | "missing";
+
 type ContributionAction =
   | "update"
   | "similar"
@@ -21,24 +30,32 @@ type Props = {
   open: boolean;
   onClose: () => void;
   mode?: ContributionMode;
-action?: ContributionAction;
-project: Project;
+  action?: ContributionAction;
+  project: Project;
   projectLabel: string;
   logoUrl?: string;
   activeObject: ActiveObject;
+
+  sports?: string[];
+  reasons?: string[];
 };
 
 export default function ContributionModal({
   open,
   onClose,
   mode = "new",
-action = "update",
-project,
+  action = "update",
+  project,
   projectLabel,
   logoUrl,
   activeObject,
+  sports = [],
+  reasons = [],
 }: Props) {
-  const [successSubmissionId, setSuccessSubmissionId] = useState("");
+  const [
+    successSubmissionId,
+    setSuccessSubmissionId,
+  ] = useState("");
 
   if (!open) return null;
 
@@ -57,19 +74,27 @@ project,
         {successSubmissionId ? (
           <SuccessScreen
             logoUrl={logoUrl}
-            submissionId={successSubmissionId}
-            onContributeAnother={contributeAnother}
+            submissionId={
+              successSubmissionId
+            }
+            onContributeAnother={
+              contributeAnother
+            }
             onClose={closeModal}
           />
         ) : (
           <ContributionForm
-  mode={mode}
-  action={action}
-  project={project}
+            mode={mode}
+            action={action}
+            project={project}
             projectLabel={projectLabel}
             activeObject={activeObject}
+            sports={sports}
+            reasons={reasons}
             onClose={closeModal}
-            onSuccess={setSuccessSubmissionId}
+            onSuccess={
+              setSuccessSubmissionId
+            }
           />
         )}
       </div>

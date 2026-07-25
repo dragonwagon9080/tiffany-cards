@@ -8,7 +8,6 @@ import {
 } from "react";
 
 type UploadSlot = "front" | "back" | "other";
-type ImageMethod = "upload" | "links";
 
 export type PendingTNCEUpload = {
   id: string;
@@ -316,7 +315,8 @@ function fileNameFromUrl(
 
 async function linkedImageToUpload(
   url: string,
-  index: number
+  index: number,
+  slot: UploadSlot
 ): Promise<PendingTNCEUpload> {
   const response = await fetch(
     "/api/tnce/fetch-image",
@@ -343,7 +343,7 @@ async function linkedImageToUpload(
     );
   }
 
-  const fileName = `other-${fileNameFromUrl(
+  const fileName = `${slot}-${fileNameFromUrl(
     url,
     index
   )}.jpg`;
@@ -356,7 +356,7 @@ async function linkedImageToUpload(
   return {
     id: createId(),
     source: "linked",
-    slot: "other",
+    slot,
     fileName,
     contentType: file.type,
     file,
@@ -459,9 +459,6 @@ export default function ImageSection({
   uploadedImages,
   setUploadedImages,
 }: Props) {
-  const [method, setMethod] =
-    useState<ImageMethod>("upload");
-
   const [error, setError] = useState("");
   const [rotatingId, setRotatingId] =
     useState("");
@@ -476,29 +473,46 @@ export default function ImageSection({
     useRef<HTMLInputElement>(null);
 
   async function addFiles(
-    files: File[],
-    slot: UploadSlot
+    files: File[]
   ) {
     setError("");
 
     if (files.length === 0) return;
 
     try {
-      const filesToProcess =
-        slot === "other"
-          ? files
-          : files.slice(0, 1);
-
       const prepared: PendingTNCEUpload[] =
         [];
 
-      for (const file of filesToProcess) {
+      let hasFront = uploadedImages.some(
+        (image) => image.slot === "front"
+      );
+
+      let hasBack = uploadedImages.some(
+        (image) => image.slot === "back"
+      );
+
+      for (const file of files) {
+        const slot: UploadSlot =
+          !hasFront
+            ? "front"
+            : !hasBack
+            ? "back"
+            : "other";
+
         prepared.push(
           await prepareImageFile(
             file,
             slot
           )
         );
+
+        if (slot === "front") {
+          hasFront = true;
+        }
+
+        if (slot === "back") {
+          hasBack = true;
+        }
       }
 
       setUploadedImages((current) => {
@@ -659,17 +673,41 @@ export default function ImageSection({
       const prepared: PendingTNCEUpload[] =
         [];
 
+      let hasFront = uploadedImages.some(
+        (image) => image.slot === "front"
+      );
+
+      let hasBack = uploadedImages.some(
+        (image) => image.slot === "back"
+      );
+
       for (
         let index = 0;
         index < urls.length;
         index += 1
       ) {
+        const slot: UploadSlot =
+          !hasFront
+            ? "front"
+            : !hasBack
+            ? "back"
+            : "other";
+
         prepared.push(
           await linkedImageToUpload(
             urls[index],
-            index
+            index,
+            slot
           )
         );
+
+        if (slot === "front") {
+          hasFront = true;
+        }
+
+        if (slot === "back") {
+          hasBack = true;
+        }
       }
 
       setUploadedImages((current) => [
@@ -678,7 +716,6 @@ export default function ImageSection({
       ]);
 
       setLinkInput("");
-      setMethod("upload");
     } catch (linkError: any) {
       setError(
         linkError?.message ||
@@ -687,44 +724,6 @@ export default function ImageSection({
     } finally {
       setAddingLinks(false);
     }
-  }
-
-  function switchToLinks() {
-    if (uploadedImages.length > 0) {
-      const confirmed = window.confirm(
-        "Switch to image URLs? Your selected and imported images will be removed."
-      );
-
-      if (!confirmed) return;
-    }
-
-    uploadedImages.forEach(revokePreview);
-
-    setUploadedImages([]);
-    setError("");
-    setMethod("links");
-  }
-
-  function switchToUploads() {
-    const hasLinks = Boolean(
-      frontImage.trim() ||
-        backImage.trim() ||
-        otherImages.trim()
-    );
-
-    if (hasLinks) {
-      const confirmed = window.confirm(
-        "Switch to image uploads? Your pasted image URLs will be cleared."
-      );
-
-      if (!confirmed) return;
-    }
-
-    setFrontImage("");
-    setBackImage("");
-    setOtherImages("");
-    setError("");
-    setMethod("upload");
   }
 
   return (
@@ -783,7 +782,7 @@ export default function ImageSection({
         URLs.
       </p>
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-4 grid gap-4">
         <button
           type="button"
           onClick={() =>
@@ -804,31 +803,14 @@ export default function ImageSection({
             addFiles(
               Array.from(
                 event.target.files || []
-              ),
-              "other"
+              )
             );
 
             event.target.value = "";
           }}
         />
 
-        <button
-          type="button"
-          onClick={switchToLinks}
-          className={`rounded-lg border px-3 py-2.5 text-xs font-bold uppercase tracking-wide transition ${
-            method === "links"
-              ? "border-[#d4af37] bg-[#181300] text-[#f1d36b]"
-              : "border-neutral-700 bg-black text-neutral-400 hover:text-white"
-          }`}
-        >
-          🔗 Link Images
-        </button>
-      </div>
-
-      {method === "upload" ? (
-        <div className="mt-4 grid gap-4" />
-      ) : (
-        <div className="mt-4 grid gap-3">
+        <div className="grid gap-3 rounded-xl border border-neutral-800 bg-black/40 p-3">
           <label className="grid gap-1 text-sm">
             Image URLs
 
@@ -848,10 +830,10 @@ https://example.com/back.jpg`}
           </label>
 
           <p className="text-xs leading-5 text-neutral-400">
-            Add one or more image URLs. The
-            images will appear above so you
-            can rotate, delete, and assign
-            them as Front, Back, or Other.
+            Uploads and linked images can be
+            combined. The first image defaults
+            to Front, the second to Back, and
+            the rest to Additional.
           </p>
 
           <button
@@ -864,16 +846,8 @@ https://example.com/back.jpg`}
               ? "Adding Images..."
               : "🔗 Add Linked Images"}
           </button>
-
-          <button
-            type="button"
-            onClick={switchToUploads}
-            className="rounded-lg border border-neutral-700 bg-black px-4 py-3 text-xs font-bold uppercase tracking-wide text-neutral-300 transition hover:border-[#d4af37] hover:text-white"
-          >
-            Return to Uploads
-          </button>
         </div>
-      )}
+      </div>
 
       {error && (
         <div className="mt-4 rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-200">

@@ -7,18 +7,34 @@ import {
   getTheme,
 } from "@/lib/cms";
 
+import { getCardsAlertLists } from "@/lib/cards-alert/lists";
+
 import PageHero from "@/components/site/PageHero";
 import CardsAlertClient from "@/components/cards-alert/CardsAlertClient";
 
 export default async function CardsAlertPage() {
-  const settings = await getSiteSettings();
-  const pages = await getPages();
-  const theme = await getTheme();
+  const [
+    settings,
+    pages,
+    theme,
+    statuses,
+    lists,
+  ] = await Promise.all([
+    getSiteSettings(),
+    getPages(),
+    getTheme(),
+    getCardsAlertStatuses(),
+    getCardsAlertLists(),
+  ]);
 
-  const statuses = await getCardsAlertStatuses();
+  const page =
+    pages.find(
+      (item: any) =>
+        item.slug === "cards-alert"
+    ) || {};
 
-  const page = pages.find((p: any) => p.slug === "cards-alert") || {};
-  const cardsAlertTheme = theme?.cards_alert || {};
+  const cardsAlertTheme =
+    theme?.cards_alert || {};
 
   return (
     <main className="min-h-screen bg-black">
@@ -26,13 +42,26 @@ export default async function CardsAlertPage() {
         title={page.title}
         subtitle={page.subtitle}
         heroImage={page.hero_image}
-        desktopBorder={page.border_image_desktop || settings.hero_border_image}
-        mobileBorder={page.border_image_mobile || settings.hero_border_mobile}
+        desktopBorder={
+          page.border_image_desktop ||
+          settings.hero_border_image
+        }
+        mobileBorder={
+          page.border_image_mobile ||
+          settings.hero_border_mobile
+        }
         fallbackTitle="Cards Alert"
       />
 
-      <Suspense fallback={<CardsAlertLoading />}>
-        <CardsAlertClient theme={cardsAlertTheme} statuses={statuses} />
+      <Suspense
+        fallback={<CardsAlertLoading />}
+      >
+        <CardsAlertClient
+          theme={cardsAlertTheme}
+          statuses={statuses}
+          sports={lists.sports}
+          reasons={lists.reasons}
+        />
       </Suspense>
     </main>
   );

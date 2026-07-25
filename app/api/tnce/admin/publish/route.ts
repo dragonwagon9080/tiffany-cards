@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 
+import type { TNCEProject } from "@/lib/tnce/types";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const EDITABLE_PRODUCTION_FIELDS = [
+const RPA_FIELDS = [
   "Card_Title",
   "Serial_Number",
   "Variation_Input",
@@ -16,213 +18,122 @@ const EDITABLE_PRODUCTION_FIELDS = [
   "Other_Images",
 ] as const;
 
-type EditableProductionField =
-  (typeof EDITABLE_PRODUCTION_FIELDS)[number];
+const CARDS_ALERT_FIELDS = [
+  "Year",
+  "First",
+  "Last",
+  "Num",
+  "Brand",
+  "Parallel",
+  "Serial_Number",
+  "Grade",
+  "Cert_Number",
+  "Status",
+  "Description",
+  "Sport",
+  "Year_Added",
+  "Site_Link",
+  "Front_Image",
+  "Back_Image",
+  "Additional_Images",
+  "Found_By",
+] as const;
 
-type ImageRole =
-  | "front"
-  | "back"
-  | "additional";
+type ImageRole = "front" | "back" | "additional";
 
-type OrganizedImageInput = {
-  id?: unknown;
-  url?: unknown;
-  role?: unknown;
-  rotation?: unknown;
-};
-
-type CleanOrganizedImage = {
+type CleanImage = {
   id: string;
   url: string;
   role: ImageRole;
   rotation: number;
 };
 
-type PreparedRotatedImage = {
-  originalUrl: string;
-  role: ImageRole;
-  rotation: number;
-  fileName: string;
-  contentType: "image/jpeg";
-  base64: string;
-};
+function endpointForProject(project: TNCEProject) {
+  return project === "cards-alert"
+    ? process.env.CARDS_ALERT_TNCE_APPS_SCRIPT_URL
+    : project === "rpa-tracker"
+      ? process.env.TNCE_APPS_SCRIPT_URL
+      : "";
+}
 
-type AppsScriptResponse = {
-  ok?: boolean;
-  error?: string;
-  [key: string]: unknown;
-};
+function secretForProject(project: TNCEProject) {
+  return project === "cards-alert"
+    ? process.env.CARDS_ALERT_TNCE_ADMIN_SECRET || process.env.TNCE_ADMIN_SECRET
+    : process.env.TNCE_ADMIN_SECRET;
+}
 
-function cleanProductionRecord(
-  value: unknown
-): Partial<
-  Record<EditableProductionField, string>
-> {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
+function cleanRecord(project: TNCEProject, value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
 
-  const source =
-    value as Record<string, unknown>;
+  const source = value as Record<string, unknown>;
 
-  const cleaned: Partial<
-    Record<EditableProductionField, string>
-  > = {};
+  const fields = project === "cards-alert" ? CARDS_ALERT_FIELDS : RPA_FIELDS;
 
-  for (
-    const field of EDITABLE_PRODUCTION_FIELDS
-  ) {
-    if (
-      !Object.prototype.hasOwnProperty.call(
-        source,
-        field
-      )
-    ) {
-      continue;
+  const result: Record<string, string> = {};
+
+  fields.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(source, field)) {
+      return;
     }
 
-    const rawValue = source[field];
+    const value = source[field];
 
-    if (Array.isArray(rawValue)) {
-      cleaned[field] = rawValue
-        .map((item) =>
-          String(item ?? "").trim()
-        )
-        .filter(Boolean)
-        .join("\n");
+    result[field] = Array.isArray(value)
+      ? value
+          .map((item) => String(item ?? "").trim())
+          .filter(Boolean)
+          .join("\n")
+      : String(value ?? "").trim();
+  });
 
-      continue;
-    }
-
-    cleaned[field] = String(
-      rawValue ?? ""
-    ).trim();
-  }
-
-  return cleaned;
+  return result;
 }
 
-function normalizeRotation(
-  value: unknown
-): number {
-  const parsed = Number(value || 0);
-
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-
-  const normalized =
-    ((parsed % 360) + 360) % 360;
-
-  return [0, 90, 180, 270].includes(
-    normalized
-  )
-    ? normalized
-    : 0;
-}
-
-function cleanRole(
-  value: unknown
-): ImageRole {
-  const role = String(value || "")
-    .trim()
-    .toLowerCase();
-
-  if (role === "front") {
-    return "front";
-  }
-
-  if (role === "back") {
-    return "back";
-  }
-
-  return "additional";
-}
-
-function cleanOrganizedImages(
-  value: unknown
-): CleanOrganizedImage[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+function cleanImages(value: unknown): CleanImage[] {
+  if (!Array.isArray(value)) return [];
 
   return value
-    .map(
-      (
-        item: OrganizedImageInput
-      ): CleanOrganizedImage => ({
-        id: String(
-          item?.id || ""
-        ).trim(),
+    .map((item: any) => {
+      const role = String(item?.role || "").toLowerCase();
 
-        url: String(
-          item?.url || ""
-        ).trim(),
+      const rotationValue = Number(item?.rotation || 0);
 
-        role: cleanRole(item?.role),
+      const rotation = [0, 90, 180, 270].includes(rotationValue)
+        ? rotationValue
+        : 0;
 
-        rotation: normalizeRotation(
-          item?.rotation
-        ),
-      })
-    )
+      return {
+        id: String(item?.id || "").trim(),
+        url: String(item?.url || "").trim(),
+        role:
+          role === "front" ? "front" : role === "back" ? "back" : "additional",
+        rotation,
+      } as CleanImage;
+    })
     .filter((image) => image.url);
 }
 
-function makeRotatedFileName(
-  role: ImageRole,
-  index: number
-) {
-  const suffix =
-    role === "additional"
-      ? `additional-${index + 1}`
-      : role;
+async function prepareRotatedImages(images: CleanImage[]) {
+  const prepared = [];
 
-  return `${suffix}-rotated.jpg`;
-}
+  for (let index = 0; index < images.length; index++) {
+    const image = images[index];
 
-async function prepareRotatedImages(
-  organizedImages: CleanOrganizedImage[]
-): Promise<PreparedRotatedImage[]> {
-  const imagesToRotate =
-    organizedImages.filter(
-      (image) => image.rotation !== 0
-    );
+    if (!image.rotation) continue;
 
-  const prepared: PreparedRotatedImage[] =
-    [];
+    const response = await fetch(image.url, { cache: "no-store" });
 
-  for (
-    let index = 0;
-    index < imagesToRotate.length;
-    index++
-  ) {
-    const image = imagesToRotate[index];
-
-    const imageResponse = await fetch(
-      image.url,
-      {
-        cache: "no-store",
-      }
-    );
-
-    if (!imageResponse.ok) {
+    if (!response.ok) {
       throw new Error(
-        `Unable to download image for rotation. Status: ${imageResponse.status}`
+        `Unable to download image for rotation (${response.status}).`,
       );
     }
 
-    const sourceBuffer = Buffer.from(
-      await imageResponse.arrayBuffer()
-    );
+    const source = Buffer.from(await response.arrayBuffer());
 
-    const rotatedBuffer = await sharp(
-      sourceBuffer
-    )
+    const rotated = await sharp(source)
       .rotate(image.rotation)
       .jpeg({
         quality: 90,
@@ -234,210 +145,88 @@ async function prepareRotatedImages(
       originalUrl: image.url,
       role: image.role,
       rotation: image.rotation,
-
-      fileName: makeRotatedFileName(
-        image.role,
-        index
-      ),
-
+      fileName: `${image.role}-rotated-${index + 1}.jpg`,
       contentType: "image/jpeg",
-
-      base64:
-        `data:image/jpeg;base64,` +
-        rotatedBuffer.toString("base64"),
+      base64: `data:image/jpeg;base64,${rotated.toString("base64")}`,
     });
   }
 
   return prepared;
 }
 
-export async function POST(
-  req: NextRequest
-) {
+export async function POST(req: NextRequest) {
   try {
-    const url =
-      process.env.TNCE_APPS_SCRIPT_URL;
-
-    const adminSecret =
-      process.env.TNCE_ADMIN_SECRET;
-
-    if (!url) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Missing TNCE_APPS_SCRIPT_URL environment variable.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (!adminSecret) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Missing TNCE_ADMIN_SECRET environment variable.",
-        },
-        { status: 500 }
-      );
-    }
-
     const body = await req.json();
 
-    const submissionId = String(
-      body?.submissionId || ""
-    ).trim();
+    const project = String(body?.project || "") as TNCEProject;
 
-    const reviewNotes = String(
-  body?.reviewNotes || ""
-).trim();
+    const submissionId = String(body?.submissionId || "").trim();
 
-const contributorNotes = String(
-  body?.contributorNotes || ""
-).trim();
+    const url = endpointForProject(project);
+    const adminSecret = secretForProject(project);
 
-const productionRecord =
-  cleanProductionRecord(
-    body?.productionRecord
-  );
-
-    const organizedImages =
-      cleanOrganizedImages(
-        body?.organizedImages
-      );
-
-    if (!submissionId) {
+    if (!url || !adminSecret || !submissionId) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Missing submissionId.",
+          error: "Missing TNCE publish configuration or submission ID.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const rotatedImages =
-      await prepareRotatedImages(
-        organizedImages
-      );
+    const organizedImages = cleanImages(body?.organizedImages);
 
-    const scriptResponse = await fetch(
-      url,
-      {
-        method: "POST",
+    const rotatedImages = await prepareRotatedImages(organizedImages);
 
-        headers: {
-          "Content-Type":
-            "text/plain;charset=utf-8",
-        },
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify({
+        action: "publish",
+        adminSecret,
+        submissionId,
+        reviewNotes: String(body?.reviewNotes || "").trim(),
+        contributorNotes: String(body?.contributorNotes || "").trim(),
+        productionRecord: cleanRecord(project, body?.productionRecord),
+        organizedImages,
+        rotatedImages,
+      }),
+      cache: "no-store",
+      redirect: "follow",
+    });
 
-        body: JSON.stringify({
-  action: "publish",
-  adminSecret,
-  submissionId,
-  reviewNotes,
-  contributorNotes,
-  productionRecord,
-  organizedImages,
-  rotatedImages,
-}),
-
-        cache: "no-store",
-        redirect: "follow",
-      }
-    );
-
-    const responseText =
-      await scriptResponse.text();
-
-    console.log(
-      "================================="
-    );
-
-    console.log(
-      "TNCE Publish Status:",
-      scriptResponse.status
-    );
-
-    console.log(
-      "TNCE Publish Final URL:",
-      scriptResponse.url
-    );
-
-    console.log(
-      "TNCE Publish Response:"
-    );
-
-    console.log(responseText);
-
-    console.log(
-      "================================="
-    );
-
-    let data: AppsScriptResponse;
+    const text = await response.text();
+    let data: any;
 
     try {
-      data = JSON.parse(responseText);
+      data = JSON.parse(text);
     } catch {
-      return NextResponse.json(
-        {
-          ok: false,
-
-          error:
-            `TNCE Apps Script returned non-JSON. ` +
-            `Status: ${scriptResponse.status}. ` +
-            `Final URL: ${scriptResponse.url}. ` +
-            `First response text: ${responseText.slice(
-              0,
-              500
-            )}`,
-        },
-        { status: 502 }
+      throw new Error(
+        `TNCE publish returned invalid JSON: ${text.slice(0, 500)}`,
       );
     }
 
-    if (
-      !scriptResponse.ok ||
-      !data.ok
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-
-          error:
-            data.error ||
-            `Publish failed with status ${scriptResponse.status}.`,
-        },
-        { status: 502 }
-      );
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Publishing failed.");
     }
 
     return NextResponse.json(data, {
-      status: 200,
-
       headers: {
-        "Cache-Control":
-          "no-store, no-cache, must-revalidate",
+        "Cache-Control": "no-store",
       },
     });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Publish failed.";
-
-    console.error(
-      "TNCE publish route error:",
-      error
-    );
+  } catch (error: any) {
+    console.error("TNCE publish route error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: message,
+        error: error?.message || "Publishing failed.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

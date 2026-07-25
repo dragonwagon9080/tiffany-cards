@@ -1,6 +1,5 @@
 /* ============================================================
    TiffanyCards Network Contribution Engine (TNCE)
-
    Shared Types
    ============================================================ */
 
@@ -17,17 +16,13 @@ export type TNCESubmissionType =
   | "correction"
   | "ownership"
   | "image"
-  | "other";
+  | "other"
+  | "new-cards-alert-card"
+  | "similar-cards-alert-card";
 
-export type TNCESubmissionMode =
-  | "new"
-  | "update"
-  | "missing";
+export type TNCESubmissionMode = "new" | "update" | "missing";
 
-export type TNCESubmissionAction =
-  | "update"
-  | "similar"
-  | "removal";
+export type TNCESubmissionAction = "new" | "update" | "similar" | "removal";
 
 export type TNCEReviewStatus =
   | "Pending Review"
@@ -49,12 +44,9 @@ export interface TNCEImageUrls {
 export interface TNCEUploadedImage {
   fileName: string;
   contentType: string;
-
   slot?: "front" | "back" | "other";
-
   objectPath?: string;
   publicUrl?: string;
-
   uploaded?: boolean;
 }
 
@@ -68,16 +60,17 @@ export interface TNCESubmission {
   project: TNCEProject;
   submissionType: TNCESubmissionType;
   submissionMode?: TNCESubmissionMode;
-submissionAction?: TNCESubmissionAction;
-sourcePageUrl: string;
+  submissionAction?: TNCESubmissionAction;
+  sourcePageUrl: string;
   auctionSourceUrl?: string;
   contributor: TNCEContributor;
   activeObject: TNCEActiveObject;
   submissionId?: string;
-
-fields: Record<string, any>;
+  fields: Record<string, any>;
   imageUrls: TNCEImageUrls;
   uploadedImages: TNCEUploadedImage[];
+  previousImageUrls?: TNCEImageUrls;
+  previousUploadedImages?: TNCEUploadedImage[];
   notes?: string;
 }
 
@@ -108,6 +101,31 @@ export interface TNCEProductionFields {
   Other_Images: string;
 }
 
+export interface CardsAlertProductionFields {
+  Year: string;
+  First: string;
+  Last: string;
+  Num: string;
+  Brand: string;
+  Parallel: string;
+  Serial_Number: string;
+  Grade: string;
+  Cert_Number: string;
+  Status: string;
+  Description: string;
+  Sport: string;
+  Year_Added: string;
+  Site_Link: string;
+  Front_Image: string;
+  Back_Image: string;
+  Additional_Images: string;
+  Found_By: string;
+}
+
+export type TNCEPublishRecord =
+  | TNCEProductionFields
+  | CardsAlertProductionFields;
+
 export interface TNCEReviewMetadata {
   Existing_Card_ID: string;
   TNCE_Status: TNCEReviewStatus;
@@ -115,6 +133,7 @@ export interface TNCEReviewMetadata {
   Submitted_At: string;
   Project: TNCEProject;
   Submission_Mode: TNCESubmissionMode;
+  Submission_Action?: TNCESubmissionAction;
   Source_Page_URL: string;
   Active_Object_ID: string;
   Active_Object_Title: string;
@@ -126,6 +145,7 @@ export interface TNCEReviewMetadata {
   Reviewed_At: string;
   Review_Notes: string;
   Uploaded_Image_URLs: string;
+  Previous_Uploaded_Image_URLs?: string;
   Raw_Submission_JSON: string;
 }
 
@@ -137,6 +157,7 @@ export interface TNCESubmittedImages {
     fileName?: string;
     contentType?: string;
     slot?: "front" | "back" | "other";
+    publicUrl?: string;
     uploaded?: boolean;
   }>;
 }
@@ -146,8 +167,31 @@ export interface TNCEAdminSubmission
     TNCEReviewMetadata {
   rowNumber?: number;
 
-  Existing_Production_Record?: TNCEProductionFields;
+  Year?: string;
+  First?: string;
+  Last?: string;
+  Num?: string;
+  Brand?: string;
+  Parallel?: string;
+  Status?: string;
+  Description?: string;
+  Sport?: string;
+  Year_Added?: string;
+  Site_Link?: string;
+  Additional_Images?: string;
+  Found_By?: string;
+
+  Current_Source_URLs?: string;
+  Previous_Grade?: string;
+  Previous_Cert_Number?: string;
+  Previous_Source_URLs?: string;
+  Previous_Front_Image?: string;
+  Previous_Back_Image?: string;
+  Previous_Additional_Images?: string;
+
+  Existing_Production_Record?: Record<string, any>;
   Submitted_Images?: TNCESubmittedImages;
+  Previous_Submitted_Images?: TNCESubmittedImages;
 }
 
 export interface TNCEAdminStats {
@@ -173,12 +217,9 @@ export interface TNCEAdminQueueResponse {
 }
 
 export interface TNCEAdminActionRequest {
+  project: TNCEProject;
   submissionId: string;
-  action:
-    | "needs-info"
-    | "reject"
-    | "publish"
-    | "reset-pending";
+  action: "needs-info" | "reject" | "publish" | "reset-pending";
   reviewNotes?: string;
 }
 

@@ -1,19 +1,40 @@
-import type { TNCEAdminQueueResponse } from "../types";
+import type { TNCEAdminQueueResponse, TNCEProject } from "../types";
 
-export async function getAdminQueue(): Promise<TNCEAdminQueueResponse> {
-  const url = process.env.TNCE_APPS_SCRIPT_URL;
-  const adminSecret = process.env.TNCE_ADMIN_SECRET;
+function endpointForProject(project: TNCEProject) {
+  if (project === "rpa-tracker") {
+    return process.env.TNCE_APPS_SCRIPT_URL;
+  }
 
-  if (!url) {
-    throw new Error(
-      "Missing TNCE_APPS_SCRIPT_URL environment variable."
+  if (project === "cards-alert") {
+    return process.env.CARDS_ALERT_TNCE_APPS_SCRIPT_URL;
+  }
+
+  return "";
+}
+
+function adminSecretForProject(project: TNCEProject) {
+  if (project === "cards-alert") {
+    return (
+      process.env.CARDS_ALERT_TNCE_ADMIN_SECRET || process.env.TNCE_ADMIN_SECRET
     );
   }
 
+  return process.env.TNCE_ADMIN_SECRET;
+}
+
+export async function getAdminQueue(
+  project: TNCEProject,
+): Promise<TNCEAdminQueueResponse> {
+  const url = endpointForProject(project);
+
+  const adminSecret = adminSecretForProject(project);
+
+  if (!url) {
+    throw new Error(`Missing TNCE Apps Script URL for ${project}.`);
+  }
+
   if (!adminSecret) {
-    throw new Error(
-      "Missing TNCE_ADMIN_SECRET environment variable."
-    );
+    throw new Error(`Missing TNCE admin secret for ${project}.`);
   }
 
   const response = await fetch(url, {
@@ -37,17 +58,15 @@ export async function getAdminQueue(): Promise<TNCEAdminQueueResponse> {
     data = JSON.parse(text);
   } catch {
     throw new Error(
-      `TNCE Apps Script returned invalid JSON. First response text: ${text.slice(
+      `${project} Apps Script returned invalid JSON. First response text: ${text.slice(
         0,
-        500
-      )}`
+        500,
+      )}`,
     );
   }
 
   if (!response.ok || !data.ok) {
-    throw new Error(
-      data.error || "Unable to load TNCE admin queue."
-    );
+    throw new Error(data.error || `Unable to load ${project} TNCE queue.`);
   }
 
   return data;
