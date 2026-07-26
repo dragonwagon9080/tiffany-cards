@@ -10,6 +10,7 @@ import SubmitButton from "../SubmitButton";
 import {
   openSubmissionProgress,
 } from "../SubmissionProgress";
+import { parseAuctionTitle } from "@/lib/tnce/auctionParser";
 
 type Props = {
   mode: "new" | "update" | "missing";
@@ -35,6 +36,7 @@ type AuctionImportResult = {
   certNumber?: string;
   grade?: string;
   serialNumber?: string;
+  aspects?: Record<string, string[]>;
   frontImage?: string;
   additionalImages?: string[];
   error?: string;
@@ -159,6 +161,7 @@ async function importImageAsUpload(
     contentType,
     file,
     previewUrl: URL.createObjectURL(file),
+    originalUrl: url,
     uploaded: false,
   };
 }
@@ -328,6 +331,11 @@ export default function NewCardsAlertForm({
         throw new Error(result.error || "Unable to import this listing.");
       }
 
+      const parsedListing = parseAuctionTitle(
+        result.title,
+        result.aspects,
+      );
+
       const imageUrls = uniqueLines([
         result.frontImage || "",
         ...(Array.isArray(result.additionalImages)
@@ -359,16 +367,51 @@ export default function NewCardsAlertForm({
         }
       }
 
-      if (result.grade && !grade.trim()) {
-        setGrade(result.grade);
+      if (parsedListing.year && !cardYear.trim()) {
+        setCardYear(parsedListing.year);
+      }
+
+      if (parsedListing.firstName && !firstName.trim()) {
+        setFirstName(parsedListing.firstName);
+      }
+
+      if (parsedListing.lastName && !lastName.trim()) {
+        setLastName(parsedListing.lastName);
+      }
+
+      if (parsedListing.cardNumber && !cardNumber.trim()) {
+        setCardNumber(parsedListing.cardNumber);
+      }
+
+      if (parsedListing.brand && !brand.trim()) {
+        setBrand(parsedListing.brand);
+      }
+
+      if (parsedListing.parallel && !parallel.trim()) {
+        setParallel(parsedListing.parallel);
+      }
+
+      if (parsedListing.sport && !sport.trim()) {
+        setSport(parsedListing.sport);
+      }
+
+      const importedGrade =
+        result.grade || parsedListing.grade;
+
+      if (importedGrade && !grade.trim()) {
+        setGrade(importedGrade);
       }
 
       if (result.certNumber && !certNumber.trim()) {
         setCertNumber(result.certNumber);
       }
 
-      if (result.serialNumber && !serialNumber.trim()) {
-        setSerialNumber(result.serialNumber);
+      const importedSerial =
+        result.serialNumber ||
+        parsedListing.serialNumber;
+
+      if (importedSerial && !serialNumber.trim()) {
+        setSerialNumber(importedSerial);
       }
 
       setUploadedImages((current) => [...current, ...importedUploads]);
@@ -681,6 +724,7 @@ export default function NewCardsAlertForm({
             contentType: image.contentType,
             objectPath: image.objectPath,
             publicUrl: image.publicUrl!.trim(),
+            originalUrl: clean(image.originalUrl),
           })),
         previousImageUrls: {
           front: previousFrontImage.trim(),
@@ -700,6 +744,7 @@ export default function NewCardsAlertForm({
             contentType: image.contentType,
             objectPath: image.objectPath,
             publicUrl: image.publicUrl!.trim(),
+            originalUrl: clean(image.originalUrl),
           })),
         notes: "",
       };

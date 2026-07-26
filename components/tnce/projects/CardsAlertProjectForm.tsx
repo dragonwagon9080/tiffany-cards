@@ -307,7 +307,7 @@ export default function CardsAlertProjectForm({
               )
             }
             className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-            placeholder="Panini National Treasures, Topps Chrome - Diamond Moments, 1984 Topps Tiffany"
+            placeholder="Panini National Treasures, Topps Chrome - Diamond Moments, Topps Tiffany"
           />
         </label>
       </section>

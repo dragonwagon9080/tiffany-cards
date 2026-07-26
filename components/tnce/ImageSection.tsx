@@ -24,6 +24,7 @@ export type PendingTNCEUpload = {
   uploadUrl?: string;
   objectPath?: string;
   publicUrl?: string;
+  originalUrl?: string;
 
   /*
    * Temporary compatibility with the existing
@@ -361,6 +362,7 @@ async function linkedImageToUpload(
     contentType: file.type,
     file,
     previewUrl: URL.createObjectURL(file),
+    originalUrl: url,
     uploaded: false,
   };
 }

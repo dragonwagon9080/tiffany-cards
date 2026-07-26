@@ -21,6 +21,18 @@ type AuctionImportResult = {
   additionalImages: string[];
 
   aspects: Record<string, string[]>;
+
+  aspectDiagnostics?: {
+    status?: number;
+    finalUrl?: string;
+    htmlLength?: number;
+    containsPlayerAthlete?: boolean;
+    extractedAspectCount?: number;
+    catalogStatus?: number;
+    catalogSearchStatus?: number;
+    epid?: string;
+    error?: string;
+  };
 };
 
 type EbayTokenResponse = {
@@ -40,8 +52,15 @@ type EbayAspect = {
   localizedValues?: string[];
 };
 
+type EbayAspectGroup = {
+  localizedGroupName?: string;
+  localizedAspects?: EbayAspect[];
+};
+
 type EbayItemResponse = {
   legacyItemId?: string;
+  epid?: string;
+  inferredEpid?: string;
   title?: string;
 
   image?: EbayImage;
@@ -61,6 +80,11 @@ type EbayItemResponse = {
 
   localizedAspects?: EbayAspect[];
 
+  product?: {
+    title?: string;
+    aspectGroups?: EbayAspectGroup[];
+  };
+
   itemWebUrl?: string;
 
   errors?: Array<{
@@ -70,6 +94,26 @@ type EbayItemResponse = {
     message?: string;
     longMessage?: string;
   }>;
+};
+
+type EbayCatalogProduct = {
+  epid?: string;
+  title?: string;
+  brand?: string;
+  aspects?: Record<string, string[]>;
+  errors?: Array<{
+    message?: string;
+    longMessage?: string;
+  }>;
+};
+
+type EbayCatalogProductSummary = {
+  epid?: string;
+  title?: string;
+};
+
+type EbayCatalogSearchResponse = {
+  productSummaries?: EbayCatalogProductSummary[];
 };
 
 type GoldinJsonLd = {
@@ -798,6 +842,473 @@ function normalizeAspects(
   return result;
 }
 
+function mergeEbayAspects(
+  item: EbayItemResponse
+) {
+  const groupedAspects =
+    (item.product?.aspectGroups || [])
+      .flatMap(function (group) {
+        return Array.isArray(
+          group.localizedAspects
+        )
+          ? group.localizedAspects
+          : [];
+      });
+
+  const allAspects = [
+    ...(item.localizedAspects || []),
+    ...groupedAspects,
+  ];
+
+  return normalizeAspects(allAspects);
+}
+
+function extractEbayPageAspects(
+  html: string
+) {
+  const aspects: Record<string, string[]> = {};
+
+  /*
+   * eBay renders Item Specifics as matching dt/dd
+   * elements. Keep the expression bounded so unrelated
+   * page labels cannot consume large sections of HTML.
+   */
+  const itemSpecificPattern =
+    /<dt\b[^>]*>[\s\S]{0,1000}?<span\b[^>]*>([^<]+)<\/span>[\s\S]{0,1000}?<\/dt>\s*<dd\b[^>]*>[\s\S]{0,1000}?<span\b[^>]*>([^<]+)<\/span>/gi;
+
+  let match:
+    | RegExpExecArray
+    | null;
+
+  while (
+    (match =
+      itemSpecificPattern.exec(html))
+  ) {
+    const name = decodeHtml(match[1]);
+    const value = decodeHtml(match[2]);
+
+    if (!name || !value) {
+      continue;
+    }
+
+    if (!aspects[name]) {
+      aspects[name] = [];
+    }
+
+    if (
+      aspects[name].indexOf(value) === -1
+    ) {
+      aspects[name].push(value);
+    }
+  }
+
+  /*
+   * Sold listings can redirect to an eBay product page.
+   * Product details are embedded as JSON-like
+   * name/value property records instead of dt/dd HTML.
+   */
+  const productPropertyPattern =
+    /"name"\s*:\s*\{[\s\S]{0,600}?"text"\s*:\s*"((?:\\.|[^"\\])*)"[\s\S]{0,600}?"values"\s*:\s*\[[\s\S]{0,600}?"text"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+
+  while (
+    (match =
+      productPropertyPattern.exec(html))
+  ) {
+    let rawName = match[1];
+    let rawValue = match[2];
+
+    try {
+      rawName = JSON.parse(
+        '"' + rawName + '"'
+      );
+    } catch (error) {
+      // Keep the original text.
+    }
+
+    try {
+      rawValue = JSON.parse(
+        '"' + rawValue + '"'
+      );
+    } catch (error) {
+      // Keep the original text.
+    }
+
+    const name = decodeHtml(rawName);
+    const value = decodeHtml(rawValue);
+
+    if (!name || !value) {
+      continue;
+    }
+
+    if (!aspects[name]) {
+      aspects[name] = [];
+    }
+
+    if (
+      aspects[name].indexOf(value) === -1
+    ) {
+      aspects[name].push(value);
+    }
+  }
+
+  return aspects;
+}
+
+async function requestEbayAspectPage_(
+  url: string
+) {
+  const response = await fetch(
+    url,
+    {
+      method: "GET",
+      redirect: "follow",
+      cache: "no-store",
+
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml",
+
+        "Accept-Language":
+          "en-US,en;q=0.9",
+
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+          "AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36",
+      },
+    }
+  );
+
+  const html = response.ok
+    ? await response.text()
+    : "";
+
+  const aspects = html
+    ? extractEbayPageAspects(html)
+    : {};
+
+  return {
+    response,
+    html,
+    aspects,
+  };
+}
+
+async function fetchEbayCatalogAspects_(
+  epid: string,
+  token: string
+) {
+  if (!epid) {
+    return {
+      aspects: {},
+      status: 0,
+    };
+  }
+
+  try {
+    const response = await fetch(
+      "https://api.ebay.com/commerce/catalog/v1_beta/product/" +
+        encodeURIComponent(epid),
+      {
+        method: "GET",
+        cache: "no-store",
+
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+
+          "X-EBAY-C-MARKETPLACE-ID":
+            "EBAY_US",
+
+          Accept:
+            "application/json",
+        },
+      }
+    );
+
+    const text =
+      await response.text();
+
+    let product:
+      EbayCatalogProduct = {};
+
+    try {
+      product = JSON.parse(text);
+    } catch (error) {
+      return {
+        aspects: {},
+        status: response.status,
+      };
+    }
+
+    const aspects =
+      product.aspects &&
+      typeof product.aspects ===
+        "object"
+        ? product.aspects
+        : {};
+
+    if (
+      product.brand &&
+      !aspects.Manufacturer
+    ) {
+      aspects.Manufacturer = [
+        clean(product.brand),
+      ].filter(Boolean);
+    }
+
+    return {
+      aspects,
+      status: response.status,
+    };
+  } catch (error) {
+    return {
+      aspects: {},
+      status: 0,
+    };
+  }
+}
+
+function ebayCatalogTitleScore_(
+  listingTitle: string,
+  productTitle: string
+) {
+  const listingTokens =
+    new Set(
+      clean(listingTitle)
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(function (token) {
+          return token.length > 1;
+        })
+    );
+
+  const productTokens =
+    clean(productTitle)
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(function (token) {
+        return token.length > 1;
+      });
+
+  return productTokens.reduce(
+    function (score, token) {
+      return score +
+        (listingTokens.has(token)
+          ? 1
+          : 0);
+    },
+    0
+  );
+}
+
+async function searchEbayCatalogEpid_(
+  title: string,
+  token: string
+) {
+  if (!title) {
+    return {
+      epid: "",
+      status: 0,
+    };
+  }
+
+  try {
+    const searchUrl = new URL(
+      "https://api.ebay.com/commerce/catalog/v1_beta/product_summary/search"
+    );
+
+    searchUrl.searchParams.set(
+      "q",
+      title
+    );
+
+    searchUrl.searchParams.set(
+      "limit",
+      "10"
+    );
+
+    const response = await fetch(
+      searchUrl,
+      {
+        method: "GET",
+        cache: "no-store",
+
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+
+          "X-EBAY-C-MARKETPLACE-ID":
+            "EBAY_US",
+
+          Accept:
+            "application/json",
+        },
+      }
+    );
+
+    const text =
+      await response.text();
+
+    let data:
+      EbayCatalogSearchResponse = {};
+
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      return {
+        epid: "",
+        status: response.status,
+      };
+    }
+
+    const products =
+      Array.isArray(
+        data.productSummaries
+      )
+        ? data.productSummaries
+        : [];
+
+    products.sort(function (a, b) {
+      return (
+        ebayCatalogTitleScore_(
+          title,
+          clean(b.title)
+        ) -
+        ebayCatalogTitleScore_(
+          title,
+          clean(a.title)
+        )
+      );
+    });
+
+    return {
+      epid:
+        clean(products[0]?.epid),
+      status: response.status,
+    };
+  } catch (error) {
+    return {
+      epid: "",
+      status: 0,
+    };
+  }
+}
+
+async function fetchEbayPageAspects(
+  listingId: string
+) {
+  try {
+    /*
+     * nordt prevents ended/sold listings from being
+     * redirected to a generic eBay product page.
+     * orig_cvip requests the original completed listing.
+     */
+    const pageUrl =
+      `https://www.ebay.com/itm/${encodeURIComponent(
+        listingId
+      )}` +
+      "?nordt=true&orig_cvip=true";
+
+    const originalListingResult =
+      await requestEbayAspectPage_(
+        pageUrl
+      );
+
+    if (
+      originalListingResult.response.ok &&
+      Object.keys(
+        originalListingResult.aspects
+      ).length
+    ) {
+      return {
+        aspects:
+          originalListingResult.aspects,
+
+        diagnostics: {
+          status:
+            originalListingResult
+              .response.status,
+
+          finalUrl:
+            originalListingResult
+              .response.url,
+
+          htmlLength:
+            originalListingResult
+              .html.length,
+
+          containsPlayerAthlete:
+            /Player\/Athlete/i.test(
+              originalListingResult.html
+            ),
+
+          extractedAspectCount:
+            Object.keys(
+              originalListingResult.aspects
+            ).length,
+        },
+      };
+    }
+
+    /*
+     * If eBay blocks the original completed listing,
+     * follow the normal item URL. Ended listings often
+     * redirect to a public eBay product page containing
+     * the same card identity details.
+     */
+    const productPageResult =
+      await requestEbayAspectPage_(
+        `https://www.ebay.com/itm/${encodeURIComponent(
+          listingId
+        )}`
+      );
+
+    const response =
+      productPageResult.response;
+
+    const html =
+      productPageResult.html;
+
+    const aspects =
+      productPageResult.aspects;
+
+    return {
+      aspects,
+      diagnostics: {
+        status: response.status,
+        finalUrl: response.url,
+        htmlLength: html.length,
+        containsPlayerAthlete:
+          /Player\/Athlete/i.test(html),
+        extractedAspectCount:
+          Object.keys(aspects).length,
+        error:
+          Object.keys(aspects).length
+            ? ""
+            : (
+                "Original listing status: " +
+                originalListingResult
+                  .response.status
+              ),
+      },
+    };
+  } catch (error) {
+    /*
+     * Item Specifics improve the import but should not
+     * prevent the title and images from importing.
+     */
+    return {
+      aspects: {},
+      diagnostics: {
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+    };
+  }
+}
+
 async function importEbayAuction(
   sourceUrl: string
 ): Promise<AuctionImportResult> {
@@ -820,6 +1331,16 @@ const listingId = extractEbayItemId(sourceUrl);
   requestUrl.searchParams.set(
     "legacy_item_id",
     listingId
+  );
+
+  /*
+   * PRODUCT adds eBay catalog aspect groups. Sold or
+   * ended listings may expose their visible Item
+   * Specifics here instead of localizedAspects.
+   */
+  requestUrl.searchParams.set(
+    "fieldgroups",
+    "PRODUCT"
   );
 
   const response = await fetch(requestUrl, {
@@ -868,6 +1389,56 @@ const listingId = extractEbayItemId(sourceUrl);
     )
   ).filter((url) => url !== frontImage);
 
+  const apiAspects =
+    mergeEbayAspects(item);
+
+  const itemEpid =
+    clean(
+      item.epid ||
+        item.inferredEpid
+    );
+
+  const catalogSearchResult =
+    itemEpid
+      ? {
+          epid: itemEpid,
+          status: 0,
+        }
+      : await searchEbayCatalogEpid_(
+          clean(item.title),
+          token
+        );
+
+  const resolvedEpid =
+    itemEpid ||
+    catalogSearchResult.epid;
+
+  const catalogResult =
+    await fetchEbayCatalogAspects_(
+      resolvedEpid,
+      token
+    );
+
+  const pageAspectResult =
+    await fetchEbayPageAspects(
+      clean(item.legacyItemId) ||
+        listingId
+    );
+
+  const pageAspects =
+    pageAspectResult.aspects;
+
+  /*
+   * The original listing page is the best source for
+   * seller-entered Item Specifics. API values fill any
+   * fields the page did not provide.
+   */
+  const aspects = {
+    ...apiAspects,
+    ...catalogResult.aspects,
+    ...pageAspects,
+  };
+
   return {
     marketplace: "ebay",
 
@@ -893,9 +1464,18 @@ const listingId = extractEbayItemId(sourceUrl);
 
     additionalImages,
 
-    aspects: normalizeAspects(
-      item.localizedAspects
-    ),
+    aspects,
+
+    aspectDiagnostics:
+      {
+        ...pageAspectResult.diagnostics,
+        catalogStatus:
+          catalogResult.status,
+        catalogSearchStatus:
+          catalogSearchResult.status,
+        epid:
+          resolvedEpid,
+      },
   };
 }
 
