@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 
 import ContributorSection from "./ContributorSection";
 import ContributionHeader from "./ContributionHeader";
@@ -11,6 +12,9 @@ import ImageOrganizer, {
 import ModeBanner from "./ModeBanner";
 import ProjectFields from "./ProjectFields";
 import SubmitButton from "./SubmitButton";
+import {
+  openSubmissionProgress,
+} from "./SubmissionProgress";
 import { parseAuctionTitle } from "@/lib/tnce/auctionParser";
 import { detectMarketplace } from "@/lib/tnce/marketplaceDetector";
 
@@ -371,6 +375,7 @@ export default function ContributionForm({
   const [notes, setNotes] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
+  const [submissionStage, setSubmissionStage] = useState("");
 
   const [submitError, setSubmitError] = useState("");
 
@@ -780,8 +785,27 @@ export default function ContributionForm({
   async function submitContribution() {
     if (submitting) return;
 
-    setSubmitting(true);
-    setSubmitError("");
+    const progress =
+      openSubmissionProgress(
+        projectLabel,
+        "Preparing images..."
+      );
+
+    flushSync(() => {
+      setSubmitting(true);
+      setSubmissionStage(
+        "Preparing images..."
+      );
+      setSubmitError("");
+    });
+
+    await new Promise<void>(
+      (resolve) => {
+        requestAnimationFrame(() =>
+          resolve()
+        );
+      }
+    );
 
     try {
       const cleanedSerialNumber = serialNumber.trim();
@@ -806,10 +830,18 @@ export default function ContributionForm({
 
       const submissionId = crypto.randomUUID();
 
+      setSubmissionStage("Uploading and saving images...");
+      progress.update(
+        "Uploading and saving images..."
+      );
       console.log("Starting uploadPendingImages");
       const uploadedFiles = await uploadPendingImages(submissionId);
       console.log(uploadedFiles);
 
+      setSubmissionStage("Saving and processing submission...");
+      progress.update(
+        "Saving and processing submission..."
+      );
       const res = await fetch("/api/tnce", {
         method: "POST",
         headers: {
@@ -936,6 +968,8 @@ export default function ContributionForm({
     } catch (error: any) {
       setSubmitError(error?.message || "Submission failed.");
     } finally {
+      progress.close();
+      setSubmissionStage("");
       setSubmitting(false);
     }
   }

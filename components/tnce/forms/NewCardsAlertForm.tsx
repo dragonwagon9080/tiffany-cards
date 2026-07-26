@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 
 import ContributorSection from "../ContributorSection";
 import ImageSection, { type PendingTNCEUpload } from "../ImageSection";
 import ProjectFields from "../ProjectFields";
 import SubmitButton from "../SubmitButton";
+import {
+  openSubmissionProgress,
+} from "../SubmissionProgress";
 
 type Props = {
   mode: "new" | "update" | "missing";
@@ -218,6 +222,7 @@ export default function NewCardsAlertForm({
   const [contributorName, setContributorName] = useState("");
   const [contributorEmail, setContributorEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submissionStage, setSubmissionStage] = useState("");
   const [submitError, setSubmitError] = useState("");
 
   /*
@@ -563,17 +568,44 @@ export default function NewCardsAlertForm({
       return;
     }
 
-    setSubmitting(true);
+    const progress =
+      openSubmissionProgress(
+        projectLabel,
+        "Preparing images..."
+      );
+
+    flushSync(() => {
+      setSubmitting(true);
+      setSubmissionStage(
+        "Preparing images..."
+      );
+    });
+
+    await new Promise<void>(
+      (resolve) => {
+        requestAnimationFrame(() =>
+          resolve()
+        );
+      }
+    );
 
     try {
       const submissionId = crypto.randomUUID();
 
+      setSubmissionStage("Uploading current card images...");
+      progress.update(
+        "Uploading current card images..."
+      );
       const uploadedFiles = await uploadPendingImages(
         submissionId,
         uploadedImages,
         setUploadedImages,
       );
 
+      setSubmissionStage("Uploading previous evidence images...");
+      progress.update(
+        "Uploading previous evidence images..."
+      );
       const previousUploadedFiles = await uploadPendingImages(
         submissionId,
         previousUploadedImages,
@@ -586,7 +618,9 @@ export default function NewCardsAlertForm({
           ? "similar-cards-alert-card"
           : "new-cards-alert-card",
         submissionMode: mode,
-        submissionAction: action,
+        submissionAction: isSimilarCard
+          ? "similar"
+          : "new",
         submissionId,
         sourcePageUrl:
           typeof window !== "undefined" ? window.location.href : "",
@@ -597,7 +631,17 @@ export default function NewCardsAlertForm({
         },
         activeObject: {
           id: activeObject?.id || "cards-alert-main-page",
-          title: activeObject?.title || "Cards Alert Main Page",
+          title: [
+            cardYear.trim(),
+            firstName.trim(),
+            lastName.trim(),
+            cardNumber.trim()
+              ? `#${cardNumber.trim()}`
+              : "",
+            brand.trim(),
+          ]
+            .filter(Boolean)
+            .join(" "),
           ID: activeObject?.ID,
           Cert_Number: activeObject?.Cert_Number,
         },
@@ -610,7 +654,7 @@ export default function NewCardsAlertForm({
           Parallel: parallel.trim(),
           Sport: sport.trim(),
           Serial_Number: serialNumber.trim(),
-          Grade: grade.trim(),
+          Grade: grade.trim() || "Raw",
           Cert_Number: certNumber.trim(),
           Status: status.trim(),
           Description: description.trim(),
@@ -660,6 +704,10 @@ export default function NewCardsAlertForm({
         notes: "",
       };
 
+      setSubmissionStage("Saving and processing submission...");
+      progress.update(
+        "Saving and processing submission..."
+      );
       const response = await fetch("/api/tnce", {
         method: "POST",
         headers: {
@@ -687,6 +735,8 @@ export default function NewCardsAlertForm({
     } catch (error: any) {
       setSubmitError(error?.message || "Cards Alert submission failed.");
     } finally {
+      progress.close();
+      setSubmissionStage("");
       setSubmitting(false);
     }
   }
