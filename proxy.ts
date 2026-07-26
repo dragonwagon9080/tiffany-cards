@@ -1,7 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
-export function proxy(request: NextRequest) {
-  const adminPassword = process.env.TNCE_ADMIN_PASSWORD;
+import {
+  createTNCEAdminSession,
+  isValidTNCEAdminSession,
+  TNCE_ADMIN_SESSION_COOKIE,
+} from "@/lib/tnce/server/adminSession";
+
+export async function proxy(
+  request: NextRequest
+) {
+  const adminPassword =
+    process.env.TNCE_ADMIN_PASSWORD;
 
   if (!adminPassword) {
     return new NextResponse(
@@ -12,15 +24,30 @@ export function proxy(request: NextRequest) {
     );
   }
 
+  /*
+   * A valid signed session keeps TNCE Admin unlocked
+   * and will later authorize Owner Quick Publish.
+   */
+  if (
+    await isValidTNCEAdminSession(
+      request
+    )
+  ) {
+    return NextResponse.next();
+  }
+
   const authorization =
-    request.headers.get("authorization");
+    request.headers.get(
+      "authorization"
+    );
 
   if (authorization) {
     const [scheme, encodedCredentials] =
       authorization.split(" ");
 
     if (
-      scheme?.toLowerCase() === "basic" &&
+      scheme?.toLowerCase() ===
+        "basic" &&
       encodedCredentials
     ) {
       try {
@@ -28,7 +55,9 @@ export function proxy(request: NextRequest) {
           atob(encodedCredentials);
 
         const separatorIndex =
-          decodedCredentials.indexOf(":");
+          decodedCredentials.indexOf(
+            ":"
+          );
 
         const username =
           separatorIndex >= 0
@@ -49,7 +78,27 @@ export function proxy(request: NextRequest) {
           username === "admin" &&
           password === adminPassword
         ) {
-          return NextResponse.next();
+          const session =
+            await createTNCEAdminSession();
+
+          const response =
+            NextResponse.next();
+
+          response.cookies.set(
+            TNCE_ADMIN_SESSION_COOKIE,
+            session.value,
+            {
+              httpOnly: true,
+              secure:
+                process.env.NODE_ENV ===
+                "production",
+              sameSite: "strict",
+              path: "/",
+              maxAge: session.maxAge,
+            }
+          );
+
+          return response;
         }
       } catch {
         // Invalid Basic Auth header.
