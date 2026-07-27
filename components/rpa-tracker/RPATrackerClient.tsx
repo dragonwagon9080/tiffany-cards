@@ -6,9 +6,9 @@ import { useSearchParams } from "next/navigation";
 import SearchFilters from "./SearchFilters";
 import RegistryGrid from "./RegistryGrid";
 import RegistryStats from "./RegistryStats";
-import Loading from "./Loading";
 import UniversalSearchBar from "@/components/shared/UniversalSearchBar";
 import ContributionModal from "@/components/tnce/ContributionModal";
+import TiffanyLoadingScreen from "@/components/shared/TiffanyLoadingScreen";
 
 import {
   RegistryGroup,
@@ -31,73 +31,168 @@ export default function RPATrackerClient({
   logoUrl?: string;
 }) {
   const searchParams = useSearchParams();
-  const initialQuery = searchParams.get("q") || "";
+  const initialQuery =
+    searchParams.get("q") || "";
 
-  const [groups, setGroups] = useState<RegistryGroup[]>([]);
-  const [options, setOptions] = useState<FilterOptions>({
-    sports: [],
-    players: [],
-    years: [],
-    brands: [],
-    variations: [],
-  });
+  const [groups, setGroups] = useState<
+    RegistryGroup[]
+  >([]);
 
-  const [meta, setMeta] = useState<TrackerMeta | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [options, setOptions] =
+    useState<FilterOptions>({
+      sports: [],
+      players: [],
+      years: [],
+      brands: [],
+      variations: [],
+    });
 
-  const [search, setSearch] = useState(initialQuery);
+  const [meta, setMeta] =
+    useState<TrackerMeta | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [search, setSearch] =
+    useState(initialQuery);
+
   const [sport, setSport] = useState("");
   const [player, setPlayer] = useState("");
   const [year, setYear] = useState("");
   const [brand, setBrand] = useState("");
-  const [variation, setVariation] = useState("");
+  const [variation, setVariation] =
+    useState("");
   const [sort, setSort] = useState("");
-const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(50);
 
-  const [showContribute, setShowContribute] = useState(false);
+  const [showContribute, setShowContribute] =
+    useState(false);
 
   async function loadData() {
     setLoading(true);
 
-    const params = new URLSearchParams();
-    params.set("mode", search.trim() ? "filter" : "startup");
+    const loadingStartedAt = Date.now();
 
-    if (search.trim()) params.set("q", search.trim());
-    if (sport) params.set("sport", sport);
-    if (player) params.set("player", player);
-    if (year) params.set("year", year);
-    if (brand) params.set("brand", brand);
-    if (variation) params.set("variation", variation);
-   if (sort) params.set("sort", sort);
+    try {
+      const params = new URLSearchParams();
 
-params.set("limit", String(limit));
+      params.set(
+        "mode",
+        search.trim()
+          ? "filter"
+          : "startup"
+      );
 
-    const res = await fetch(`/api/rpa-tracker?${params.toString()}`, {
-      cache: "no-store",
-    });
-
-    const json: ApiResponse = await res.json();
-
-    setGroups(json.groups || []);
-    setOptions(
-      json.options || {
-        sports: [],
-        players: [],
-        years: [],
-        brands: [],
-        variations: [],
+      if (search.trim()) {
+        params.set("q", search.trim());
       }
-    );
-    setMeta(json.meta || null);
-    setLoading(false);
+
+      if (sport) {
+        params.set("sport", sport);
+      }
+
+      if (player) {
+        params.set("player", player);
+      }
+
+      if (year) {
+        params.set("year", year);
+      }
+
+      if (brand) {
+        params.set("brand", brand);
+      }
+
+      if (variation) {
+        params.set(
+          "variation",
+          variation
+        );
+      }
+
+      if (sort) {
+        params.set("sort", sort);
+      }
+
+      params.set(
+        "limit",
+        String(limit)
+      );
+
+      const res = await fetch(
+        `/api/rpa-tracker?${params.toString()}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error(
+          `Unable to load RPA Tracker (${res.status}).`
+        );
+      }
+
+      const json: ApiResponse =
+        await res.json();
+
+      setGroups(json.groups || []);
+
+      setOptions(
+        json.options || {
+          sports: [],
+          players: [],
+          years: [],
+          brands: [],
+          variations: [],
+        }
+      );
+
+      setMeta(json.meta || null);
+    } finally {
+      /*
+       * Prevents the loader from flashing too
+       * quickly to recognize.
+       */
+      const elapsed =
+        Date.now() - loadingStartedAt;
+
+      const remaining = Math.max(
+        0,
+        300 - elapsed
+      );
+
+      if (remaining > 0) {
+        await new Promise<void>(
+          (resolve) => {
+            window.setTimeout(
+              resolve,
+              remaining
+            );
+          }
+        );
+      }
+
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
-  loadData();
-}, [search, sport, player, year, brand, variation, sort, limit]);
+    loadData();
+  }, [
+    search,
+    sport,
+    player,
+    year,
+    brand,
+    variation,
+    sort,
+    limit,
+  ]);
 
   useEffect(() => {
-    const q = searchParams.get("q") || "";
+    const q =
+      searchParams.get("q") || "";
+
     setSearch(q);
   }, [searchParams]);
 
@@ -109,9 +204,17 @@ params.set("limit", String(limit));
     setBrand("");
     setVariation("");
     setSort("");
+    setLimit(50);
   }
 
-  if (loading) return <Loading />;
+  if (loading) {
+    return (
+      <TiffanyLoadingScreen
+        message="Loading RPA Tracker"
+        detail="Retrieving the latest registry information."
+      />
+    );
+  }
 
   return (
     <section className="mx-auto max-w-7xl px-6 py-10">
@@ -140,32 +243,45 @@ params.set("limit", String(limit));
       <RegistryStats
         meta={meta}
         theme={theme}
-        onContribute={() => setShowContribute(true)}
+        onContribute={() =>
+          setShowContribute(true)
+        }
       />
 
-      <RegistryGrid groups={groups} theme={theme} />
+      <RegistryGrid
+        groups={groups}
+        theme={theme}
+      />
 
-{meta?.hasMore && (
-  <div className="mt-10 flex justify-center">
-    <button
-      type="button"
-      onClick={() => setLimit((current) => current + 50)}
-      className="rounded-lg border border-blue-500 bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500"
-    >
-      Show More Registries
-    </button>
-  </div>
-)}
+      {meta?.hasMore && (
+        <div className="mt-10 flex justify-center">
+          <button
+            type="button"
+            onClick={() =>
+              setLimit(
+                (current) =>
+                  current + 50
+              )
+            }
+            className="rounded-lg border border-blue-500 bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500"
+          >
+            Show More Registries
+          </button>
+        </div>
+      )}
 
-<ContributionModal
+      <ContributionModal
         open={showContribute}
-        onClose={() => setShowContribute(false)}
+        onClose={() =>
+          setShowContribute(false)
+        }
         project="rpa-tracker"
         projectLabel="RPA Tracker"
         logoUrl={logoUrl}
         activeObject={{
           id: "rpa-tracker-main-page",
-          title: "RPA Tracker Main Page",
+          title:
+            "RPA Tracker Main Page",
         }}
       />
     </section>

@@ -27,31 +27,40 @@ body {
 
 /* =========================================================
    PREMIUM GOLD TITLE
-   Matches the Tiffany Cards header
    ========================================================= */
 
 .gold-title {
-  font-family: var(--font-cinzel), Georgia, "Times New Roman", serif;
+  font-family:
+    var(--font-cinzel),
+    Georgia,
+    "Times New Roman",
+    serif;
+
   font-weight: 900;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 
   background: linear-gradient(
-  to bottom,
-  #e7c45a 10%,
-  #b88712 40%,
-  #8b6b00 70%,
-  #5a4300 100%
-);
+    to bottom,
+    #e7c45a 10%,
+    #b88712 40%,
+    #8b6b00 70%,
+    #5a4300 100%
+  );
 
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 
   text-shadow:
-    0 1px 1px rgba(255,255,255,.25),
-    0 0 10px rgba(212,175,55,.25);
+    0 1px 1px rgba(255, 255, 255, 0.25),
+    0 0 10px rgba(212, 175, 55, 0.25);
 }
+
+/* =========================================================
+   TNCE PULSE
+   ========================================================= */
+
 @keyframes tncePulse {
   0% {
     transform: scale(0.85);
@@ -70,5 +79,68 @@ body {
 }
 
 .tnce-pulse {
-  animation: tncePulse 2.2s ease-in-out infinite;
+  animation: tncePulse 2.2s ease-in-out
+    infinite;
+}
+
+/* =========================================================
+   TIFFANY CARDS ROLLING LOADER
+   ========================================================= */
+
+.tiffany-roll-area {
+  position: relative;
+  width: 100%;
+  height: 58px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+@keyframes tiffanyRollAcrossScreen {
+  0% {
+    left: -54px;
+    transform: rotate(0deg);
+  }
+
+  100% {
+    left: calc(100% + 4px);
+    transform: rotate(720deg);
+  }
+}
+
+.tiffany-rolling-logo {
+  position: absolute;
+  top: 4px;
+  left: -54px;
+
+  width: 50px !important;
+  height: 50px !important;
+  max-width: 50px !important;
+  max-height: 50px !important;
+
+  object-fit: contain;
+
+  animation:
+    tiffanyRollAcrossScreen 3s linear
+    infinite;
+
+  filter:
+    drop-shadow(
+      0 0 5px rgba(212, 175, 55, 0.7)
+    );
+}
+
+@media (max-width: 640px) {
+  .tiffany-rolling-logo {
+    width: 44px !important;
+    height: 44px !important;
+    max-width: 44px !important;
+    max-height: 44px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tiffany-rolling-logo {
+    left: calc(50% - 25px);
+    animation: none;
+  }
 }

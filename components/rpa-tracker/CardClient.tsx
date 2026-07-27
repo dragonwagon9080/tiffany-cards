@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import Link from "next/link";
 
 import CardWorkspace from "@/components/shared/media/CardWorkspace";
-import RegistryMap from "./RegistryMap";
-import CardInfo from "./CardInfo";
-import CardHistory from "./CardHistory";
 import UniversalPageHeader from "@/components/shared/UniversalPageHeader";
 import ShareButton from "@/components/shared/ShareButton";
 import ContributionModal from "@/components/tnce/ContributionModal";
+import TiffanyLoadingScreen from "@/components/shared/TiffanyLoadingScreen";
+
+import RegistryMap from "./RegistryMap";
+import CardInfo from "./CardInfo";
+import CardHistory from "./CardHistory";
 
 import type { ImageItem } from "@/types/image";
 
@@ -20,17 +26,29 @@ type Props = {
 
 function extractImages(value: any) {
   if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim()).filter(Boolean);
+    return value
+      .map((item) =>
+        String(item || "").trim()
+      )
+      .filter(Boolean);
   }
 
-  const text = String(value || "").trim();
+  const text = String(
+    value || ""
+  ).trim();
 
-  if (!text) return [];
+  if (!text) {
+    return [];
+  }
 
-  const urls = text.match(/https?:\/\/[^\s,"\]]+/g);
+  const urls = text.match(
+    /https?:\/\/[^\s,"\]]+/g
+  );
 
   if (urls?.length) {
-    return urls.map((url) => url.trim()).filter(Boolean);
+    return urls
+      .map((url) => url.trim())
+      .filter(Boolean);
   }
 
   return text
@@ -40,7 +58,11 @@ function extractImages(value: any) {
 }
 
 function variationName(card: any) {
-  return String(card?.Variation_Input || card?.Variation || "Base").trim();
+  return String(
+    card?.Variation_Input ||
+      card?.Variation ||
+      "Base"
+  ).trim();
 }
 
 function GoldDivider() {
@@ -49,101 +71,225 @@ function GoldDivider() {
   );
 }
 
-export default function CardClient({ id, logoUrl }: Props) {
-  const [card, setCard] = useState<any>(null);
-const [groupCards, setGroupCards] = useState<any[]>([]);
-const [loading, setLoading] = useState(true);
+export default function CardClient({
+  id,
+  logoUrl,
+}: Props) {
+  const [card, setCard] =
+    useState<any>(null);
 
-const [showContribute, setShowContribute] = useState(false);
-const [contributionObject, setContributionObject] = useState<any>(null);
-const [contributionMode, setContributionMode] =
-  useState<"new" | "update" | "missing">("update");
+  const [groupCards, setGroupCards] =
+    useState<any[]>([]);
 
-const [leftIndex, setLeftIndex] = useState(0);
-const [rightIndex, setRightIndex] = useState(1);
+  const [loading, setLoading] =
+    useState(true);
+
+  const [
+    showContribute,
+    setShowContribute,
+  ] = useState(false);
+
+  const [
+    contributionObject,
+    setContributionObject,
+  ] = useState<any>(null);
+
+  const [
+    contributionMode,
+    setContributionMode,
+  ] = useState<
+    "new" | "update" | "missing"
+  >("update");
+
+  const [leftIndex, setLeftIndex] =
+    useState(0);
+
+  const [rightIndex, setRightIndex] =
+    useState(1);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
 
-      const cardRes = await fetch(`/api/rpa-tracker?mode=card&id=${id}`, {
-        cache: "no-store",
-      });
+      const loadingStartedAt =
+        Date.now();
 
-      const cardJson = await cardRes.json();
-      setCard(cardJson);
-
-      if (cardJson?.Slug) {
-        const groupRes = await fetch(
-          `/api/rpa-tracker?mode=group&slug=${encodeURIComponent(
-            cardJson.Slug
+      try {
+        const cardRes = await fetch(
+          `/api/rpa-tracker?mode=card&id=${encodeURIComponent(
+            id
           )}`,
-          { cache: "no-store" }
+          {
+            cache: "no-store",
+          }
         );
 
-        const groupJson = await groupRes.json();
-        setGroupCards(groupJson?.cards || []);
-      }
+        if (!cardRes.ok) {
+          setCard(null);
+          setGroupCards([]);
+          return;
+        }
 
-      setLoading(false);
+        const cardJson =
+          await cardRes.json();
+
+        setCard(cardJson);
+
+        if (cardJson?.Slug) {
+          const groupRes =
+            await fetch(
+              `/api/rpa-tracker?mode=group&slug=${encodeURIComponent(
+                cardJson.Slug
+              )}`,
+              {
+                cache: "no-store",
+              }
+            );
+
+          if (groupRes.ok) {
+            const groupJson =
+              await groupRes.json();
+
+            setGroupCards(
+              groupJson?.cards || []
+            );
+          } else {
+            setGroupCards([]);
+          }
+        } else {
+          setGroupCards([]);
+        }
+      } catch (error) {
+        console.error(
+          "Unable to load RPA card:",
+          error
+        );
+
+        setCard(null);
+        setGroupCards([]);
+      } finally {
+        const elapsed =
+          Date.now() -
+          loadingStartedAt;
+
+        const remaining = Math.max(
+          0,
+          300 - elapsed
+        );
+
+        if (remaining > 0) {
+          await new Promise<void>(
+            (resolve) => {
+              window.setTimeout(
+                resolve,
+                remaining
+              );
+            }
+          );
+        }
+
+        setLoading(false);
+      }
     }
 
     load();
   }, [id]);
 
-  const images = useMemo<ImageItem[]>((() => {
-    if (!card) return [];
+  const images =
+    useMemo<ImageItem[]>(() => {
+      if (!card) {
+        return [];
+      }
 
-    const list: ImageItem[] = [];
+      const list: ImageItem[] = [];
 
-    const front = String(card.Front_Image || "").trim();
-    const back = String(card.Back_Image || "").trim();
-    const others = extractImages(card.Other_Images);
+      const front = String(
+        card.Front_Image || ""
+      ).trim();
 
-    if (front) list.push({ label: "Front", url: front });
-    if (back) list.push({ label: "Back", url: back });
+      const back = String(
+        card.Back_Image || ""
+      ).trim();
 
-    others.forEach((url: string, index: number) => {
-      if (url !== front && url !== back) {
+      const others = extractImages(
+        card.Other_Images
+      );
+
+      if (front) {
         list.push({
-          label: `Other ${index + 1}`,
-          url,
+          label: "Front",
+          url: front,
         });
       }
-    });
 
-    return list;
-  }) as any, [card]);
+      if (back) {
+        list.push({
+          label: "Back",
+          url: back,
+        });
+      }
+
+      others.forEach(
+        (
+          url: string,
+          index: number
+        ) => {
+          if (
+            url !== front &&
+            url !== back
+          ) {
+            list.push({
+              label: `Other ${
+                index + 1
+              }`,
+              url,
+            });
+          }
+        }
+      );
+
+      return list;
+    }, [card]);
 
   useEffect(() => {
     setLeftIndex(0);
-    setRightIndex(images.length > 1 ? 1 : 0);
+
+    setRightIndex(
+      images.length > 1 ? 1 : 0
+    );
   }, [images.length]);
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-black px-6 py-10 text-white">
-        <div className="mx-auto max-w-7xl">Loading card...</div>
-      </main>
+      <TiffanyLoadingScreen
+        message="Loading Card"
+        detail="Retrieving the latest RPA Tracker card record."
+      />
     );
   }
 
   if (!card) {
     return (
       <main className="min-h-screen bg-black px-6 py-10 text-white">
-        <div className="mx-auto max-w-7xl">Card not found.</div>
+        <div className="mx-auto max-w-7xl">
+          Card not found.
+        </div>
       </main>
     );
   }
 
-  const selectedVariation = variationName(card);
+  const selectedVariation =
+    variationName(card);
 
   return (
     <main className="min-h-screen bg-black px-6 py-10 text-white">
       <div className="mx-auto max-w-7xl">
         <UniversalPageHeader
           section="RPA Tracker"
-          title={card.Card_Title_Display || card.Card_Title}
+          title={
+            card.Card_Title_Display ||
+            card.Card_Title
+          }
           defaultTarget="rpa"
         >
           <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -158,10 +304,16 @@ const [rightIndex, setRightIndex] = useState(1);
               <button
                 type="button"
                 onClick={() => {
-  setContributionMode("update");
-setContributionObject(card);
-setShowContribute(true);
-}}
+                  setContributionMode(
+                    "update"
+                  );
+
+                  setContributionObject(
+                    card
+                  );
+
+                  setShowContribute(true);
+                }}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-blue-300 bg-blue-600 px-6 py-3.5 text-base font-extrabold uppercase tracking-wide text-white shadow-lg shadow-blue-900/40 transition duration-200 hover:scale-105 hover:bg-blue-500 hover:shadow-xl sm:w-auto"
               >
                 📝 Submit Update
@@ -169,10 +321,17 @@ setShowContribute(true);
 
               <ShareButton
                 type="card"
-                title={card.Card_Title_Display || card.Card_Title}
+                title={
+                  card.Card_Title_Display ||
+                  card.Card_Title
+                }
                 url={`${
-                  process.env.NEXT_PUBLIC_SITE_URL || ""
-                }/rpa-tracker/card/${card.Card_id}`}
+                  process.env
+                    .NEXT_PUBLIC_SITE_URL ||
+                  ""
+                }/rpa-tracker/card/${
+                  card.Card_id
+                }`}
               />
             </div>
           </div>
@@ -183,9 +342,15 @@ setShowContribute(true);
             <CardWorkspace
               images={images}
               leftIndex={leftIndex}
-              rightIndex={rightIndex}
-              onLeftSelect={setLeftIndex}
-              onRightSelect={setRightIndex}
+              rightIndex={
+                rightIndex
+              }
+              onLeftSelect={
+                setLeftIndex
+              }
+              onRightSelect={
+                setRightIndex
+              }
             />
           </div>
         )}
@@ -197,36 +362,58 @@ setShowContribute(true);
         {card.Card_History && (
           <>
             <GoldDivider />
-            <CardHistory history={card.Card_History} />
+
+            <CardHistory
+              history={
+                card.Card_History
+              }
+            />
           </>
         )}
 
         {groupCards.length > 0 && (
           <>
             <GoldDivider />
+
             <RegistryMap
-  variation={selectedVariation}
-  cards={groupCards}
-  showVariationPicker
-  onMissingCardClick={(missingCard) => {
-  setContributionMode("missing");
-  setContributionObject(missingCard);
-  setShowContribute(true);
-}}
-/>
+              variation={
+                selectedVariation
+              }
+              cards={groupCards}
+              showVariationPicker
+              onMissingCardClick={(
+                missingCard
+              ) => {
+                setContributionMode(
+                  "missing"
+                );
+
+                setContributionObject(
+                  missingCard
+                );
+
+                setShowContribute(
+                  true
+                );
+              }}
+            />
           </>
         )}
       </div>
 
       <ContributionModal
-  open={showContribute}
-  onClose={() => setShowContribute(false)}
-  mode={contributionMode}
-  project="rpa-tracker"
-  projectLabel="RPA Tracker"
-  logoUrl={logoUrl}
-  activeObject={contributionObject || card}
-/>
+        open={showContribute}
+        onClose={() =>
+          setShowContribute(false)
+        }
+        mode={contributionMode}
+        project="rpa-tracker"
+        projectLabel="RPA Tracker"
+        logoUrl={logoUrl}
+        activeObject={
+          contributionObject || card
+        }
+      />
     </main>
   );
 }

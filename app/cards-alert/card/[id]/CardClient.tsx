@@ -10,6 +10,7 @@ import ShareButton from "@/components/shared/ShareButton";
 import ContributionModal from "@/components/tnce/ContributionModal";
 import TNCEContributeButton from "@/components/shared/TNCEContributeButton";
 import TNCEActionMenu from "@/components/shared/TNCEActionMenu";
+import TiffanyLoadingScreen from "@/components/shared/TiffanyLoadingScreen";
 
 function sourceLabel(url: string) {
   const lower = url.toLowerCase();
@@ -155,9 +156,10 @@ export default function CardClient({
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-black text-white">
-        Loading card...
-      </main>
+      <TiffanyLoadingScreen
+        message="Loading Card"
+        detail="Retrieving the latest Cards Alert record."
+      />
     );
   }
 

@@ -6,6 +6,7 @@ import StatusBadge from "@/components/cards-alert/StatusBadge";
 import UniversalSearchBar from "@/components/shared/UniversalSearchBar";
 import ContributionModal from "@/components/tnce/ContributionModal";
 import TNCEContributeButton from "@/components/shared/TNCEContributeButton";
+import TiffanyLoadingScreen from "@/components/shared/TiffanyLoadingScreen";
 
 type FilterOptions = {
   sports?: string[];
@@ -104,35 +105,60 @@ export default function CardsAlertClient({
 
   async function loadStartup() {
     setLoading(true);
+    const loadingStartedAt = Date.now();
 
-    const q = searchParams.get("q") || "";
-    setSearch(q);
+    try {
+      const q = searchParams.get("q") || "";
+      setSearch(q);
 
-    const params = new URLSearchParams();
+      const params = new URLSearchParams();
 
-    if (q.trim()) {
-      params.set("mode", "filter");
-      params.set("q", q.trim());
-      params.set("limit", "100");
-      params.set("offset", "0");
-    } else {
-      params.set("mode", "startup");
-      params.set("limit", "50");
-      params.set("offset", "0");
+      if (q.trim()) {
+        params.set("mode", "filter");
+        params.set("q", q.trim());
+        params.set("limit", "100");
+        params.set("offset", "0");
+      } else {
+        params.set("mode", "startup");
+        params.set("limit", "50");
+        params.set("offset", "0");
+      }
+
+      const res = await fetch(
+        `/api/cards-alert?${params.toString()}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      const json = await res.json();
+
+      setCards(json.cards || []);
+      setOptions(json.options || {});
+      setTotalResults(json?.meta?.total || 0);
+      setHasMore(json?.meta?.hasMore || false);
+      setOffset(q.trim() ? 100 : 50);
+    } finally {
+      /*
+       * Temporary test delay so the loading design
+       * remains visible long enough to evaluate.
+       */
+      const elapsed =
+        Date.now() - loadingStartedAt;
+
+      const remaining = Math.max(
+        0,
+        300 - elapsed
+      );
+
+      if (remaining > 0) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, remaining);
+        });
+      }
+
+      setLoading(false);
     }
-
-    const res = await fetch(`/api/cards-alert?${params.toString()}`, {
-      cache: "no-store",
-    });
-
-    const json = await res.json();
-
-    setCards(json.cards || []);
-    setOptions(json.options || {});
-    setTotalResults(json?.meta?.total || 0);
-    setHasMore(json?.meta?.hasMore || false);
-    setOffset(q.trim() ? 100 : 50);
-    setLoading(false);
   }
 
   async function loadFilterOptions(overrides: any = {}) {
@@ -300,9 +326,10 @@ function filterMouseLeave(
 
   if (loading) {
     return (
-      <div className="py-20 text-center text-white">
-        Loading Cards Alert...
-      </div>
+      <TiffanyLoadingScreen
+        message="Loading Cards Alert"
+        detail="Retrieving the latest Cards Alert database records."
+      />
     );
   }
 

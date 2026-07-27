@@ -1101,6 +1101,13 @@ function ebayCatalogTitleScore_(
   );
 }
 
+function isPsaHostname(hostname: string) {
+  return (
+    hostname === "psacard.com" ||
+    hostname.endsWith(".psacard.com")
+  );
+}
+
 async function searchEbayCatalogEpid_(
   title: string,
   token: string
@@ -1981,6 +1988,401 @@ const allImages = filterGoldinImages(
   };
 }
 
+function extractPsaCertNumber(
+  sourceUrl: string
+) {
+  const parsed = new URL(sourceUrl);
+  const match = parsed.pathname.match(
+    /\/cert\/(\d{6,12})(?:\/|$)/i
+  );
+
+  if (!match) {
+    throw new Error(
+      "Unable to find a PSA certification number in this URL."
+    );
+  }
+
+  return match[1];
+}
+
+function getObjectValue(
+  source: Record<string, unknown>,
+  ...keys: string[]
+) {
+  for (const key of keys) {
+    const value = source[key];
+
+    if (
+      value !== undefined &&
+      value !== null
+    ) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function normalizePsaSport(value: unknown) {
+  const category = clean(value).toLowerCase();
+
+  const sports: Array<[RegExp, string]> = [
+    [/\bbaseball\b/, "Baseball"],
+    [/\bbasketball\b/, "Basketball"],
+    [/\bfootball\b/, "Football"],
+    [/\bhockey\b/, "Hockey"],
+    [/\bsoccer\b/, "Soccer"],
+    [/\bgolf\b/, "Golf"],
+    [/\bwrestling\b/, "Wrestling"],
+    [/\bpok[eé]mon\b|\btcg\b/, "Pokémon/TCG"],
+  ];
+
+  for (const [pattern, sport] of sports) {
+    if (pattern.test(category)) {
+      return sport;
+    }
+  }
+
+  return "";
+}
+
+function formatPsaGrade(
+  cert: Record<string, unknown>
+) {
+  const cardGrade = clean(
+    getObjectValue(
+      cert,
+      "CardGrade",
+      "cardGrade"
+    )
+  );
+
+  const description = clean(
+    getObjectValue(
+      cert,
+      "GradeDescription",
+      "gradeDescription"
+    )
+  );
+
+  if (
+    /authentic/i.test(cardGrade) ||
+    /authentic/i.test(description)
+  ) {
+    return "PSA Authentic";
+  }
+
+  if (cardGrade) {
+    return `PSA ${cardGrade}`;
+  }
+
+  if (description) {
+    return `PSA ${description.replace(
+      /^PSA\s+/i,
+      ""
+    )}`;
+  }
+
+  return "";
+}
+
+type PsaImageCandidate = {
+  url: string;
+  path: string;
+};
+
+function collectPsaImageCandidates(
+  value: unknown,
+  path = "",
+  output: PsaImageCandidate[] = []
+) {
+  if (typeof value === "string") {
+    const url = clean(value);
+
+    if (/^https?:\/\//i.test(url)) {
+      output.push({ url, path });
+    }
+
+    return output;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      collectPsaImageCandidates(
+        item,
+        `${path}.${index}`,
+        output
+      )
+    );
+
+    return output;
+  }
+
+  if (value && typeof value === "object") {
+    Object.entries(
+      value as Record<string, unknown>
+    ).forEach(([key, item]) =>
+      collectPsaImageCandidates(
+        item,
+        path ? `${path}.${key}` : key,
+        output
+      )
+    );
+  }
+
+  return output;
+}
+
+function organizePsaImages(value: unknown) {
+  const unique = new Map<
+    string,
+    PsaImageCandidate
+  >();
+
+  collectPsaImageCandidates(value).forEach(
+    (candidate) => {
+      if (!unique.has(candidate.url)) {
+        unique.set(candidate.url, candidate);
+      }
+    }
+  );
+
+  const candidates = [...unique.values()];
+
+  const front =
+    candidates.find((candidate) =>
+      /front|obverse/i.test(candidate.path)
+    ) || candidates[0];
+
+  const remaining = candidates
+    .filter(
+      (candidate) =>
+        candidate.url !== front?.url
+    )
+    .sort((a, b) => {
+      const aBack = /back|reverse/i.test(a.path)
+        ? -1
+        : 0;
+      const bBack = /back|reverse/i.test(b.path)
+        ? -1
+        : 0;
+
+      return aBack - bBack;
+    })
+    .map((candidate) => candidate.url);
+
+  return {
+    frontImage: front?.url || "",
+    additionalImages: remaining,
+  };
+}
+
+async function fetchPsaJson(
+  endpoint: string,
+  token: string
+) {
+  const response = await fetch(endpoint, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `bearer ${token}`,
+    },
+    cache: "no-store",
+  });
+
+  const text = await response.text();
+
+  let data: any;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `PSA returned invalid JSON (${response.status}).`
+    );
+  }
+
+  if (!response.ok) {
+    const apiMessage = clean(
+      data?.Message ||
+        data?.message ||
+        data?.Error ||
+        data?.error
+    );
+
+    throw new Error(
+      apiMessage ||
+        `PSA API request failed (${response.status}).`
+    );
+  }
+
+  return data;
+}
+
+async function importPsaCertification(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const token = clean(
+    process.env.PSA_API_TOKEN
+  );
+
+  if (!token) {
+    throw new Error(
+      "Missing PSA_API_TOKEN environment variable."
+    );
+  }
+
+  const certNumber =
+    extractPsaCertNumber(sourceUrl);
+
+  const apiRoot =
+    "https://api.psacard.com/publicapi/cert";
+
+  const certResponse = await fetchPsaJson(
+    `${apiRoot}/GetByCertNumber/${encodeURIComponent(
+      certNumber
+    )}`,
+    token
+  );
+
+  const certSource =
+    certResponse?.PSACert ||
+    certResponse?.psaCert ||
+    certResponse?.Cert ||
+    certResponse?.cert ||
+    certResponse;
+
+  if (
+    !certSource ||
+    typeof certSource !== "object" ||
+    Array.isArray(certSource)
+  ) {
+    throw new Error(
+      `PSA did not return certification data for ${certNumber}.`
+    );
+  }
+
+  const cert =
+    certSource as Record<string, unknown>;
+
+  const year = clean(
+    getObjectValue(cert, "Year", "year")
+  );
+  const brand = clean(
+    getObjectValue(cert, "Brand", "brand")
+  );
+  const category = clean(
+    getObjectValue(
+      cert,
+      "Category",
+      "category"
+    )
+  );
+  const cardNumber = clean(
+    getObjectValue(
+      cert,
+      "CardNumber",
+      "cardNumber"
+    )
+  );
+  const subject = clean(
+    getObjectValue(
+      cert,
+      "Subject",
+      "subject"
+    )
+  );
+  const variety = clean(
+    getObjectValue(
+      cert,
+      "Variety",
+      "variety"
+    )
+  );
+  const grade = formatPsaGrade(cert);
+  const sport = normalizePsaSport(category);
+
+  let imageResponse: unknown = {};
+
+  try {
+    imageResponse = await fetchPsaJson(
+      `${apiRoot}/GetImagesByCertNumber/${encodeURIComponent(
+        certNumber
+      )}`,
+      token
+    );
+  } catch {
+    // A cert can still be imported when PSA has no
+    // public images for it.
+    imageResponse = {};
+  }
+
+  const images =
+    organizePsaImages(imageResponse);
+
+  const aspects: Record<
+    string,
+    string[]
+  > = {};
+
+  if (year) {
+    aspects.Year = [year];
+    aspects.Season = [year];
+  }
+
+  if (subject) {
+    aspects["Player/Athlete"] = [subject];
+  }
+
+  if (sport) {
+    aspects.Sport = [sport];
+  }
+
+  if (cardNumber) {
+    aspects["Card Number"] = [cardNumber];
+  }
+
+  if (brand) {
+    aspects.Brand = [brand];
+    aspects.Set = [brand];
+  }
+
+  if (variety) {
+    aspects["Parallel/Variety"] = [variety];
+  }
+
+  const title = [
+    year,
+    subject,
+    cardNumber ? `#${cardNumber}` : "",
+    brand,
+    variety,
+    grade,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    ok: true,
+    marketplace: "psa",
+    sourceUrl,
+    listingId: certNumber,
+    title:
+      title || `PSA Cert ${certNumber}`,
+    seller: "PSA",
+    price: "",
+    currency: "",
+    endDate: "",
+    certNumber,
+    grade,
+    serialNumber: "",
+    frontImage: images.frontImage,
+    additionalImages:
+      images.additionalImages,
+    aspects,
+  };
+}
+
 export async function importAuction(
   sourceUrl: string
 ): Promise<AuctionImportResult> {
@@ -2008,6 +2410,12 @@ export async function importAuction(
     return importEbayAuction(cleanedUrl);
   }
 
+  if (isPsaHostname(hostname)) {
+    return importPsaCertification(
+      cleanedUrl
+    );
+  }
+
   if (isGoldinHostname(hostname)) {
   return importGoldinAuction(cleanedUrl);
 }
@@ -2022,6 +2430,6 @@ if (
 }
 
 throw new Error(
-  "This marketplace is not supported yet. eBay, Goldin, and Fanatics Collect are currently available."
+  "This source is not supported yet. eBay, PSA, Goldin, and Fanatics Collect are currently available."
 );
 }

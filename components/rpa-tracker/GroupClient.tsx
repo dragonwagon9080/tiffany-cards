@@ -11,6 +11,7 @@ import {
 import UniversalPageHeader from "@/components/shared/UniversalPageHeader";
 import ShareButton from "@/components/shared/ShareButton";
 import ContributionModal from "@/components/tnce/ContributionModal";
+import TiffanyLoadingScreen from "@/components/shared/TiffanyLoadingScreen";
 
 import GroupFilters from "./GroupFilters";
 import GroupRegistry from "./GroupRegistry";
@@ -88,6 +89,7 @@ export default function GroupClient({
   useEffect(() => {
     async function load() {
       setLoading(true);
+      const loadingStartedAt = Date.now();
 
       try {
         const res = await fetch(
@@ -110,6 +112,25 @@ export default function GroupClient({
       } catch {
         setData(null);
       } finally {
+        const elapsed =
+          Date.now() - loadingStartedAt;
+
+        const remaining = Math.max(
+          0,
+          300 - elapsed
+        );
+
+        if (remaining > 0) {
+          await new Promise<void>(
+            (resolve) => {
+              window.setTimeout(
+                resolve,
+                remaining
+              );
+            }
+          );
+        }
+
         setLoading(false);
       }
     }
@@ -155,11 +176,10 @@ export default function GroupClient({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-black px-6 py-10 text-white">
-        <div className="mx-auto max-w-7xl">
-          Loading Registry...
-        </div>
-      </main>
+      <TiffanyLoadingScreen
+        message="Loading Registry"
+        detail="Retrieving the latest RPA Tracker registry."
+      />
     );
   }
 
