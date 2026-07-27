@@ -168,26 +168,7 @@ export default function CardClient({
         setCard(null);
         setGroupCards([]);
       } finally {
-        const elapsed =
-          Date.now() -
-          loadingStartedAt;
-
-        const remaining = Math.max(
-          0,
-          300 - elapsed
-        );
-
-        if (remaining > 0) {
-          await new Promise<void>(
-            (resolve) => {
-              window.setTimeout(
-                resolve,
-                remaining
-              );
-            }
-          );
-        }
-
+        
         setLoading(false);
       }
     }

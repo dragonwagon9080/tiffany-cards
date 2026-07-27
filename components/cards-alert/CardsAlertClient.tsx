@@ -105,8 +105,7 @@ export default function CardsAlertClient({
 
   async function loadStartup() {
     setLoading(true);
-    const loadingStartedAt = Date.now();
-
+  
     try {
       const q = searchParams.get("q") || "";
       setSearch(q);
@@ -143,20 +142,6 @@ export default function CardsAlertClient({
        * Temporary test delay so the loading design
        * remains visible long enough to evaluate.
        */
-      const elapsed =
-        Date.now() - loadingStartedAt;
-
-      const remaining = Math.max(
-        0,
-        300 - elapsed
-      );
-
-      if (remaining > 0) {
-        await new Promise<void>((resolve) => {
-          window.setTimeout(resolve, remaining);
-        });
-      }
-
       setLoading(false);
     }
   }

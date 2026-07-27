@@ -89,8 +89,7 @@ export default function GroupClient({
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const loadingStartedAt = Date.now();
-
+      
       try {
         const res = await fetch(
           `/api/rpa-tracker?mode=group&slug=${encodeURIComponent(
@@ -112,25 +111,7 @@ export default function GroupClient({
       } catch {
         setData(null);
       } finally {
-        const elapsed =
-          Date.now() - loadingStartedAt;
-
-        const remaining = Math.max(
-          0,
-          300 - elapsed
-        );
-
-        if (remaining > 0) {
-          await new Promise<void>(
-            (resolve) => {
-              window.setTimeout(
-                resolve,
-                remaining
-              );
-            }
-          );
-        }
-
+        
         setLoading(false);
       }
     }

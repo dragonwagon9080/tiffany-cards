@@ -71,9 +71,7 @@ export default function RPATrackerClient({
   async function loadData() {
     setLoading(true);
 
-    const loadingStartedAt = Date.now();
-
-    try {
+        try {
       const params = new URLSearchParams();
 
       params.set(
@@ -153,25 +151,6 @@ export default function RPATrackerClient({
        * Prevents the loader from flashing too
        * quickly to recognize.
        */
-      const elapsed =
-        Date.now() - loadingStartedAt;
-
-      const remaining = Math.max(
-        0,
-        300 - elapsed
-      );
-
-      if (remaining > 0) {
-        await new Promise<void>(
-          (resolve) => {
-            window.setTimeout(
-              resolve,
-              remaining
-            );
-          }
-        );
-      }
-
       setLoading(false);
     }
   }
