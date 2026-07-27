@@ -76,11 +76,19 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const settings = await getSiteSettings();
-  const navigation = await getNavigation();
-  const theme = await getTheme();
-  const socials = await getSocials();
-  const cardSets = await getCardSets();
+  const [
+  settings,
+  navigation,
+  theme,
+  socials,
+  cardSets,
+] = await Promise.all([
+  getSiteSettings(),
+  getNavigation(),
+  getTheme(),
+  getSocials(),
+  getCardSets(),
+]);
 
   return (
     <html lang="en">

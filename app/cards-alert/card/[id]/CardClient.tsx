@@ -11,23 +11,8 @@ import ContributionModal from "@/components/tnce/ContributionModal";
 import TNCEContributeButton from "@/components/shared/TNCEContributeButton";
 import TNCEActionMenu from "@/components/shared/TNCEActionMenu";
 import TiffanyLoadingScreen from "@/components/shared/TiffanyLoadingScreen";
+import { sourceLabel } from "@/lib/utils/sourceLabel";
 
-function sourceLabel(url: string) {
-  const lower = url.toLowerCase();
-
-  if (lower.includes("ebay.")) return "eBay →";
-  if (lower.includes("goldin")) return "Goldin →";
-  if (lower.includes("heritage")) return "Heritage →";
-  if (lower.includes("pwcc")) return "PWCC →";
-  if (lower.includes("fanatics")) return "Fanatics Collect →";
-  if (lower.includes("myslabs")) return "MySlabs →";
-  if (lower.includes("comc")) return "COMC →";
-  if (lower.includes("facebook")) return "Facebook →";
-  if (lower.includes("instagram")) return "Instagram →";
-  if (lower.includes("x.com") || lower.includes("twitter")) return "X →";
-
-  return "View Source →";
-}
 function formatDescription(text: string) {
   return String(text || "")
     .replace(

@@ -10,7 +10,10 @@ import SubmitButton from "../SubmitButton";
 import {
   openSubmissionProgress,
 } from "../SubmissionProgress";
-import { parseAuctionTitle } from "@/lib/tnce/auctionParser";
+import {
+  parseAuctionTitle,
+  type ParsedAuctionTitle,
+} from "@/lib/tnce/auctionParser";
 
 type Props = {
   mode: "new" | "update" | "missing";
@@ -36,7 +39,11 @@ type AuctionImportResult = {
   certNumber?: string;
   grade?: string;
   serialNumber?: string;
+  description?: string;
   aspects?: Record<string, string[]>;
+  cardFields?: ParsedAuctionTitle & {
+    certNumber: string;
+  };
   frontImage?: string;
   additionalImages?: string[];
   error?: string;
@@ -331,10 +338,16 @@ export default function NewCardsAlertForm({
         throw new Error(result.error || "Unable to import this listing.");
       }
 
-      const parsedListing = parseAuctionTitle(
-        result.title,
-        result.aspects,
-      );
+      const parsedListing =
+        result.cardFields ||
+        {
+          ...parseAuctionTitle(
+            result.title,
+            result.aspects,
+          ),
+          certNumber:
+            result.certNumber || "",
+        };
 
       const imageUrls = uniqueLines([
         result.frontImage || "",
@@ -396,22 +409,41 @@ export default function NewCardsAlertForm({
       }
 
       const importedGrade =
-        result.grade || parsedListing.grade;
+        parsedListing.grade ||
+        result.grade;
 
       if (importedGrade && !grade.trim()) {
         setGrade(importedGrade);
       }
 
-      if (result.certNumber && !certNumber.trim()) {
-        setCertNumber(result.certNumber);
+      const importedCertNumber =
+        parsedListing.certNumber ||
+        result.certNumber;
+
+      if (
+        importedCertNumber &&
+        !certNumber.trim()
+      ) {
+        setCertNumber(
+          importedCertNumber
+        );
       }
 
       const importedSerial =
-        result.serialNumber ||
-        parsedListing.serialNumber;
+        parsedListing.serialNumber ||
+        result.serialNumber;
 
       if (importedSerial && !serialNumber.trim()) {
         setSerialNumber(importedSerial);
+      }
+
+      if (
+        result.description &&
+        !description.trim()
+      ) {
+        setDescription(
+          result.description
+        );
       }
 
       setUploadedImages((current) => [...current, ...importedUploads]);
@@ -506,6 +538,15 @@ export default function NewCardsAlertForm({
 
       if (result.certNumber && !previousCertNumber.trim()) {
         setPreviousCertNumber(result.certNumber);
+      }
+
+      if (
+        result.description &&
+        !description.trim()
+      ) {
+        setDescription(
+          result.description
+        );
       }
 
       setPreviousUploadedImages((current) => [...current, ...importedUploads]);
@@ -833,8 +874,8 @@ export default function NewCardsAlertForm({
           </h3>
 
           <p className="mt-1 text-xs leading-5 text-neutral-400">
-            Paste an eBay, Fanatics, Goldin, or other supported listing URL to
-            import available grading details and images.
+            Paste an eBay, X, Instagram, Fanatics, Goldin, or other supported
+            source URL to import available card details, post text, and images.
           </p>
 
           <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">

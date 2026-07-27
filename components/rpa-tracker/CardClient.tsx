@@ -111,10 +111,7 @@ export default function CardClient({
     async function load() {
       setLoading(true);
 
-      const loadingStartedAt =
-        Date.now();
-
-      try {
+            try {
         const cardRes = await fetch(
           `/api/rpa-tracker?mode=card&id=${encodeURIComponent(
             id

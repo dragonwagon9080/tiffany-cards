@@ -1,5 +1,7 @@
 "use client";
 
+import { sourceLabel } from "@/lib/utils/sourceLabel";
+
 type Props = {
   history: string;
 };
@@ -98,22 +100,6 @@ function extractDate(line: string) {
   };
 }
 
-function sourceLabel(url: string) {
-  const lower = url.toLowerCase();
-
-  if (lower.includes("ebay.")) return "eBay →";
-  if (lower.includes("goldin.co")) return "Goldin →";
-  if (lower.includes("heritage")) return "Heritage →";
-  if (lower.includes("fanatics")) return "Fanatics Collect →";
-  if (lower.includes("pwcc")) return "PWCC →";
-  if (lower.includes("myslabs")) return "MySlabs →";
-  if (lower.includes("comc")) return "COMC →";
-  if (lower.includes("facebook")) return "Facebook →";
-  if (lower.includes("instagram")) return "Instagram →";
-  if (lower.includes("twitter") || lower.includes("x.com")) return "X →";
-
-  return "View Source →";
-}
 
 function psaCertUrl(cert: string) {
   return `https://www.psacard.com/cert/${encodeURIComponent(cert)}`;
@@ -159,26 +145,44 @@ function parseEntries(history: string): HistoryEntry[] {
 }
 
 function renderSourceText(text: string) {
-  const normalized = normalizeGradeCert(text);
+  const normalized =
+    normalizeGradeCert(text);
 
   const parts = normalized.split(
-    /(https?:\/\/[^\s]+|\b(?:PSA|BGS|SGC|CGC|MBA)\s+[A-Za-z0-9.+/-]+\s+cert\s*#\s*\d{5,}|\bRaw\b|\bebay\b|\bGoldin\b|\bHeritage\b|\bPWCC\b|\bFanatics Collect\b)/gi
+    /(https?:\/\/[^\s]+|(?:www\.|app\.)?cardladder\.com(?:\/[^\s]*)?|(?:www\.)?vintagecardprices\.com(?:\/[^\s]*)?|\b(?:PSA|BGS|SGC|CGC|MBA)\s+[A-Za-z0-9.+/-]+\s+cert\s*#\s*\d{5,}|\bRaw\b|\bebay\b|\bGoldin\b|\bHeritage\b|\bPWCC\b|\bFanatics Collect\b)/gi
   );
 
   return parts.map((part, index) => {
     if (!part) return null;
 
-    if (/^https?:\/\//i.test(part)) {
+    const isSourceLink =
+      /^https?:\/\//i.test(part) ||
+      /^(?:www\.|app\.)?cardladder\.com(?:\/|$)/i.test(
+        part
+      ) ||
+      /^(?:www\.)?vintagecardprices\.com(?:\/|$)/i.test(
+        part
+      );
+
+    if (isSourceLink) {
+      const href =
+        /^https?:\/\//i.test(part)
+          ? part
+          : `https://${part}`;
+
       return (
         <span key={index}>
-          <span className="mx-2 font-bold text-white">•</span>
+          <span className="mx-2 font-bold text-white">
+            {"\u2022"}
+          </span>
+
           <a
-            href={part}
+            href={href}
             target="_blank"
             rel="noopener noreferrer"
             className="font-bold text-blue-400 underline hover:text-blue-300"
           >
-            {sourceLabel(part)}
+            {sourceLabel(href)}
           </a>
         </span>
       );
@@ -189,10 +193,14 @@ function renderSourceText(text: string) {
     );
 
     if (gradeCert) {
-      const company = gradeCert[1].toUpperCase();
+      const company =
+        gradeCert[1].toUpperCase();
+
       const grade = gradeCert[2];
       const cert = gradeCert[3];
-      const label = `${company} ${grade} cert# ${cert}`;
+
+      const label =
+        `${company} ${grade} cert# ${cert}`;
 
       if (company === "PSA") {
         return (
@@ -209,7 +217,10 @@ function renderSourceText(text: string) {
       }
 
       return (
-        <span key={index} className="font-bold text-[#d4af37]">
+        <span
+          key={index}
+          className="font-bold text-[#d4af37]"
+        >
           {label}
         </span>
       );
@@ -218,31 +229,51 @@ function renderSourceText(text: string) {
     if (/^ebay$/i.test(part)) {
       return (
         <span key={index}>
-          <span className="mx-2 font-bold text-white">•</span>
-          <span className="font-bold text-blue-400">eBay</span>
+          <span className="mx-2 font-bold text-white">
+            {"\u2022"}
+          </span>
+
+          <span className="font-bold text-blue-400">
+            eBay
+          </span>
         </span>
       );
     }
 
-    if (/^(Goldin|Heritage|PWCC|Fanatics Collect)$/i.test(part)) {
+    if (
+      /^(Goldin|Heritage|PWCC|Fanatics Collect)$/i.test(
+        part
+      )
+    ) {
       return (
         <span key={index}>
-          <span className="mx-2 font-bold text-white">•</span>
-          <span className="font-bold text-blue-400">{part}</span>
+          <span className="mx-2 font-bold text-white">
+            {"\u2022"}
+          </span>
+
+          <span className="font-bold text-blue-400">
+            {part}
+          </span>
         </span>
       );
     }
 
     if (/\bRaw\b/i.test(part)) {
       return (
-        <span key={index} className="font-bold text-[#d4af37]">
+        <span
+          key={index}
+          className="font-bold text-[#d4af37]"
+        >
           {part}
         </span>
       );
     }
 
     return (
-      <span key={index} className="text-zinc-400">
+      <span
+        key={index}
+        className="text-zinc-400"
+      >
         {part}
       </span>
     );

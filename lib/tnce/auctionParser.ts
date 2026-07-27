@@ -83,7 +83,74 @@ function parseSerialNumber(title: string) {
   return `${numerator}/${denominator}`;
 }
 
-function parseGrade(title: string) {
+function normalizeGradingCompany(
+  value: unknown
+) {
+  const text = clean(value).toUpperCase();
+
+  if (text.includes("BECKETT")) {
+    return "BGS";
+  }
+
+  const match = text.match(
+    /\b(PSA|BGS|SGC|CGC|CSG|TAG|HGA)\b/
+  );
+
+  return match?.[1] || "";
+}
+
+function parseGrade(
+  title: string,
+  aspects?: AuctionAspects
+) {
+  const aspectCompany =
+    normalizeGradingCompany(
+      aspectValue(aspects, [
+        "Professional Grader",
+        "Graded By",
+        "Grading Company",
+        "Certification Company",
+      ])
+    );
+
+  const aspectGrade = aspectValue(
+    aspects,
+    [
+      "Grade",
+      "Card Grade",
+      "Professional Grade",
+    ]
+  );
+
+  if (aspectGrade) {
+    if (/authentic/i.test(aspectGrade)) {
+      return {
+        grade: aspectCompany
+          ? `${aspectCompany} Authentic`
+          : "Authentic",
+        gradingCompany: aspectCompany,
+      };
+    }
+
+    const numericGrade =
+      aspectGrade.match(
+        /\b(10(?:\.0)?|[1-9](?:\.5|\.0)?)\b/
+      )?.[1];
+
+    if (numericGrade) {
+      const normalizedGrade = String(
+        Number(numericGrade)
+      );
+
+      return {
+        grade: aspectCompany
+          ? `${aspectCompany} ${normalizedGrade}`
+          : normalizedGrade,
+        gradingCompany: aspectCompany,
+      };
+    }
+  }
+
   const companyPattern =
     "BECKETT|PSA|BGS|SGC|CGC|CSG|TAG|HGA";
 
@@ -118,6 +185,7 @@ function parseYear(title: string, aspects?: AuctionAspects) {
     "Year",
     "Season",
     "Card Year",
+    "Release Year",
   ]);
 
   const aspectMatch = fromAspects.match(/\b(19|20)\d{2}\b/);
@@ -134,6 +202,8 @@ function parseCardNumber(title: string, aspects?: AuctionAspects) {
     "Card Number",
     "Card No.",
     "Card No",
+    "Card #",
+    "CardNumber",
     "Number",
   ]);
 
@@ -217,8 +287,171 @@ function parsePlayerFromTitle(
     prefix.split(/\s+/).filter(Boolean);
 
   if (
-    parts.length < 2 ||
-    parts.length > 5
+    parts.length >= 2 &&
+    parts.length <= 5
+  ) {
+    return {
+      firstName: parts.shift() || "",
+      lastName: parts.join(" "),
+    };
+  }
+
+  /*
+   * Many eBay titles begin with the year and place the
+   * player near the end:
+   *
+   * 2012 Topps Five Star ... Alex Rodriguez #/25
+   *
+   * When Item Specifics are unavailable, remove trailing
+   * serial/grade text and common listing-description words,
+   * then use the final plausible name tokens.
+   */
+  let remainder = title
+    .slice(
+      yearMatch.index +
+        yearMatch[0].length
+    )
+    .replace(
+      /(?:#\s*)?\d*\s*\/\s*(?:\d+|xx)\b.*$/i,
+      ""
+    )
+    .replace(
+      /\b(?:PSA|BGS|SGC|CGC|CSG|TAG|HGA|BECKETT)\s*(?:AUTHENTIC|10(?:\.0)?|[1-9](?:\.5|\.0)?)\b/gi,
+      ""
+    )
+    .replace(/[^a-zA-Z.' -]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const noiseWords = new Set(
+    [
+      "auto",
+      "autograph",
+      "base",
+      "card",
+      "cards",
+      "game",
+      "gem",
+      "jersey",
+      "jumbo",
+      "logo",
+      "lot",
+      "mint",
+      "patch",
+      "pristine",
+      "rare",
+      "rc",
+      "relic",
+      "rookie",
+      "sealed",
+      "signed",
+      "sp",
+      "ssp",
+      "stadium",
+      "used",
+
+      /*
+       * Common team words appearing after a player name.
+       */
+      "yankees",
+      "mets",
+      "dodgers",
+      "cubs",
+      "braves",
+      "phillies",
+      "padres",
+      "astros",
+      "ravens",
+      "chiefs",
+      "eagles",
+      "bills",
+      "bengals",
+      "browns",
+      "steelers",
+      "cowboys",
+      "packers",
+      "patriots",
+      "broncos",
+      "raiders",
+      "chargers",
+      "dolphins",
+      "jets",
+      "giants",
+      "commanders",
+      "lions",
+      "bears",
+      "vikings",
+      "saints",
+      "falcons",
+      "panthers",
+      "buccaneers",
+      "rams",
+      "seahawks",
+      "cardinals",
+      "texans",
+      "titans",
+      "jaguars",
+      "colts",
+      "lakers",
+      "celtics",
+      "bulls",
+      "warriors",
+      "knicks",
+      "nets",
+      "mavericks",
+      "spurs",
+      "heat",
+      "bucks",
+      "suns",
+      "nuggets",
+    ].map((word) => word.toLowerCase())
+  );
+
+  let remainderParts = remainder
+    .split(/\s+/)
+    .filter(Boolean);
+
+  while (
+    remainderParts.length &&
+    noiseWords.has(
+      remainderParts[
+        remainderParts.length - 1
+      ].toLowerCase()
+    )
+  ) {
+    remainderParts.pop();
+  }
+
+  if (remainderParts.length < 2) {
+    return {
+      firstName: "",
+      lastName: "",
+    };
+  }
+
+  const suffixPattern =
+    /^(?:jr\.?|sr\.?|ii|iii|iv)$/i;
+
+  const lastToken =
+    remainderParts[
+      remainderParts.length - 1
+    ];
+
+  const nameLength =
+    suffixPattern.test(lastToken) &&
+    remainderParts.length >= 3
+      ? 3
+      : 2;
+
+  const nameParts =
+    remainderParts.slice(-nameLength);
+
+  if (
+    nameParts.some((part) =>
+      noiseWords.has(
+        part.toLowerCase()
+      )
+    )
   ) {
     return {
       firstName: "",
@@ -227,8 +460,9 @@ function parsePlayerFromTitle(
   }
 
   return {
-    firstName: parts.shift() || "",
-    lastName: parts.join(" "),
+    firstName: nameParts[0],
+    lastName:
+      nameParts.slice(1).join(" "),
   };
 }
 
@@ -260,6 +494,8 @@ function parsePlayer(
       "Player/Athlete",
       "Player",
       "Athlete",
+      "Subject",
+      "Featured Person/Artist",
       "Character",
     ]);
 
@@ -463,7 +699,32 @@ function parseSport(aspects?: AuctionAspects) {
     wrestling: "Wrestling",
   };
 
-  return aliases[value.toLowerCase()] || value;
+  const normalized =
+    value.toLowerCase();
+
+  if (aliases[normalized]) {
+    return aliases[normalized];
+  }
+
+  for (
+    const [alias, sport] of Object.entries(
+      aliases
+    )
+  ) {
+    if (
+      new RegExp(
+        `\\b${alias.replace(
+          /\s+/g,
+          "\\s+"
+        )}\\b`,
+        "i"
+      ).test(value)
+    ) {
+      return sport;
+    }
+  }
+
+  return value;
 }
 
 function parseSportFromTitle(
@@ -595,7 +856,10 @@ export function parseAuctionTitle(
   aspects?: AuctionAspects,
 ): ParsedAuctionTitle {
   const title = clean(value);
-  const gradeResult = parseGrade(title);
+  const gradeResult = parseGrade(
+    title,
+    aspects
+  );
   const player = parsePlayer(
     aspects,
     title
@@ -625,6 +889,9 @@ export function parseAuctionTitle(
     serialNumber:
       aspectValue(aspects, [
         "Serial Number",
+        "Serial #",
+        "Serial Numbered",
+        "Card Serial",
         "Print Run",
       ]).match(/\b\d{1,5}\s*\/\s*\d{1,5}\b/)?.[0]?.replace(/\s+/g, "") ||
       parseSerialNumber(title),

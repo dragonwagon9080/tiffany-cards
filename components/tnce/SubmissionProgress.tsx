@@ -5,8 +5,6 @@ export type SubmissionProgressController = {
   close: () => void;
 };
 
-const MINIMUM_VISIBLE_MS = 1500;
-
 function applyStyles(
   element: HTMLElement,
   styles: Partial<CSSStyleDeclaration>
@@ -45,9 +43,6 @@ export function openSubmissionProgress(
     .forEach((element) =>
       element.remove()
     );
-
-  const openedAt = Date.now();
-  let closed = false;
 
   const overlay =
     document.createElement("div");
@@ -244,6 +239,8 @@ export function openSubmissionProgress(
   overlay.appendChild(card);
   document.body.appendChild(overlay);
 
+  let closed = false;
+
   function ensureAttached() {
     if (
       !closed &&
@@ -289,22 +286,10 @@ export function openSubmissionProgress(
         "Processing submission...";
     },
 
-    close() {
-      if (closed) return;
+   close() {
+  if (closed) return;
 
-      const remaining =
-        MINIMUM_VISIBLE_MS -
-        (Date.now() - openedAt);
-
-      if (remaining > 0) {
-        window.setTimeout(
-          removeOverlay,
-          remaining
-        );
-        return;
-      }
-
-      removeOverlay();
-    },
+  removeOverlay();
+},
   };
 }

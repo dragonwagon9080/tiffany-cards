@@ -1,3 +1,8 @@
+import {
+  parseAuctionTitle,
+  type ParsedAuctionTitle,
+} from "../auctionParser";
+
 type AuctionImportResult = {
   ok?: boolean;
 
@@ -16,11 +21,16 @@ type AuctionImportResult = {
   grade?: string;
   serialNumber?: string;
   lotNumber?: string;
+  description?: string;
 
   frontImage: string;
   additionalImages: string[];
 
   aspects: Record<string, string[]>;
+
+  cardFields?: ParsedAuctionTitle & {
+    certNumber: string;
+  };
 
   aspectDiagnostics?: {
     status?: number;
@@ -166,8 +176,15 @@ function decodeHtml(value: string) {
     .replace(/&#x27;/gi, "'")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
+    .replace(
+      /&#x([0-9a-f]+);/gi,
+      (_, code) =>
+        String.fromCodePoint(
+          parseInt(code, 16)
+        )
+    )
     .replace(/&#(\d+);/g, (_, code) =>
-      String.fromCharCode(Number(code))
+      String.fromCodePoint(Number(code))
     );
 }
 
@@ -1399,10 +1416,23 @@ const listingId = extractEbayItemId(sourceUrl);
   const apiAspects =
     mergeEbayAspects(item);
 
+  let urlEpid = "";
+
+  try {
+    urlEpid = clean(
+      new URL(
+        sourceUrl
+      ).searchParams.get("epid")
+    );
+  } catch {
+    urlEpid = "";
+  }
+
   const itemEpid =
     clean(
       item.epid ||
-        item.inferredEpid
+        item.inferredEpid ||
+        urlEpid
     );
 
   const catalogSearchResult =
@@ -1441,8 +1471,8 @@ const listingId = extractEbayItemId(sourceUrl);
    * fields the page did not provide.
    */
   const aspects = {
-    ...apiAspects,
     ...catalogResult.aspects,
+    ...apiAspects,
     ...pageAspects,
   };
 
@@ -2383,6 +2413,479 @@ async function importPsaCertification(
   };
 }
 
+function extractXStatusDetails(
+  sourceUrl: string
+) {
+  const parsed = new URL(sourceUrl);
+
+  const match = parsed.pathname.match(
+    /^\/([^/]+)\/status\/(\d+)/i
+  );
+
+  if (!match) {
+    throw new Error(
+      "Enter a valid public X post URL."
+    );
+  }
+
+  return {
+    username: match[1],
+    statusId: match[2],
+    canonicalUrl:
+      `https://x.com/${match[1]}/status/${match[2]}`,
+  };
+}
+
+function extractXPostText(
+  embedHtml: string
+) {
+  const paragraph =
+    embedHtml.match(
+      /<p\b[^>]*>([\s\S]*?)<\/p>/i
+    )?.[1] || "";
+
+  if (!paragraph) {
+    return "";
+  }
+
+  const withLinks = paragraph.replace(
+    /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+    function (
+      _match,
+      href,
+      label
+    ) {
+      const cleanLabel = decodeHtml(
+        String(label).replace(
+          /<[^>]+>/g,
+          ""
+        )
+      );
+
+      if (
+        /pic\.twitter\.com/i.test(
+          cleanLabel
+        )
+      ) {
+        return "";
+      }
+
+      return decodeHtml(href);
+    }
+  );
+
+  return decodeHtml(
+    withLinks
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+  )
+    .split(/\r?\n/)
+    .map((line) =>
+      line.replace(/\s+/g, " ").trim()
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+function extractXMediaImages(
+  html: string
+) {
+  const decoded = html
+    .replace(/\\u002F/gi, "/")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/gi, "&");
+
+  const media = new Map<
+    string,
+    string
+  >();
+
+  const pattern =
+    /https:\/\/pbs\.twimg\.com\/media\/([A-Za-z0-9_-]+)(?:\.([A-Za-z0-9]+))?(?:\?format=([A-Za-z0-9]+)&name=[A-Za-z0-9_]+|:[A-Za-z0-9_]+)?/gi;
+
+  let match:
+    | RegExpExecArray
+    | null;
+
+  while (
+    (match = pattern.exec(decoded))
+  ) {
+    const mediaId = clean(match[1]);
+
+    if (!mediaId) {
+      continue;
+    }
+
+    const detectedFormat = clean(
+      match[3] || match[2]
+    ).toLowerCase();
+
+    const safeFormat =
+      /^(?:jpg|jpeg|png|webp|gif)$/i.test(
+        detectedFormat
+      )
+        ? detectedFormat.replace(
+            "jpeg",
+            "jpg"
+          )
+        : "jpg";
+
+    /*
+     * Prefer a detected JPG/PNG source over WEBP when
+     * duplicate responsive variants are present.
+     */
+    const existing = media.get(mediaId);
+
+    if (
+      !existing ||
+      /format=webp/i.test(existing)
+    ) {
+      media.set(
+        mediaId,
+        `https://pbs.twimg.com/media/${mediaId}?format=${safeFormat}&name=orig`
+      );
+    }
+  }
+
+  return [...media.values()];
+}
+
+async function importXPost(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const details =
+    extractXStatusDetails(sourceUrl);
+
+  const embedUrl = new URL(
+    "https://publish.twitter.com/oembed"
+  );
+
+  embedUrl.searchParams.set(
+    "url",
+    details.canonicalUrl
+  );
+
+  embedUrl.searchParams.set(
+    "omit_script",
+    "true"
+  );
+
+  const [embedResponse, pageResponse] =
+    await Promise.all([
+      fetch(embedUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      }),
+
+      fetch(details.canonicalUrl, {
+        method: "GET",
+        headers: {
+          Accept:
+            "text/html,application/xhtml+xml",
+          "Accept-Language":
+            "en-US,en;q=0.9",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36",
+        },
+        cache: "no-store",
+        redirect: "follow",
+      }),
+    ]);
+
+  const embedText =
+    await embedResponse.text();
+
+  let embedData: any = {};
+
+  try {
+    embedData = JSON.parse(embedText);
+  } catch {
+    embedData = {};
+  }
+
+  const pageHtml =
+    pageResponse.ok
+      ? await pageResponse.text()
+      : "";
+
+  const description =
+    extractXPostText(
+      clean(embedData?.html)
+    );
+
+  const imageUrls =
+    extractXMediaImages(pageHtml);
+
+  if (
+    !embedResponse.ok &&
+    !description &&
+    imageUrls.length === 0
+  ) {
+    throw new Error(
+      "Unable to import this X post. Make sure the post is public."
+    );
+  }
+
+  const authorName = clean(
+    embedData?.author_name
+  );
+
+  const title =
+    description
+      .replace(/\s+/g, " ")
+      .slice(0, 200) ||
+    `X post by @${
+      details.username
+    }`;
+
+  return {
+    ok: true,
+    marketplace: "x",
+    sourceUrl: details.canonicalUrl,
+    listingId: details.statusId,
+    title,
+    seller:
+      authorName ||
+      `@${details.username}`,
+    price: "",
+    currency: "",
+    endDate: "",
+    description,
+    frontImage:
+      imageUrls[0] || "",
+    additionalImages:
+      imageUrls.slice(1),
+    aspects: {},
+  };
+}
+
+function extractInstagramPostDetails(
+  sourceUrl: string
+) {
+  const parsed = new URL(sourceUrl);
+
+  const match = parsed.pathname.match(
+    /^\/(?:[^/]+\/)?(?:p|reel|tv)\/([A-Za-z0-9_-]+)/i
+  );
+
+  if (!match) {
+    throw new Error(
+      "Enter a valid public Instagram post or reel URL."
+    );
+  }
+
+  return {
+    shortcode: match[1],
+    canonicalUrl:
+      `https://www.instagram.com/p/${match[1]}/`,
+  };
+}
+
+function extractInstagramCaption(
+  metaDescription: string
+) {
+  const decoded = decodeHtml(
+    metaDescription
+  );
+
+  /*
+   * Instagram normally formats og:description as:
+   *
+   * 53 likes, 7 comments - username on Date:
+   * "Actual caption". 
+   */
+  const quoted = decoded.match(
+    /:\s*["“]([\s\S]*?)["”]\.?\s*$/
+  )?.[1];
+
+  const caption =
+    quoted !== undefined
+      ? quoted
+      : decoded;
+
+  return caption
+    .split(/\r?\n/)
+    .map((line) =>
+      line.replace(/\s+/g, " ").trim()
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+function extractInstagramImages(
+  _html: string,
+  primaryImage: string
+) {
+  const url = normalizeUrl(
+    primaryImage
+  );
+
+  if (!url) {
+    return [];
+  }
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return [];
+  }
+
+  /*
+   * Only og:image is guaranteed to belong to the
+   * requested post. Other CDN images in Instagram's HTML
+   * can come from recommended or neighboring posts.
+   */
+  if (
+    !parsedUrl.searchParams.get("oh") ||
+    !parsedUrl.searchParams.get("oe")
+  ) {
+    return [];
+  }
+
+  return [url];
+}
+
+async function importInstagramPost(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const details =
+    extractInstagramPostDetails(
+      sourceUrl
+    );
+
+  const response = await fetch(
+    details.canonicalUrl,
+    {
+      method: "GET",
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml",
+        "Accept-Language":
+          "en-US,en;q=0.9",
+        "User-Agent":
+          "Mozilla/5.0",
+      },
+      cache: "no-store",
+      redirect: "follow",
+    }
+  );
+
+  const html = await response.text();
+
+  if (!response.ok || !html) {
+    throw new Error(
+      "Unable to import this Instagram post. Make sure the post is public."
+    );
+  }
+
+  const metaDescription =
+    getMetaContent(
+      html,
+      "og:description"
+    );
+
+  const primaryImage =
+    getMetaContent(html, "og:image");
+
+  const canonicalUrl =
+    normalizeUrl(
+      getMetaContent(
+        html,
+        "og:url"
+      ),
+      details.canonicalUrl
+    ) ||
+    getCanonicalUrl(
+      html,
+      details.canonicalUrl
+    );
+
+  const description =
+    extractInstagramCaption(
+      metaDescription
+    );
+
+  const imageUrls =
+    extractInstagramImages(
+      html,
+      primaryImage
+    );
+
+  if (
+    !description &&
+    imageUrls.length === 0
+  ) {
+    throw new Error(
+      "Instagram did not expose a caption or image for this post. Make sure it is public."
+    );
+  }
+
+  const username =
+    canonicalUrl.match(
+      /instagram\.com\/([^/]+)\/(?:p|reel|tv)\//i
+    )?.[1] || "";
+
+  const title =
+    description
+      .replace(/\s+/g, " ")
+      .slice(0, 200) ||
+    `Instagram post ${details.shortcode}`;
+
+  return {
+    ok: true,
+    marketplace: "instagram",
+    sourceUrl: canonicalUrl,
+    listingId: details.shortcode,
+    title,
+    seller:
+      username
+        ? `@${username}`
+        : "Instagram",
+    price: "",
+    currency: "",
+    endDate: "",
+    description,
+    frontImage:
+      imageUrls[0] || "",
+    additionalImages:
+      imageUrls.slice(1),
+    aspects: {},
+  };
+}
+
+function addNormalizedCardFields(
+  result: AuctionImportResult
+): AuctionImportResult {
+  const parsed = parseAuctionTitle(
+    result.title,
+    result.aspects
+  );
+
+  return {
+    ...result,
+
+    cardFields: {
+      ...parsed,
+
+      grade:
+        clean(result.grade) ||
+        parsed.grade,
+
+      serialNumber:
+        clean(result.serialNumber) ||
+        parsed.serialNumber,
+
+      certNumber:
+        clean(result.certNumber),
+    },
+  };
+}
+
 export async function importAuction(
   sourceUrl: string
 ): Promise<AuctionImportResult> {
@@ -2407,17 +2910,41 @@ export async function importAuction(
     .replace(/^www\./, "");
 
   if (isEbayHostname(hostname)) {
-    return importEbayAuction(cleanedUrl);
+    return addNormalizedCardFields(
+      await importEbayAuction(cleanedUrl)
+    );
   }
 
   if (isPsaHostname(hostname)) {
-    return importPsaCertification(
-      cleanedUrl
+    return addNormalizedCardFields(
+      await importPsaCertification(
+        cleanedUrl
+      )
+    );
+  }
+
+  if (isXHostname(hostname)) {
+    return addNormalizedCardFields(
+      await importXPost(cleanedUrl)
+    );
+  }
+
+  if (
+    isInstagramHostname(hostname)
+  ) {
+    return addNormalizedCardFields(
+      await importInstagramPost(
+        cleanedUrl
+      )
     );
   }
 
   if (isGoldinHostname(hostname)) {
-  return importGoldinAuction(cleanedUrl);
+    return addNormalizedCardFields(
+      await importGoldinAuction(
+        cleanedUrl
+      )
+    );
 }
 
 if (
@@ -2426,10 +2953,34 @@ if (
   hostname === "pwccmarketplace.com" ||
   hostname.endsWith(".pwccmarketplace.com")
 ) {
-  return importFanaticsAuction(cleanedUrl);
+  return addNormalizedCardFields(
+    await importFanaticsAuction(
+      cleanedUrl
+    )
+  );
+}
+
+function isXHostname(hostname: string) {
+  return (
+    hostname === "x.com" ||
+    hostname.endsWith(".x.com") ||
+    hostname === "twitter.com" ||
+    hostname.endsWith(".twitter.com")
+  );
+}
+
+function isInstagramHostname(
+  hostname: string
+) {
+  return (
+    hostname === "instagram.com" ||
+    hostname.endsWith(
+      ".instagram.com"
+    )
+  );
 }
 
 throw new Error(
-  "This source is not supported yet. eBay, PSA, Goldin, and Fanatics Collect are currently available."
+  "This source is not supported yet. eBay, X, Instagram, PSA, Goldin, and Fanatics Collect are currently available."
 );
 }

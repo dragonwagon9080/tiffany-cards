@@ -138,10 +138,7 @@ export default function CardsAlertClient({
       setHasMore(json?.meta?.hasMore || false);
       setOffset(q.trim() ? 100 : 50);
     } finally {
-      /*
-       * Temporary test delay so the loading design
-       * remains visible long enough to evaluate.
-       */
+      
       setLoading(false);
     }
   }
