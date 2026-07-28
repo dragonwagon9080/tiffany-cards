@@ -13,7 +13,7 @@ import TNCEActionMenu from "@/components/shared/TNCEActionMenu";
 import TiffanyLoadingScreen from "@/components/shared/TiffanyLoadingScreen";
 import { sourceLabel } from "@/lib/utils/sourceLabel";
 import EbayAffiliateDisclosure from "@/components/shared/EbayAffiliateDisclosure";
-import SimilarCards from "@/components/cards-alert/SimilarCards";
+
 
 function formatDescription(text: string) {
   return String(text || "")
@@ -366,9 +366,6 @@ export default function CardClient({
           />
         </section>
 
-<SimilarCards
-  currentCard={card}
-/>
 
 <Divider />
 

@@ -269,30 +269,20 @@ export default function NewCardsAlertForm({
     setSerialNumber("");
     setStatus(activeValue(activeObject, ["Status", "status"]));
 
-    setPreviousGrade("");
-    setPreviousCertNumber("");
-
-    const existingSource = activeValue(activeObject, [
-      "Site_Link",
-      "siteLink",
-      "Source_URL",
-    ]);
-
-    setPreviousSourceUrl(existingSource);
-    setPreviousSourceUrls(existingSource ? [existingSource] : []);
-    setPreviousFrontImage(
-      activeValue(activeObject, ["front_image", "Front_Image", "frontImage"]),
-    );
-    setPreviousBackImage(
-      activeValue(activeObject, ["back_image", "Back_Image", "backImage"]),
-    );
-    setPreviousOtherImages(
-      activeValue(activeObject, [
-        "additional_images",
-        "Other_Images",
-        "otherImages",
-      ]),
-    );
+    /*
+ * A similar card is a separate production card.
+ * Do not inherit evidence, grading information,
+ * images, or identifiers from the original card.
+ */
+setPreviousGrade("");
+setPreviousCertNumber("");
+setPreviousSourceUrl("");
+setPreviousSourceUrls([]);
+setPreviousAuctionSourceUrl("");
+setPreviousFrontImage("");
+setPreviousBackImage("");
+setPreviousOtherImages("");
+setPreviousUploadedImages([]);
 
     setGrade("");
     setCertNumber("");
@@ -686,15 +676,18 @@ export default function NewCardsAlertForm({
         setUploadedImages,
       );
 
-      setSubmissionStage("Uploading previous evidence images...");
-      progress.update(
-        "Uploading previous evidence images..."
-      );
-      const previousUploadedFiles = await uploadPendingImages(
-        submissionId,
-        previousUploadedImages,
-        setPreviousUploadedImages,
-      );
+      let previousUploadedFiles: PendingTNCEUpload[] = [];
+
+if (!isSimilarCard) {
+  setSubmissionStage("Uploading previous evidence images...");
+  progress.update("Uploading previous evidence images...");
+
+  previousUploadedFiles = await uploadPendingImages(
+    submissionId,
+    previousUploadedImages,
+    setPreviousUploadedImages,
+  );
+}
 
       const requestBody = {
         project,
@@ -714,21 +707,60 @@ export default function NewCardsAlertForm({
           email: contributorEmail.trim(),
         },
         activeObject: {
-          id: activeObject?.id || "cards-alert-main-page",
-          title: [
-            cardYear.trim(),
-            firstName.trim(),
-            lastName.trim(),
-            cardNumber.trim()
-              ? `#${cardNumber.trim()}`
-              : "",
-            brand.trim(),
-          ]
-            .filter(Boolean)
-            .join(" "),
-          ID: activeObject?.ID,
-          Cert_Number: activeObject?.Cert_Number,
-        },
+  /*
+   * Never send the original production ID for a
+   * similar-card submission. This forces TNCE to
+   * create a separate Cards Alert record.
+   */
+  id: isSimilarCard
+    ? "cards-alert-main-page"
+    : activeObject?.id || "cards-alert-main-page",
+
+  title: [
+    cardYear.trim(),
+    firstName.trim(),
+    lastName.trim(),
+    cardNumber.trim()
+      ? `#${cardNumber.trim()}`
+      : "",
+    brand.trim(),
+  ]
+    .filter(Boolean)
+    .join(" "),
+
+  ID: isSimilarCard
+    ? ""
+    : clean(activeObject?.ID),
+
+  Card_id: isSimilarCard
+    ? ""
+    : clean(activeObject?.Card_id),
+
+  card_id: isSimilarCard
+    ? ""
+    : clean(activeObject?.card_id),
+
+  Grade: isSimilarCard
+    ? ""
+    : clean(activeObject?.Grade),
+
+  Cert_Number: isSimilarCard
+    ? ""
+    : clean(activeObject?.Cert_Number),
+
+  Front_Image: isSimilarCard
+    ? ""
+    : clean(activeObject?.Front_Image),
+
+  Back_Image: isSimilarCard
+    ? ""
+    : clean(activeObject?.Back_Image),
+
+  Other_Images: isSimilarCard
+    ? ""
+    : clean(activeObject?.Other_Images),
+},
+
         fields: {
           Year: cardYear.trim(),
           First: firstName.trim(),
@@ -742,9 +774,17 @@ export default function NewCardsAlertForm({
           Cert_Number: certNumber.trim(),
           Status: status.trim(),
           Description: description.trim(),
-          Previous_Grade: previousGrade.trim(),
-          Previous_Cert_Number: previousCertNumber.trim(),
-          Previous_Source_URL: previousSourceUrls.join("\n"),
+          Previous_Grade: isSimilarCard
+  ? ""
+  : previousGrade.trim(),
+
+Previous_Cert_Number: isSimilarCard
+  ? ""
+  : previousCertNumber.trim(),
+
+Previous_Source_URL: isSimilarCard
+  ? ""
+  : previousSourceUrls.join("\n"),
           Auction_Source_URL: currentSourceUrls.join("\n"),
         },
         imageUrls: {
@@ -767,26 +807,41 @@ export default function NewCardsAlertForm({
             publicUrl: image.publicUrl!.trim(),
             originalUrl: clean(image.originalUrl),
           })),
+        
         previousImageUrls: {
-          front: previousFrontImage.trim(),
-          back: previousBackImage.trim(),
-          other: previousOtherImages.split(/\r?\n/).map(clean).filter(Boolean),
-        },
-        previousUploadedImages: previousUploadedFiles
-          .filter(
-            (image) =>
-              image.uploaded &&
-              typeof image.publicUrl === "string" &&
-              image.publicUrl.trim(),
-          )
-          .map((image) => ({
-            slot: image.slot,
-            fileName: image.fileName,
-            contentType: image.contentType,
-            objectPath: image.objectPath,
-            publicUrl: image.publicUrl!.trim(),
-            originalUrl: clean(image.originalUrl),
-          })),
+  front: isSimilarCard
+    ? ""
+    : previousFrontImage.trim(),
+
+  back: isSimilarCard
+    ? ""
+    : previousBackImage.trim(),
+
+  other: isSimilarCard
+    ? []
+    : previousOtherImages
+        .split(/\r?\n/)
+        .map(clean)
+        .filter(Boolean),
+},
+
+previousUploadedImages: isSimilarCard
+  ? []
+  : previousUploadedFiles
+      .filter(
+        (image) =>
+          image.uploaded &&
+          typeof image.publicUrl === "string" &&
+          image.publicUrl.trim(),
+      )
+      .map((image) => ({
+        slot: image.slot,
+        fileName: image.fileName,
+        contentType: image.contentType,
+        objectPath: image.objectPath,
+        publicUrl: image.publicUrl!.trim(),
+        originalUrl: clean(image.originalUrl),
+      })),
         notes: "",
       };
 
