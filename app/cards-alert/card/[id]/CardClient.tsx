@@ -12,6 +12,8 @@ import TNCEContributeButton from "@/components/shared/TNCEContributeButton";
 import TNCEActionMenu from "@/components/shared/TNCEActionMenu";
 import TiffanyLoadingScreen from "@/components/shared/TiffanyLoadingScreen";
 import { sourceLabel } from "@/lib/utils/sourceLabel";
+import EbayAffiliateDisclosure from "@/components/shared/EbayAffiliateDisclosure";
+import SimilarCards from "@/components/cards-alert/SimilarCards";
 
 function formatDescription(text: string) {
   return String(text || "")
@@ -364,36 +366,25 @@ export default function CardClient({
           />
         </section>
 
-        {card.Site_Link && (
-          <>
-            <Divider />
+<SimilarCards
+  currentCard={card}
+/>
 
-            <section className="mt-10">
-              <h2 className="text-xl font-bold text-[#d4af37]">Source Link</h2>
+<Divider />
 
-              <a
-                href={card.Site_Link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-block font-bold text-blue-400 underline transition hover:text-blue-300"
-              >
-                {sourceLabel(card.Site_Link)}
-              </a>
-            </section>
-          </>
-        )}
+<section className="mt-10 text-sm italic leading-relaxed text-gray-400">
+  <a
+    href="/legal-disclaimer"
+    className="text-[#d4af37] underline"
+  >
+    Disclaimer:
+  </a>{" "}
+  Cards Alert is a community-driven resource for sharing opinions about cards
+  that may be altered, fake, mislabeled, stolen, or otherwise questionable.
+  Information is provided for research and discussion only.
 
-        <Divider />
-
-        <section className="mt-10 text-sm italic leading-relaxed text-gray-400">
-          <a href="/disclaimer" className="text-[#d4af37] underline">
-            Disclaimer:
-          </a>{" "}
-          Cards Alert is a community-driven resource for sharing opinions about
-          cards that may be altered, fake, mislabeled, stolen, or otherwise
-          questionable. Information is provided for research and discussion
-          only.
-        </section>
+  <EbayAffiliateDisclosure className="mt-3" />
+</section>
       </div>
 
       <ContributionModal

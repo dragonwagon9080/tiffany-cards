@@ -1,6 +1,7 @@
 "use client";
 
 import { sourceLabel } from "@/lib/utils/sourceLabel";
+import EbayAffiliateDisclosure from "@/components/shared/EbayAffiliateDisclosure";
 
 type Props = {
   history: string;
@@ -331,7 +332,9 @@ export default function CardHistory({ history }: Props) {
             </div>
           );
         })}
-      </div>
+            </div>
+
+      <EbayAffiliateDisclosure className="mt-6" />
     </section>
   );
 }

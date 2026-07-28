@@ -15,6 +15,7 @@ import SiteHeader from "@/components/site/SiteHeader";
 import SiteFooter from "@/components/site/SiteFooter";
 import BackToTopButton from "@/components/site/BackToTopButton";
 import AdSenseScript from "@/components/site/AdSenseScript";
+import EbaySmartLinks from "@/components/site/EbaySmartLinks";
 
 const cinzel = Cinzel({
   subsets: ["latin"],
@@ -109,6 +110,7 @@ export default async function RootLayout({
 
        {/* Google AdSense — excluded from all TNCE routes */}
 <AdSenseScript />
+<EbaySmartLinks />
 
         <SiteHeader
           settings={settings}

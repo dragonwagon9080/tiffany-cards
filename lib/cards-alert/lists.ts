@@ -52,7 +52,7 @@ export async function getCardsAlertLists(): Promise<CardsAlertLists> {
       url.toString(),
       {
         next: {
-          revalidate: 300,
+          revalidate: 3600,
         },
       }
     );

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import ProjectSelector from "./ProjectSelector";
 import SubmissionQueue from "./SubmissionQueue";
 import TNCEWorkspace from "./TNCEWorkspace";
+import PublishAllPending from "./PublishAllPending";
 
 import { getTNCEAdminQueue } from "@/lib/tnce/admin";
 
@@ -428,16 +429,24 @@ export default function TNCEDashboard() {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={loadSubmissions}
-                  disabled={loading}
-                  className="rounded-lg border border-[#9c7a2d] bg-black px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-[#d4af37] transition hover:border-[#d4af37] hover:bg-[#181300] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loading
-                    ? "Refreshing..."
-                    : "Refresh Queue"}
-                </button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+  <PublishAllPending
+    submissions={submissions}
+    project={project}
+    onComplete={loadSubmissions}
+  />
+
+  <button
+    type="button"
+    onClick={loadSubmissions}
+    disabled={loading}
+    className="rounded-lg border border-[#9c7a2d] bg-black px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-[#d4af37] transition hover:border-[#d4af37] hover:bg-[#181300] disabled:cursor-not-allowed disabled:opacity-60"
+  >
+    {loading
+      ? "Refreshing..."
+      : "Refresh Queue"}
+  </button>
+</div>
               </div>
             </div>
           </div>
