@@ -165,6 +165,168 @@ function uniqueLines(values: string[]) {
     });
 }
 
+function todayDateInputValue() {
+  const now = new Date();
+
+  const year = now.getFullYear();
+
+  const month = String(
+    now.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    now.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function dateInputFromValue(
+  value: unknown
+) {
+  const text = String(
+    value ?? ""
+  ).trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const directMatch = text.match(
+    /^(\d{4})-(\d{2})-(\d{2})/
+  );
+
+  if (directMatch) {
+    return `${directMatch[1]}-${directMatch[2]}-${directMatch[3]}`;
+  }
+
+  const parsed = new Date(text);
+
+  if (
+    Number.isNaN(
+      parsed.getTime()
+    )
+  ) {
+    return "";
+  }
+
+  const year =
+    parsed.getUTCFullYear();
+
+  const month = String(
+    parsed.getUTCMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    parsed.getUTCDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatHistoryDate(
+  value: string
+) {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})$/
+  );
+
+  if (!match) {
+    return value;
+  }
+
+  const date = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3])
+  );
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }
+  ).format(date);
+}
+
+function buildRpaHistoryEntry({
+  date,
+  grade,
+  certNumber,
+  sourceUrl,
+}: {
+  date: string;
+  grade: string;
+  certNumber: string;
+  sourceUrl: string;
+}) {
+  const cleanGrade =
+    grade.trim() || "Raw";
+
+  const cleanCert =
+    certNumber.trim();
+
+  const gradeText =
+    cleanGrade.toLowerCase() ===
+    "raw"
+      ? "Raw"
+      : [
+          cleanGrade,
+          cleanCert
+            ? `cert# ${cleanCert}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+  return [
+    formatHistoryDate(
+      date ||
+        todayDateInputValue()
+    ),
+
+    gradeText,
+
+    sourceUrl.trim(),
+  ]
+    .filter(Boolean)
+    .join(" • ");
+}
+
+function prependRpaHistory(
+  entry: string,
+  existingHistory: string
+) {
+  const cleanEntry =
+    entry.trim();
+
+  const cleanExisting =
+    existingHistory.trim();
+
+  if (!cleanEntry) {
+    return cleanExisting;
+  }
+
+  if (
+    cleanExisting
+      .toLowerCase()
+      .startsWith(
+        cleanEntry.toLowerCase()
+      )
+  ) {
+    return cleanExisting;
+  }
+
+  return [
+    cleanEntry,
+    cleanExisting,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 async function importImageAsUpload(
   url: string,
   slot: "front" | "back" | "other",
@@ -363,6 +525,18 @@ export default function ContributionForm({
 
   const [auctionSourceUrl, setAuctionSourceUrl] = useState("");
 
+const [
+  saleEventDate,
+  setSaleEventDate,
+] = useState(
+  todayDateInputValue()
+);
+
+const [
+  saleEventDateTouched,
+  setSaleEventDateTouched,
+] = useState(false);
+
   const marketplace = detectMarketplace(auctionSourceUrl);
 
   const [importing, setImporting] = useState(false);
@@ -530,7 +704,14 @@ export default function ContributionForm({
     }
 
     setAuctionSourceUrl("");
-    setImportedListing(null);
+
+setSaleEventDate(
+  todayDateInputValue()
+);
+
+setSaleEventDateTouched(false);
+
+setImportedListing(null);
     setImportError("");
     setNotes("");
     setSubmitError("");
@@ -663,6 +844,20 @@ export default function ContributionForm({
       }
 
       setAuctionSourceUrl(String(data.sourceUrl || sourceUrl));
+
+      const importedSaleDate =
+  dateInputFromValue(
+    data.endDate
+  );
+
+if (
+  importedSaleDate &&
+  !saleEventDateTouched
+) {
+  setSaleEventDate(
+    importedSaleDate
+  );
+}
 
       /*
        * New-card submissions can use the auction title.
@@ -826,9 +1021,55 @@ export default function ContributionForm({
               .trim()
           : cleanedBrand;
 
-      const submittedParallel = cleanedParallel;
+      const submittedParallel =
+  cleanedParallel;
 
-      const submissionId = crypto.randomUUID();
+const existingCardHistory =
+  valueFromActiveObject(
+    activeObject,
+    [
+      "Card_History",
+      "cardHistory",
+    ]
+  );
+
+const shouldAddRpaHistory =
+  project === "rpa-tracker" &&
+  (
+    mode === "new" ||
+    mode === "missing" ||
+    Boolean(
+      auctionSourceUrl.trim()
+    ) ||
+    saleEventDateTouched
+  );
+
+const newRpaHistoryEntry =
+  shouldAddRpaHistory
+    ? buildRpaHistoryEntry({
+        date:
+          saleEventDate ||
+          todayDateInputValue(),
+
+        grade,
+
+        certNumber,
+
+        sourceUrl:
+          auctionSourceUrl,
+      })
+    : "";
+
+const submittedCardHistory =
+  shouldAddRpaHistory
+    ? prependRpaHistory(
+        newRpaHistoryEntry,
+        existingCardHistory
+      )
+    : existingCardHistory;
+
+const submissionId =
+  crypto.randomUUID();
 
       setSubmissionStage("Uploading and saving images...");
       progress.update(
@@ -881,6 +1122,15 @@ export default function ContributionForm({
             ]),
 
             Variation_Input: variation.trim(),
+
+            Card_History:
+  submittedCardHistory,
+
+Sale_Event_Date:
+  shouldAddRpaHistory
+    ? saleEventDate ||
+      todayDateInputValue()
+    : "",
 
             Year: cardYear.trim(),
 
@@ -1036,6 +1286,33 @@ export default function ContributionForm({
               {importing ? "Importing..." : "⚡ Import URL"}
             </button>
           </div>
+
+{project === "rpa-tracker" && (
+  <label className="mt-4 grid gap-1.5">
+    <span className="text-xs font-black uppercase tracking-wide text-[#f1d36b]">
+      Sale / Event Date
+    </span>
+
+    <input
+      type="date"
+      value={saleEventDate}
+      onChange={(event) => {
+        setSaleEventDate(
+          event.target.value
+        );
+
+        setSaleEventDateTouched(
+          true
+        );
+      }}
+      className="h-11 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white outline-none transition focus:border-[#d4af37]"
+    />
+
+    <span className="text-xs text-neutral-500">
+      Imported from the auction when available. You can correct it before submitting.
+    </span>
+  </label>
+)}
 
           {auctionSourceUrl.trim() && (
             <div className="mt-2">
