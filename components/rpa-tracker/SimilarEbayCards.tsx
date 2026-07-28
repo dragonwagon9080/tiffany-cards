@@ -7,6 +7,12 @@ import {
   useState,
 } from "react";
 
+type MatchType =
+  | "same-card"
+  | "same-set"
+  | "same-year"
+  | "same-player";
+
 type EbayItem = {
   id: string;
   legacyItemId: string;
@@ -23,6 +29,8 @@ type EbayItem = {
   condition: string;
   endDate: string;
   seller: string;
+  matchType: MatchType;
+  matchLabel: string;
   score: number;
 };
 
@@ -30,9 +38,7 @@ type Props = {
   card: any;
 };
 
-function clean(
-  value: unknown
-) {
+function clean(value: unknown) {
   return String(
     value ?? ""
   ).trim();
@@ -46,9 +52,7 @@ function formatPrice(
     Number(value);
 
   if (
-    !Number.isFinite(
-      amount
-    )
+    !Number.isFinite(amount)
   ) {
     return value;
   }
@@ -58,6 +62,7 @@ function formatPrice(
       "en-US",
       {
         style: "currency",
+
         currency:
           currency ||
           "USD",
@@ -72,9 +77,7 @@ function buyingLabel(
   options: string[]
 ) {
   if (
-    options.includes(
-      "AUCTION"
-    )
+    options.includes("AUCTION")
   ) {
     return "Auction";
   }
@@ -126,6 +129,30 @@ function formatEndDate(
   ).format(date);
 }
 
+function matchStyle(
+  type: MatchType
+) {
+  if (
+    type === "same-card"
+  ) {
+    return "border-emerald-500/70 bg-emerald-950 text-emerald-200";
+  }
+
+  if (
+    type === "same-set"
+  ) {
+    return "border-[#d4af37]/70 bg-[#181300] text-[#f1d36b]";
+  }
+
+  if (
+    type === "same-year"
+  ) {
+    return "border-blue-500/70 bg-blue-950 text-blue-200";
+  }
+
+  return "border-neutral-600 bg-neutral-800 text-neutral-300";
+}
+
 export default function SimilarEbayCards({
   card,
 }: Props) {
@@ -146,9 +173,7 @@ export default function SimilarEbayCards({
   const params =
     useMemo(() => {
       const player =
-        clean(
-          card.Player
-        ) ||
+        clean(card.Player) ||
         [
           clean(card.First),
           clean(card.Last),
@@ -158,14 +183,10 @@ export default function SimilarEbayCards({
 
       const values = {
         cardId:
-          clean(
-            card.Card_id
-          ),
+          clean(card.Card_id),
 
         title:
-          clean(
-            card.Card_Title
-          ),
+          clean(card.Card_Title),
 
         year:
           clean(card.Year),
@@ -182,12 +203,6 @@ export default function SimilarEbayCards({
           clean(
             card.Brand ||
               card.Set
-          ),
-
-        variation:
-          clean(
-            card.Variation_Input ||
-              card.Variation
           ),
       };
 
@@ -265,9 +280,7 @@ export default function SimilarEbayCards({
             ? data.items
             : []
         );
-      } catch (
-        error: any
-      ) {
+      } catch (error: any) {
         if (
           error?.name ===
           "AbortError"
@@ -332,7 +345,7 @@ export default function SimilarEbayCards({
           </h2>
 
           <p className="mt-2 text-sm text-neutral-400">
-            Current listings selected from this card’s identifying information.
+            Same card variations appear first, followed by cards from the same set, year, and player.
           </p>
         </div>
 
@@ -405,7 +418,15 @@ export default function SimilarEbayCards({
                 </div>
 
                 <div className="p-4">
-                  <div className="line-clamp-3 min-h-[4.5rem] text-sm font-bold leading-6 text-white">
+                  <span
+                    className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${matchStyle(
+                      item.matchType
+                    )}`}
+                  >
+                    {item.matchLabel}
+                  </span>
+
+                  <div className="mt-3 line-clamp-3 min-h-[4.5rem] text-sm font-bold leading-6 text-white">
                     {item.title}
                   </div>
 
@@ -413,6 +434,7 @@ export default function SimilarEbayCards({
                     {formatPrice(
                       item.price
                         ?.value,
+
                       item.price
                         ?.currency
                     )}

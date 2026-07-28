@@ -24,18 +24,175 @@ type CachedToken = {
   expiresAt: number;
 };
 
+type SearchContext = {
+  title: string;
+  year: string;
+  player: string;
+  cardNumber: string;
+  brand: string;
+  cardId: string;
+};
+
+type MatchType =
+  | "same-card"
+  | "same-set"
+  | "same-year"
+  | "same-player";
+
 let cachedToken:
   | CachedToken
   | null = null;
 
-function clean(
-  value: unknown
-) {
-  return String(
-    value ?? ""
-  )
+function clean(value: unknown) {
+  return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizedText(
+  value: unknown
+) {
+  return clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function inferCardNumber(
+  title: string
+) {
+  const match = clean(
+    title
+  ).match(
+    /#\s*([a-z0-9.-]+)/i
+  );
+
+  return match?.[1] || "";
+}
+
+function buildContext(
+  searchParams: URLSearchParams
+): SearchContext {
+  const title = clean(
+    searchParams.get("title")
+  );
+
+  return {
+    title,
+
+    year: clean(
+      searchParams.get("year")
+    ),
+
+    player: clean(
+      searchParams.get("player")
+    ),
+
+    cardNumber:
+      clean(
+        searchParams.get(
+          "cardNumber"
+        )
+      ) ||
+      inferCardNumber(title),
+
+    brand: clean(
+      searchParams.get("brand")
+    ),
+
+    cardId: clean(
+      searchParams.get("cardId")
+    ),
+  };
+}
+
+function uniqueQueries(
+  values: string[]
+) {
+  const seen =
+    new Set<string>();
+
+  return values
+    .map((value) =>
+      clean(value)
+    )
+    .filter(Boolean)
+    .filter((value) => {
+      const key =
+        value.toLowerCase();
+
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildSearchQueries(
+  context: SearchContext
+) {
+  const exactQuery = clean(
+    [
+      context.year,
+      context.player,
+
+      context.cardNumber
+        ? `#${context.cardNumber}`
+        : "",
+
+      context.brand,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const sameSetQuery = clean(
+    [
+      context.player,
+      context.brand,
+      "trading card",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const sameYearQuery = clean(
+    [
+      context.year,
+      context.player,
+      "trading card",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const samePlayerQuery = clean(
+    [
+      context.player,
+      "trading card",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  return {
+    exactQuery:
+      exactQuery ||
+      context.title,
+
+    fallbackQueries:
+      uniqueQueries([
+        sameSetQuery,
+        sameYearQuery,
+        samePlayerQuery,
+      ]).filter(
+        (query) =>
+          query.toLowerCase() !==
+          exactQuery.toLowerCase()
+      ),
+  };
 }
 
 async function getEbayToken() {
@@ -120,11 +277,9 @@ async function getEbayToken() {
     );
   }
 
-  const expiresIn =
-    Number(
-      data.expires_in ||
-        7200
-    );
+  const expiresIn = Number(
+    data.expires_in || 7200
+  );
 
   cachedToken = {
     value:
@@ -138,196 +293,343 @@ async function getEbayToken() {
   return cachedToken.value;
 }
 
-function buildQuery(
-  searchParams: URLSearchParams
+async function searchEbay(
+  token: string,
+  query: string,
+  affiliateReference: string,
+  limit = 20
 ) {
-  const title =
-    clean(
-      searchParams.get(
-        "title"
-      )
+  const url = new URL(
+    EBAY_SEARCH_URL
+  );
+
+  url.searchParams.set(
+    "q",
+    query.slice(0, 200)
+  );
+
+  url.searchParams.set(
+    "limit",
+    String(limit)
+  );
+
+  url.searchParams.set(
+    "fieldgroups",
+    "EXTENDED"
+  );
+
+  const response =
+    await fetch(
+      url.toString(),
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+
+          "X-EBAY-C-MARKETPLACE-ID":
+            "EBAY_US",
+
+          "X-EBAY-C-ENDUSERCTX":
+            `affiliateCampaignId=${EBAY_CAMPAIGN_ID},affiliateReferenceId=${affiliateReference}`,
+        },
+
+        cache: "no-store",
+      }
     );
 
-  const year =
-    clean(
-      searchParams.get(
-        "year"
-      )
+  const text =
+    await response.text();
+
+  let data: any;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `eBay search returned invalid JSON: ${text.slice(
+        0,
+        300
+      )}`
     );
-
-  const player =
-    clean(
-      searchParams.get(
-        "player"
-      )
-    );
-
-  const cardNumber =
-    clean(
-      searchParams.get(
-        "cardNumber"
-      )
-    );
-
-  const brand =
-    clean(
-      searchParams.get(
-        "brand"
-      )
-    );
-
-  const variation =
-    clean(
-      searchParams.get(
-        "variation"
-      )
-    );
-
-  if (title) {
-    return [
-      title,
-
-      variation &&
-      variation.toLowerCase() !==
-        "base"
-        ? variation
-        : "",
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .slice(0, 200);
   }
 
-  return [
-    year,
-    player,
+  if (!response.ok) {
+    throw new Error(
+      data?.errors?.[0]
+        ?.longMessage ||
+        data?.errors?.[0]
+          ?.message ||
+        "eBay search failed."
+    );
+  }
 
-    cardNumber
-      ? `#${cardNumber}`
-      : "",
-
-    brand,
-
-    variation &&
-    variation.toLowerCase() !==
-      "base"
-      ? variation
-      : "",
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .slice(0, 200);
+  return Array.isArray(
+    data.itemSummaries
+  )
+    ? data.itemSummaries
+    : [];
 }
 
-function normalizedText(
-  value: unknown
+function wordsFrom(
+  value: string,
+  minimumLength = 2
 ) {
-  return clean(value)
-    .toLowerCase()
-    .replace(
-      /[^a-z0-9]+/g,
-      " "
-    )
-    .trim();
+  return normalizedText(value)
+    .split(" ")
+    .filter(
+      (word) =>
+        word.length >=
+        minimumLength
+    );
 }
 
-function relevanceScore(
+function containsWord(
+  title: string,
+  word: string
+) {
+  return new RegExp(
+    `(?:^|\\s)${word}(?:\\s|$)`
+  ).test(title);
+}
+
+function classifyMatch(
   itemTitle: string,
-  context: {
-    year: string;
-    player: string;
-    cardNumber: string;
-    brand: string;
-    variation: string;
-  }
-) {
+  context: SearchContext
+): {
+  matchType: MatchType;
+  matchLabel: string;
+  score: number;
+} {
   const title =
     normalizedText(
       itemTitle
     );
-
-  let score = 0;
 
   const year =
     normalizedText(
       context.year
     );
 
-  if (
-    year &&
-    title.includes(year)
-  ) {
-    score += 5;
-  }
-
-  const playerWords =
-    normalizedText(
-      context.player
-    )
-      .split(" ")
-      .filter(
-        (word) =>
-          word.length > 1
-      );
-
-  playerWords.forEach(
-    (word) => {
-      if (
-        title.includes(word)
-      ) {
-        score += 4;
-      }
-    }
-  );
-
   const cardNumber =
     normalizedText(
       context.cardNumber
     );
 
-  if (
-    cardNumber &&
-    new RegExp(
-      `(?:^|\\s)${cardNumber}(?:\\s|$)`
-    ).test(title)
-  ) {
-    score += 5;
-  }
+  const playerWords =
+    wordsFrom(
+      context.player
+    );
+
+  const lastName =
+    playerWords[
+      playerWords.length - 1
+    ] || "";
 
   const brandWords =
-    normalizedText(
-      context.brand
-    )
-      .split(" ")
-      .filter(
-        (word) =>
-          word.length > 2
+    wordsFrom(
+      context.brand,
+      3
+    );
+
+  const playerMatches =
+    !lastName ||
+    containsWord(
+      title,
+      lastName
+    );
+
+  const sameYear =
+    Boolean(year) &&
+    containsWord(
+      title,
+      year
+    );
+
+  const sameCardNumber =
+    Boolean(cardNumber) &&
+    containsWord(
+      title,
+      cardNumber
+    );
+
+  const matchedBrandWords =
+    brandWords.filter(
+      (word) =>
+        containsWord(
+          title,
+          word
+        )
+    ).length;
+
+  const sameSet =
+    brandWords.length > 0 &&
+    matchedBrandWords >=
+      Math.ceil(
+        brandWords.length /
+          2
       );
 
-  brandWords.forEach(
+  let matchType:
+    MatchType =
+      "same-player";
+
+  let matchLabel =
+    "Same Player";
+
+  let score = 100;
+
+  if (
+    playerMatches &&
+    sameYear &&
+    sameSet &&
+    sameCardNumber
+  ) {
+    matchType =
+      "same-card";
+
+    matchLabel =
+      "Same Card";
+
+    score = 400;
+  } else if (
+    playerMatches &&
+    sameSet
+  ) {
+    matchType =
+      "same-set";
+
+    matchLabel =
+      "Same Set";
+
+    score = 300;
+  } else if (
+    playerMatches &&
+    sameYear
+  ) {
+    matchType =
+      "same-year";
+
+    matchLabel =
+      "Same Year";
+
+    score = 200;
+  }
+
+  if (sameYear) {
+    score += 20;
+  }
+
+  if (sameSet) {
+    score += 20;
+  }
+
+  if (sameCardNumber) {
+    score += 25;
+  }
+
+  playerWords.forEach(
     (word) => {
       if (
-        title.includes(word)
+        containsWord(
+          title,
+          word
+        )
       ) {
-        score += 2;
+        score += 5;
       }
     }
   );
 
-  const variation =
-    normalizedText(
-      context.variation
+  score +=
+    matchedBrandWords * 4;
+
+  return {
+    matchType,
+    matchLabel,
+    score,
+  };
+}
+
+function mapItem(
+  item: any,
+  context: SearchContext
+) {
+  const title = clean(
+    item.title
+  );
+
+  const match =
+    classifyMatch(
+      title,
+      context
     );
 
-  if (
-    variation &&
-    variation !== "base" &&
-    title.includes(variation)
-  ) {
-    score += 3;
-  }
+  return {
+    id: clean(
+      item.itemId
+    ),
 
-  return score;
+    legacyItemId: clean(
+      item.legacyItemId
+    ),
+
+    title,
+
+    image: clean(
+      item.image?.imageUrl ||
+        item.thumbnailImages?.[0]
+          ?.imageUrl
+    ),
+
+    price: {
+      value: clean(
+        item.price?.value ||
+          item.currentBidPrice
+            ?.value
+      ),
+
+      currency:
+        clean(
+          item.price?.currency ||
+            item.currentBidPrice
+              ?.currency
+        ) ||
+        "USD",
+    },
+
+    url: clean(
+      item.itemAffiliateWebUrl ||
+        item.itemWebUrl
+    ),
+
+    buyingOptions:
+      Array.isArray(
+        item.buyingOptions
+      )
+        ? item.buyingOptions
+        : [],
+
+    condition: clean(
+      item.condition
+    ),
+
+    endDate: clean(
+      item.itemEndDate
+    ),
+
+    seller: clean(
+      item.seller?.username
+    ),
+
+    matchType:
+      match.matchType,
+
+    matchLabel:
+      match.matchLabel,
+
+    score:
+      match.score,
+  };
 }
 
 export async function GET(
@@ -338,16 +640,24 @@ export async function GET(
       searchParams,
     } = new URL(req.url);
 
-    const query =
-      buildQuery(
+    const context =
+      buildContext(
         searchParams
       );
 
-    if (!query) {
+    const {
+      exactQuery,
+      fallbackQueries,
+    } = buildSearchQueries(
+      context
+    );
+
+    if (!exactQuery) {
       return NextResponse.json(
         {
           ok: false,
           items: [],
+
           error:
             "Missing RPA card search information.",
         },
@@ -360,32 +670,8 @@ export async function GET(
     const token =
       await getEbayToken();
 
-    const ebayUrl =
-      new URL(
-        EBAY_SEARCH_URL
-      );
-
-    ebayUrl.searchParams.set(
-      "q",
-      query
-    );
-
-    ebayUrl.searchParams.set(
-      "limit",
-      "30"
-    );
-
-    ebayUrl.searchParams.set(
-      "fieldgroups",
-      "EXTENDED"
-    );
-
     const affiliateReference =
-      clean(
-        searchParams.get(
-          "cardId"
-        )
-      )
+      context.cardId
         .replace(
           /[^a-zA-Z0-9_-]/g,
           ""
@@ -393,209 +679,138 @@ export async function GET(
         .slice(0, 100) ||
       "rpa-similar";
 
-    const response =
-      await fetch(
-        ebayUrl.toString(),
-        {
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
+    /*
+     * Search the same card first.
+     * Variation and serial number are intentionally
+     * excluded so all parallels can appear.
+     */
+    const exactItems =
+      await searchEbay(
+        token,
+        exactQuery,
+        affiliateReference,
+        20
+      );
 
-            "X-EBAY-C-MARKETPLACE-ID":
-              "EBAY_US",
+    /*
+     * When several same-card results exist, one broad
+     * player search is enough to fill the remainder.
+     * Otherwise search all three fallback levels.
+     */
+    const queriesToRun =
+      exactItems.length >= 12
+        ? fallbackQueries.slice(
+            -1
+          )
+        : fallbackQueries;
 
-            "X-EBAY-C-ENDUSERCTX":
-              `affiliateCampaignId=${EBAY_CAMPAIGN_ID},affiliateReferenceId=${affiliateReference}`,
-          },
+    const fallbackResults =
+      await Promise.allSettled(
+        queriesToRun.map(
+          (query) =>
+            searchEbay(
+              token,
+              query,
+              affiliateReference,
+              16
+            )
+        )
+      );
 
-          cache: "no-store",
+    const combined = [
+      ...exactItems,
+    ];
+
+    fallbackResults.forEach(
+      (result) => {
+        if (
+          result.status ===
+          "fulfilled"
+        ) {
+          combined.push(
+            ...result.value
+          );
         }
-      );
+      }
+    );
 
-    const text =
-      await response.text();
+    const uniqueItems =
+      new Map<
+        string,
+        ReturnType<
+          typeof mapItem
+        >
+      >();
 
-    let data: any;
+    combined.forEach(
+      (rawItem) => {
+        const item =
+          mapItem(
+            rawItem,
+            context
+          );
 
-    try {
-      data = JSON.parse(
-        text
-      );
-    } catch {
-      throw new Error(
-        `eBay search returned invalid JSON: ${text.slice(
-          0,
-          300
-        )}`
-      );
-    }
+        if (
+          !item.title ||
+          !item.image ||
+          !item.url
+        ) {
+          return;
+        }
 
-    if (!response.ok) {
-      throw new Error(
-        data?.errors?.[0]
-          ?.longMessage ||
-          data?.errors?.[0]
-            ?.message ||
-          "eBay search failed."
-      );
-    }
+        const key =
+          item.id ||
+          item.legacyItemId ||
+          item.url;
 
-    const context = {
-      year:
-        clean(
-          searchParams.get(
-            "year"
-          )
-        ),
+        const existing =
+          uniqueItems.get(key);
 
-      player:
-        clean(
-          searchParams.get(
-            "player"
-          )
-        ),
+        if (
+          !existing ||
+          item.score >
+            existing.score
+        ) {
+          uniqueItems.set(
+            key,
+            item
+          );
+        }
+      }
+    );
 
-      cardNumber:
-        clean(
-          searchParams.get(
-            "cardNumber"
-          )
-        ),
-
-      brand:
-        clean(
-          searchParams.get(
-            "brand"
-          )
-        ),
-
-      variation:
-        clean(
-          searchParams.get(
-            "variation"
-          )
-        ),
-    };
-
-    const rawItems =
-      Array.isArray(
-        data.itemSummaries
+    const items = Array.from(
+      uniqueItems.values()
+    )
+      .sort(
+        (a, b) =>
+          b.score -
+          a.score
       )
-        ? data.itemSummaries
-        : [];
-
-    const items =
-      rawItems
-        .map(
-          (item: any) => ({
-            id:
-              clean(
-                item.itemId
-              ),
-
-            legacyItemId:
-              clean(
-                item.legacyItemId
-              ),
-
-            title:
-              clean(
-                item.title
-              ),
-
-            image:
-              clean(
-                item.image
-                  ?.imageUrl ||
-                  item.thumbnailImages?.[0]
-                    ?.imageUrl
-              ),
-
-            price: {
-              value:
-                clean(
-                  item.price
-                    ?.value
-                ),
-
-              currency:
-                clean(
-                  item.price
-                    ?.currency
-                ) ||
-                "USD",
-            },
-
-            url:
-              clean(
-                item.itemAffiliateWebUrl ||
-                  item.itemWebUrl
-              ),
-
-            buyingOptions:
-              Array.isArray(
-                item.buyingOptions
-              )
-                ? item.buyingOptions
-                : [],
-
-            condition:
-              clean(
-                item.condition
-              ),
-
-            endDate:
-              clean(
-                item.itemEndDate
-              ),
-
-            seller:
-              clean(
-                item.seller
-                  ?.username
-              ),
-
-            score:
-              relevanceScore(
-                clean(
-                  item.title
-                ),
-                context
-              ),
-          })
-        )
-        .filter(
-          (item: any) =>
-            item.title &&
-            item.image &&
-            item.url
-        )
-        .sort(
-          (
-            a: any,
-            b: any
-          ) =>
-            b.score -
-            a.score
-        )
-        .slice(0, 20);
+      .slice(0, 24);
 
     return NextResponse.json(
       {
         ok: true,
-        query,
+
+        query:
+          exactQuery,
+
+        searchedQueries: [
+          exactQuery,
+          ...queriesToRun,
+        ],
+
         items,
       },
       {
         headers: {
           "Cache-Control":
-            "public, s-maxage=900, stale-while-revalidate=3600",
+            "public, s-maxage=1800, stale-while-revalidate=7200",
         },
       }
     );
-  } catch (
-    error: any
-  ) {
+  } catch (error: any) {
     console.error(
       "Similar eBay cards error:",
       error
