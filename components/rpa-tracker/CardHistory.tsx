@@ -39,28 +39,49 @@ const MONTHS: Record<string, number> = {
   december: 11,
 };
 
-function formatDate(month: number, day: number, year: number) {
-  if (year < 100) year += 2000;
+function formatDate(
+  month: number,
+  day: number,
+  year: number
+) {
+  if (year < 100) {
+    year += 2000;
+  }
 
-  const date = new Date(year, month, day);
+  const date = new Date(
+    year,
+    month,
+    day
+  );
 
-  if (Number.isNaN(date.getTime())) return "";
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
 
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }
+  );
 }
 
 function extractDate(line: string) {
   const text = line.trim();
 
-  const numeric = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(.*)$/i);
+  const numeric = text.match(
+    /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(.*)$/i
+  );
 
   if (numeric) {
     return {
-      date: formatDate(Number(numeric[1]) - 1, Number(numeric[2]), Number(numeric[3])),
+      date: formatDate(
+        Number(numeric[1]) - 1,
+        Number(numeric[2]),
+        Number(numeric[3])
+      ),
       rest: numeric[4].trim(),
     };
   }
@@ -70,27 +91,43 @@ function extractDate(line: string) {
   );
 
   if (written) {
-    const month = MONTHS[written[1].toLowerCase()];
+    const month =
+      MONTHS[
+        written[1].toLowerCase()
+      ];
 
     if (month !== undefined) {
       return {
-        date: formatDate(month, Number(written[2]), Number(written[3])),
+        date: formatDate(
+          month,
+          Number(written[2]),
+          Number(written[3])
+        ),
         rest: written[4].trim(),
       };
     }
   }
 
-  const reverseWritten = text.match(
-    /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\.?,?\s+(\d{2,4})(.*)$/i
-  );
+  const reverseWritten =
+    text.match(
+      /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\.?,?\s+(\d{2,4})(.*)$/i
+    );
 
   if (reverseWritten) {
-    const month = MONTHS[reverseWritten[2].toLowerCase()];
+    const month =
+      MONTHS[
+        reverseWritten[2].toLowerCase()
+      ];
 
     if (month !== undefined) {
       return {
-        date: formatDate(month, Number(reverseWritten[1]), Number(reverseWritten[3])),
-        rest: reverseWritten[4].trim(),
+        date: formatDate(
+          month,
+          Number(reverseWritten[1]),
+          Number(reverseWritten[3])
+        ),
+        rest:
+          reverseWritten[4].trim(),
       };
     }
   }
@@ -101,35 +138,50 @@ function extractDate(line: string) {
   };
 }
 
-
 function psaCertUrl(cert: string) {
-  return `https://www.psacard.com/cert/${encodeURIComponent(cert)}`;
+  return `https://www.psacard.com/cert/${encodeURIComponent(
+    cert
+  )}`;
 }
 
-function normalizeGradeCert(text: string) {
+function normalizeGradeCert(
+  text: string
+) {
   return text.replace(
     /\b(PSA|BGS|SGC|CGC|MBA)\s+([A-Za-z0-9.+/-]+)\s+(?:cert\s*#?\s*)?(\d{5,})(?=\s|$|https?:\/\/)/gi,
-    (_match, company, grade, cert) =>
+    (
+      _match,
+      company,
+      grade,
+      cert
+    ) =>
       `${company.toUpperCase()} ${grade.trim()} cert# ${cert}`
   );
 }
 
-function parseEntries(history: string): HistoryEntry[] {
-  const rawLines = String(history || "")
+function parseEntries(
+  history: string
+): HistoryEntry[] {
+  const rawLines = String(
+    history || ""
+  )
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const entries: HistoryEntry[] = [];
+  const entries: HistoryEntry[] =
+    [];
 
   for (const line of rawLines) {
-    const parsed = extractDate(line);
+    const parsed =
+      extractDate(line);
 
     if (parsed.date) {
       entries.push({
         date: parsed.date,
         body: parsed.rest,
       });
+
       continue;
     }
 
@@ -138,14 +190,18 @@ function parseEntries(history: string): HistoryEntry[] {
         body: line,
       });
     } else {
-      entries[entries.length - 1].body += `\n${line}`;
+      entries[
+        entries.length - 1
+      ].body += `\n${line}`;
     }
   }
 
   return entries;
 }
 
-function renderSourceText(text: string) {
+function renderSourceText(
+  text: string
+) {
   const normalized =
     normalizeGradeCert(text);
 
@@ -153,138 +209,161 @@ function renderSourceText(text: string) {
     /(https?:\/\/[^\s]+|(?:www\.|app\.)?cardladder\.com(?:\/[^\s]*)?|(?:www\.)?vintagecardprices\.com(?:\/[^\s]*)?|\b(?:PSA|BGS|SGC|CGC|MBA)\s+[A-Za-z0-9.+/-]+\s+cert\s*#\s*\d{5,}|\bRaw\b|\bebay\b|\bGoldin\b|\bHeritage\b|\bPWCC\b|\bFanatics Collect\b)/gi
   );
 
-  return parts.map((part, index) => {
-    if (!part) return null;
+  return parts.map(
+    (part, index) => {
+      if (!part) {
+        return null;
+      }
 
-    const isSourceLink =
-      /^https?:\/\//i.test(part) ||
-      /^(?:www\.|app\.)?cardladder\.com(?:\/|$)/i.test(
-        part
-      ) ||
-      /^(?:www\.)?vintagecardprices\.com(?:\/|$)/i.test(
-        part
-      );
+      const isSourceLink =
+        /^https?:\/\//i.test(
+          part
+        ) ||
+        /^(?:www\.|app\.)?cardladder\.com(?:\/|$)/i.test(
+          part
+        ) ||
+        /^(?:www\.)?vintagecardprices\.com(?:\/|$)/i.test(
+          part
+        );
 
-    if (isSourceLink) {
-      const href =
-        /^https?:\/\//i.test(part)
-          ? part
-          : `https://${part}`;
+      if (isSourceLink) {
+        const href =
+          /^https?:\/\//i.test(
+            part
+          )
+            ? part
+            : `https://${part}`;
 
-      return (
-        <span key={index}>
-          <span className="mx-2 font-bold text-white">
-            {"\u2022"}
-          </span>
-
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-bold text-blue-400 underline hover:text-blue-300"
-          >
-            {sourceLabel(href)}
-          </a>
-        </span>
-      );
-    }
-
-    const gradeCert = part.match(
-      /\b(PSA|BGS|SGC|CGC|MBA)\s+([A-Za-z0-9.+/-]+)\s+cert\s*#\s*(\d{5,})\b/i
-    );
-
-    if (gradeCert) {
-      const company =
-        gradeCert[1].toUpperCase();
-
-      const grade = gradeCert[2];
-      const cert = gradeCert[3];
-
-      const label =
-        `${company} ${grade} cert# ${cert}`;
-
-      if (company === "PSA") {
         return (
-          <a
+          <span key={index}>
+            <span className="mx-2 font-bold text-white">
+              {"\u2022"}
+            </span>
+
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-bold text-blue-400 underline hover:text-blue-300"
+            >
+              {sourceLabel(href)}
+            </a>
+          </span>
+        );
+      }
+
+      const gradeCert =
+        part.match(
+          /\b(PSA|BGS|SGC|CGC|MBA)\s+([A-Za-z0-9.+/-]+)\s+cert\s*#\s*(\d{5,})\b/i
+        );
+
+      if (gradeCert) {
+        const company =
+          gradeCert[1].toUpperCase();
+
+        const grade =
+          gradeCert[2];
+
+        const cert =
+          gradeCert[3];
+
+        const label =
+          `${company} ${grade} cert# ${cert}`;
+
+        if (company === "PSA") {
+          return (
+            <a
+              key={index}
+              href={psaCertUrl(
+                cert
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-bold text-[#d4af37] underline hover:text-[#fff6c4]"
+            >
+              {label}
+            </a>
+          );
+        }
+
+        return (
+          <span
             key={index}
-            href={psaCertUrl(cert)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-bold text-[#d4af37] underline hover:text-[#fff6c4]"
+            className="font-bold text-[#d4af37]"
           >
             {label}
-          </a>
+          </span>
+        );
+      }
+
+      if (
+        /^ebay$/i.test(part)
+      ) {
+        return (
+          <span key={index}>
+            <span className="mx-2 font-bold text-white">
+              {"\u2022"}
+            </span>
+
+            <span className="font-bold text-blue-400">
+              eBay
+            </span>
+          </span>
+        );
+      }
+
+      if (
+        /^(Goldin|Heritage|PWCC|Fanatics Collect)$/i.test(
+          part
+        )
+      ) {
+        return (
+          <span key={index}>
+            <span className="mx-2 font-bold text-white">
+              {"\u2022"}
+            </span>
+
+            <span className="font-bold text-blue-400">
+              {part}
+            </span>
+          </span>
+        );
+      }
+
+      if (
+        /\bRaw\b/i.test(part)
+      ) {
+        return (
+          <span
+            key={index}
+            className="font-bold text-[#d4af37]"
+          >
+            {part}
+          </span>
         );
       }
 
       return (
         <span
           key={index}
-          className="font-bold text-[#d4af37]"
-        >
-          {label}
-        </span>
-      );
-    }
-
-    if (/^ebay$/i.test(part)) {
-      return (
-        <span key={index}>
-          <span className="mx-2 font-bold text-white">
-            {"\u2022"}
-          </span>
-
-          <span className="font-bold text-blue-400">
-            eBay
-          </span>
-        </span>
-      );
-    }
-
-    if (
-      /^(Goldin|Heritage|PWCC|Fanatics Collect)$/i.test(
-        part
-      )
-    ) {
-      return (
-        <span key={index}>
-          <span className="mx-2 font-bold text-white">
-            {"\u2022"}
-          </span>
-
-          <span className="font-bold text-blue-400">
-            {part}
-          </span>
-        </span>
-      );
-    }
-
-    if (/\bRaw\b/i.test(part)) {
-      return (
-        <span
-          key={index}
-          className="font-bold text-[#d4af37]"
+          className="text-zinc-400"
         >
           {part}
         </span>
       );
     }
-
-    return (
-      <span
-        key={index}
-        className="text-zinc-400"
-      >
-        {part}
-      </span>
-    );
-  });
+  );
 }
 
-export default function CardHistory({ history }: Props) {
-  const entries = parseEntries(history);
+export default function CardHistory({
+  history,
+}: Props) {
+  const entries =
+    parseEntries(history);
 
-  if (!entries.length) return null;
+  if (!entries.length) {
+    return null;
+  }
 
   return (
     <section>
@@ -293,46 +372,88 @@ export default function CardHistory({ history }: Props) {
       </h2>
 
       <div className="space-y-5">
-        {entries.map((entry, index) => {
-          const bodyLines = entry.body
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean);
+        {entries.map(
+          (entry, index) => {
+            const bodyLines =
+              entry.body
+                .split(/\r?\n/)
+                .map((line) =>
+                  line.trim()
+                )
+                .filter(Boolean);
 
-          return (
-            <div
-              key={index}
-              className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-5"
-            >
-              <div className="space-y-2 text-base leading-7">
-                {entry.date && (
-                  <div>
-                    <span className="font-bold text-white">{entry.date}</span>
+            return (
+              <div
+                key={index}
+                className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-5"
+              >
+                <div className="space-y-2 text-base leading-7">
+                  {entry.date && (
+                    <div>
+                      <span className="font-bold text-white">
+                        {
+                          entry.date
+                        }
+                      </span>
 
-                    {bodyLines.length > 0 && (
-                      <span className="mx-2 font-bold text-white">•</span>
+                      {bodyLines.length >
+                        0 && (
+                        <span className="mx-2 font-bold text-white">
+                          •
+                        </span>
+                      )}
+
+                      {bodyLines[0] &&
+                        renderSourceText(
+                          bodyLines[0]
+                        )}
+                    </div>
+                  )}
+
+                  {!entry.date &&
+                    bodyLines.map(
+                      (
+                        line,
+                        lineIndex
+                      ) => (
+                        <div
+                          key={
+                            lineIndex
+                          }
+                        >
+                          {renderSourceText(
+                            line
+                          )}
+                        </div>
+                      )
                     )}
 
-                    {bodyLines[0] && renderSourceText(bodyLines[0])}
-                  </div>
-                )}
-
-                {!entry.date &&
-                  bodyLines.map((line, lineIndex) => (
-                    <div key={lineIndex}>{renderSourceText(line)}</div>
-                  ))}
-
-                {entry.date &&
-                  bodyLines.slice(1).map((line, lineIndex) => (
-                    <div key={lineIndex} className="text-zinc-400">
-                      {renderSourceText(line)}
-                    </div>
-                  ))}
+                  {entry.date &&
+                    bodyLines
+                      .slice(1)
+                      .map(
+                        (
+                          line,
+                          lineIndex
+                        ) => (
+                          <div
+                            key={
+                              lineIndex
+                            }
+                            className="text-zinc-400"
+                          >
+                            {renderSourceText(
+                              line
+                            )}
+                          </div>
+                        )
+                      )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-            </div>
+            );
+          }
+        )}
+      </div>
 
       <EbayAffiliateDisclosure className="mt-6" />
     </section>
