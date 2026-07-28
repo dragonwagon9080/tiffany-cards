@@ -17,6 +17,8 @@ import RegistryMap from "./RegistryMap";
 import CardInfo from "./CardInfo";
 import CardHistory from "./CardHistory";
 
+import SimilarEbayCards from "./SimilarEbayCards";
+
 import type { ImageItem } from "@/types/image";
 
 type Props = {
@@ -377,6 +379,9 @@ export default function CardClient({
             />
           </>
         )}
+        <SimilarEbayCards
+  card={card}
+/>
       </div>
 
       <ContributionModal
