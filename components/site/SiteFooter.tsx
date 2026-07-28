@@ -9,6 +9,13 @@ type SocialItem = {
 };
 
 /* =========================================================
+   AFFILIATE SETTINGS
+   ========================================================= */
+
+const FANATICS_AFFILIATE_URL =
+  "https://fanatics.93n6tx.net/E0Vvvn";
+
+/* =========================================================
    SITE FOOTER
    ========================================================= */
 
@@ -18,7 +25,7 @@ export default function SiteFooter({
 }: {
   settings: any;
   socials: SocialItem[];
-}){
+}) {
   const footerLogo =
     settings?.footer_logo_url ||
     settings?.logo_url ||
@@ -38,10 +45,29 @@ export default function SiteFooter({
       {/* PAGE LINKS ROW */}
       <nav className="mb-5 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-semibold md:text-base">
         <FooterTextLink href="/about">About</FooterTextLink>
-        <FooterTextLink href="/privacy-policy">Privacy Policy</FooterTextLink>
+        <FooterTextLink href="/privacy-policy">
+          Privacy Policy
+        </FooterTextLink>
         <FooterTextLink href="/contact">Contact</FooterTextLink>
-        <FooterTextLink href="/legal-disclaimer">Disclaimer</FooterTextLink>
+        <FooterTextLink href="/legal-disclaimer">
+          Disclaimer
+        </FooterTextLink>
+
+        <a
+          href={FANATICS_AFFILIATE_URL}
+          target="_blank"
+          rel="sponsored noopener noreferrer"
+          className="relative text-[#d4af37] transition duration-300 hover:text-white after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-[#d4af37] after:transition-all after:duration-300 hover:after:w-full"
+        >
+          Shop Fanatics
+        </a>
       </nav>
+
+      {/* AFFILIATE DISCLOSURE */}
+      <p className="mx-auto mb-5 max-w-2xl text-xs leading-relaxed text-zinc-500">
+        Affiliate disclosure: Tiffany Cards may earn a commission from
+        qualifying purchases made through the Shop Fanatics link.
+      </p>
 
       {/* SOCIAL LOGO LINKS ROW */}
       {socials?.length > 0 && (
@@ -80,7 +106,8 @@ export default function SiteFooter({
 
       {/* COPYRIGHT ROW */}
       <p className="text-xs text-zinc-400 md:text-sm">
-        {settings?.footer_text || "© 2026 Tiffany Cards. All Rights Reserved."}
+        {settings?.footer_text ||
+          "© 2026 Tiffany Cards. All Rights Reserved."}
       </p>
     </footer>
   );
