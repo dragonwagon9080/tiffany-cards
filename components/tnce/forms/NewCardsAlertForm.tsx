@@ -632,8 +632,18 @@ setPreviousUploadedImages([]);
 
     setSubmitError("");
 
-    if (!cardYear.trim() || !lastName.trim() || !brand.trim()) {
-      setSubmitError("Year, last name, and brand are required.");
+        const hasCardName =
+      firstName.trim() ||
+      lastName.trim();
+
+    if (
+      !cardYear.trim() ||
+      !hasCardName ||
+      !brand.trim()
+    ) {
+      setSubmitError(
+        "Year, player/card name, and brand are required."
+      );
       return;
     }
 
