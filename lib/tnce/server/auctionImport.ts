@@ -2858,6 +2858,358 @@ async function importInstagramPost(
   };
 }
 
+const ALT_GRAPHQL_URL =
+  "https://alt-platform-server.production.internal.onlyalt.com/graphql/SoldListing";
+
+const ALT_SOLD_LISTING_QUERY = `
+  query SoldListing($id: ID!) {
+    externalTransaction(id: $id) {
+      date
+      id
+      auctionHouse
+      auctionName
+      auctionType
+      displayPrice
+      label
+      fees
+      shipping
+      usdAmount
+      consolidatedSkippedReason
+      currency
+      asset {
+        id
+        name
+        year
+        subject
+        category
+        brand
+        variety
+        attributes {
+          cardNumber
+          printRun
+        }
+      }
+      attributes {
+        grade
+        gradingCompany
+        cert
+        url
+        autograph
+        imgThumbnailUrl
+        images {
+          position
+          url
+        }
+      }
+      subjectToChange
+    }
+  }
+`;
+
+function extractAltListingId(
+  sourceUrl: string
+) {
+  const parsed = new URL(sourceUrl);
+  const match = parsed.pathname.match(
+    /\/itm\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i
+  );
+
+  if (!match) {
+    throw new Error(
+      "Unable to find an Alt sold-listing ID in this URL."
+    );
+  }
+
+  return match[1];
+}
+
+function normalizeAltSport(
+  value: unknown
+) {
+  const category = clean(value)
+    .replace(/_/g, " ")
+    .toLowerCase();
+
+  const sports: Array<
+    [RegExp, string]
+  > = [
+    [/\bbaseball\b/, "Baseball"],
+    [/\bbasketball\b/, "Basketball"],
+    [/\bfootball\b/, "Football"],
+    [/\bhockey\b/, "Hockey"],
+    [/\bsoccer\b/, "Soccer"],
+    [/\bgolf\b/, "Golf"],
+    [/\bwrestling\b/, "Wrestling"],
+    [/\bpok[eé]mon\b|\btcg\b/, "Pokémon/TCG"],
+  ];
+
+  for (const [pattern, sport] of sports) {
+    if (pattern.test(category)) {
+      return sport;
+    }
+  }
+
+  return "";
+}
+
+async function importAltSoldListing(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const listingId =
+    extractAltListingId(sourceUrl);
+
+  const response = await fetch(
+    ALT_GRAPHQL_URL,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type":
+          "application/json",
+        Origin: "https://alt.xyz",
+        Referer: sourceUrl,
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify({
+        operationName:
+          "SoldListing",
+        variables: {
+          id: listingId,
+        },
+        query:
+          ALT_SOLD_LISTING_QUERY,
+      }),
+      cache: "no-store",
+    }
+  );
+
+  const text = await response.text();
+  let json: any;
+
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Alt returned invalid JSON (${response.status}). First response text: ${text.slice(
+        0,
+        300
+      )}`
+    );
+  }
+
+  if (
+    !response.ok ||
+    json?.errors?.length
+  ) {
+    throw new Error(
+      clean(
+        json?.errors?.[0]?.message
+      ) ||
+        `Alt listing import failed with status ${response.status}.`
+    );
+  }
+
+  const transaction =
+    json?.data?.externalTransaction;
+
+  if (!transaction) {
+    throw new Error(
+      "Alt returned no sold-listing data for this URL."
+    );
+  }
+
+  const asset =
+    transaction.asset || {};
+
+  const attributes =
+    transaction.attributes || {};
+
+  const assetAttributes =
+    asset.attributes || {};
+
+  const year = clean(asset.year);
+  const subject = clean(
+    asset.subject
+  );
+  const brand = clean(asset.brand);
+  const variety = clean(
+    asset.variety
+  );
+  const cardNumber = clean(
+    assetAttributes.cardNumber
+  );
+  const printRun = clean(
+    assetAttributes.printRun
+  );
+  const sport = normalizeAltSport(
+    asset.category
+  );
+
+  const gradingCompany = clean(
+    attributes.gradingCompany
+  ).toUpperCase();
+
+  const numericGrade = clean(
+    attributes.grade
+  );
+
+  const grade = [
+    gradingCompany,
+    numericGrade,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const images = Array.isArray(
+    attributes.images
+  )
+    ? attributes.images
+        .map((image: any) => ({
+          position: clean(
+            image?.position
+          ).toUpperCase(),
+          url: normalizeUrl(
+            image?.url
+          ),
+        }))
+        .filter(
+          (image: {
+            position: string;
+            url: string;
+          }) => image.url
+        )
+    : [];
+
+  const frontImage =
+    images.find(
+      (image: {
+        position: string;
+        url: string;
+      }) =>
+        image.position === "FRONT"
+    )?.url ||
+    normalizeUrl(
+      attributes.imgThumbnailUrl
+    );
+
+  const remainingImages =
+    uniqueUrls(
+      images
+        .filter(
+          (image: {
+            position: string;
+            url: string;
+          }) =>
+            image.url !== frontImage
+        )
+        .sort(
+          (
+            left: {
+              position: string;
+            },
+            right: {
+              position: string;
+            }
+          ) =>
+            Number(
+              right.position === "BACK"
+            ) -
+            Number(
+              left.position === "BACK"
+            )
+        )
+        .map(
+          (image: {
+            url: string;
+          }) => image.url
+        )
+    );
+
+  const aspects: Record<
+    string,
+    string[]
+  > = {};
+
+  if (year) {
+    aspects.Year = [year];
+    aspects.Season = [year];
+  }
+
+  if (subject) {
+    aspects["Player/Athlete"] = [
+      subject,
+    ];
+  }
+
+  if (sport) {
+    aspects.Sport = [sport];
+  }
+
+  if (brand) {
+    aspects.Brand = [brand];
+    aspects.Manufacturer = [brand];
+    aspects.Set = [brand];
+  }
+
+  if (cardNumber) {
+    aspects["Card Number"] = [
+      cardNumber,
+    ];
+  }
+
+  if (variety) {
+    aspects["Parallel/Variety"] = [
+      variety,
+    ];
+  }
+
+  const autoGrade = clean(
+    attributes.autograph
+  ).replace(/\.0$/, "");
+
+  const priceValue =
+    transaction.usdAmount ??
+    transaction.displayPrice;
+
+  return {
+    ok: true,
+    marketplace: "alt",
+    sourceUrl,
+    listingId,
+    title:
+      clean(asset.name) ||
+      `Alt sold listing ${listingId}`,
+    seller:
+      clean(
+        transaction.auctionHouse
+      ) || "Alt",
+    price:
+      priceValue === null ||
+      priceValue === undefined
+        ? ""
+        : clean(priceValue),
+    currency:
+      clean(transaction.currency) ||
+      "USD",
+    endDate: clean(transaction.date),
+    certNumber: clean(
+      attributes.cert
+    ),
+    grade,
+    serialNumber: printRun
+      ? `/${printRun}`
+      : "",
+    description: autoGrade
+      ? `Auto Grade ${autoGrade}`
+      : "",
+    frontImage,
+    additionalImages:
+      remainingImages,
+    aspects,
+  };
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -2939,6 +3291,14 @@ export async function importAuction(
     );
   }
 
+  if (isAltHostname(hostname)) {
+    return addNormalizedCardFields(
+      await importAltSoldListing(
+        cleanedUrl
+      )
+    );
+  }
+
   if (isGoldinHostname(hostname)) {
     return addNormalizedCardFields(
       await importGoldinAuction(
@@ -2980,7 +3340,16 @@ function isInstagramHostname(
   );
 }
 
+function isAltHostname(
+  hostname: string
+) {
+  return (
+    hostname === "alt.xyz" ||
+    hostname.endsWith(".alt.xyz")
+  );
+}
+
 throw new Error(
-  "This source is not supported yet. eBay, X, Instagram, PSA, Goldin, and Fanatics Collect are currently available."
+  "This source is not supported yet. eBay, Alt, X, Instagram, PSA, Goldin, and Fanatics Collect are currently available."
 );
 }

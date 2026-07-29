@@ -880,8 +880,17 @@ if (
         setSerialNumber(parsedTitle.serialNumber);
       }
 
-      if (parsedTitle.grade && !grade.trim()) {
-        setGrade(parsedTitle.grade);
+            const importedGrade = String(
+        data.grade ||
+          parsedTitle.grade ||
+          ""
+      ).trim();
+
+      if (
+        importedGrade &&
+        !grade.trim()
+      ) {
+        setGrade(importedGrade);
       }
 
       if (data.certNumber && !certNumber.trim()) {

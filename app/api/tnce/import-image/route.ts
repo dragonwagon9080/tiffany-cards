@@ -18,6 +18,9 @@ const ALLOWED_HOSTS = [
   "pbs.twimg.com",
   "cdninstagram.com",
   "fbcdn.net",
+  "alt-images.b-cdn.net",
+  "onlyalt.imgix.net",
+  "onlyalt-images.s3.us-east-2.amazonaws.com",
 ];
 
 function isAllowedHost(
@@ -77,12 +80,30 @@ function refererForHost(
   }
 
   if (
-    normalized === "fanaticscollect.com" ||
+    normalized ===
+      "fanaticscollect.com" ||
     normalized.endsWith(
       ".fanaticscollect.com"
     )
   ) {
     return "https://www.fanaticscollect.com/";
+  }
+
+  if (
+    normalized ===
+      "alt-images.b-cdn.net" ||
+    normalized.endsWith(
+      ".alt-images.b-cdn.net"
+    ) ||
+    normalized ===
+      "onlyalt.imgix.net" ||
+    normalized.endsWith(
+      ".onlyalt.imgix.net"
+    ) ||
+    normalized ===
+      "onlyalt-images.s3.us-east-2.amazonaws.com"
+  ) {
+    return "https://alt.xyz/";
   }
 
   return "https://goldin.co/";
