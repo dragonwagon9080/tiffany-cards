@@ -14,18 +14,42 @@ const CARDS_ALERT_API_URL =
   "";
 
 function isRealCard(card: any) {
-  const first = String(card.First || "").trim();
-  const last = String(card.Last || "").trim();
-  const brand = String(card.Brand || "").trim();
-  const cert = String(card.Cert_Number || "").trim();
-  const front = String(card.front_image || "").trim();
-  const back = String(card.back_image || "").trim();
+  const first = String(
+    card.First || ""
+  ).trim();
+
+  const last = String(
+    card.Last || ""
+  ).trim();
+
+  const brand = String(
+    card.Brand || ""
+  ).trim();
+
+  const cert = String(
+    card.Cert_Number || ""
+  ).trim();
+
+  const front = String(
+    card.front_image || ""
+  ).trim();
+
+  const back = String(
+    card.back_image || ""
+  ).trim();
+
+  const hasName =
+    first !== "" ||
+    last !== "";
 
   return (
-    first !== "" &&
-    last !== "" &&
+    hasName &&
     brand !== "" &&
-    (cert !== "" || front.startsWith("http") || back.startsWith("http"))
+    (
+      cert !== "" ||
+      front.startsWith("http") ||
+      back.startsWith("http")
+    )
   );
 }
 
