@@ -10,6 +10,7 @@ type Props = {
   activeObject: ActiveObject;
 
   cardTitle: string;
+  setCardTitle: (value: string) => void;
 
   serialNumber: string;
   setSerialNumber: (value: string) => void;
@@ -59,6 +60,7 @@ function isPlaceholderContext(
 export default function RPAProjectForm({
   activeObject,
   cardTitle,
+  setCardTitle,
   serialNumber,
   setSerialNumber,
   variation,
@@ -213,14 +215,18 @@ export default function RPAProjectForm({
 
   return (
     <>
-      <label className="grid gap-1 text-sm">
+            <label className="grid gap-1 text-sm">
         Card Title / Player / Set
 
         <input
           value={cardTitle}
-          readOnly
+          onChange={(event) =>
+            setCardTitle(
+              event.target.value
+            )
+          }
           className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-          placeholder="Example: 2024 Caitlin Clark National Treasures RPA"
+          placeholder="Example: Michael Jordan, Tom Brady, or Mickey Mantle"
         />
       </label>
 

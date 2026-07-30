@@ -59,8 +59,9 @@ export default function ProjectFields({
   activeObject,
   cardsAlertFields,
   sports = [],
-  reasons = [],
+    reasons = [],
   cardTitle,
+  setCardTitle,
   serialNumber,
   setSerialNumber,
   variation,
@@ -75,6 +76,7 @@ export default function ProjectFields({
       <RPAProjectForm
         activeObject={activeObject}
         cardTitle={cardTitle}
+        setCardTitle={setCardTitle}
         serialNumber={serialNumber}
         setSerialNumber={setSerialNumber}
         variation={variation}

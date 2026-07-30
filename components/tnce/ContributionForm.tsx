@@ -89,14 +89,44 @@ function cleanCardTitle(value: unknown) {
     .trim();
 }
 
-function cardTitleFromActiveObject(activeObject: ActiveObject) {
-  return cleanCardTitle(
-    valueFromActiveObject(activeObject, [
-      "Card_Title",
-      "Card_Title_Display",
-      "title",
-    ]),
+function cardTitleFromActiveObject(
+  activeObject: ActiveObject
+) {
+  const id = String(
+    activeObject?.id ||
+      activeObject?.Card_id ||
+      activeObject?.card_id ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const title = cleanCardTitle(
+    valueFromActiveObject(
+      activeObject,
+      [
+        "Card_Title",
+        "Card_Title_Display",
+        "title",
+      ]
+    )
   );
+
+  const normalizedTitle =
+    title.toLowerCase();
+
+  if (
+    id === "rpa-tracker-main-page" ||
+    id === "rpa-tracker-home" ||
+    normalizedTitle ===
+      "rpa tracker main page" ||
+    normalizedTitle ===
+      "rpa tracker home"
+  ) {
+    return "";
+  }
+
+  return title;
 }
 
 function compactActiveObject(activeObject: ActiveObject): ActiveObject {
@@ -458,14 +488,13 @@ export default function ContributionForm({
 
   const [contributorEmail, setContributorEmail] = useState("");
 
-  const [cardTitle, setCardTitle] = useState(
-    cleanCardTitle(
-      valueFromActiveObject(activeObject, [
-        "Card_Title",
-        "Card_Title_Display",
-        "title",
-      ]),
-    ),
+  const [
+    cardTitle,
+    setCardTitle,
+  ] = useState(() =>
+    cardTitleFromActiveObject(
+      activeObject
+    )
   );
 
   const [serialNumber, setSerialNumber] = useState(
@@ -554,14 +583,10 @@ const [
   const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
-    setCardTitle(
-      cleanCardTitle(
-        valueFromActiveObject(activeObject, [
-          "Card_Title",
-          "Card_Title_Display",
-          "title",
-        ]),
-      ),
+        setCardTitle(
+      cardTitleFromActiveObject(
+        activeObject
+      )
     );
 
     setVariation(
