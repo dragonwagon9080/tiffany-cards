@@ -86,6 +86,12 @@ function refererForHost(
       ".fanaticscollect.com"
     )
   ) {
+      if (
+    normalized ===
+      "d1htnxwo4o0jhw.cloudfront.net"
+  ) {
+    return "https://www.psacard.com/";
+  }
     return "https://www.fanaticscollect.com/";
   }
 
