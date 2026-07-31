@@ -2715,39 +2715,214 @@ function extractInstagramCaption(
     .join("\n");
 }
 
+function cleanInstagramImageUrl(
+  value: string
+) {
+  return decodeHtml(
+    String(value || "")
+  )
+    .replace(/\\u0026/gi, "&")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/gi, "&")
+    .trim();
+}
+
+function isInstagramImageUrl(
+  value: string
+) {
+  try {
+    const parsed =
+      new URL(value);
+
+    const hostname =
+      parsed.hostname.toLowerCase();
+
+    return (
+      hostname ===
+        "cdninstagram.com" ||
+      hostname.endsWith(
+        ".cdninstagram.com"
+      ) ||
+      hostname === "fbcdn.net" ||
+      hostname.endsWith(
+        ".fbcdn.net"
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+function instagramTagAttribute(
+  tag: string,
+  attribute: string
+) {
+  const pattern =
+    new RegExp(
+      `\\s${attribute}\\s*=\\s*(["'])([\\s\\S]*?)\\1`,
+      "i"
+    );
+
+  return cleanInstagramImageUrl(
+    tag.match(pattern)?.[2] || ""
+  );
+}
+
 function extractInstagramImages(
-  _html: string,
+  html: string,
   primaryImage: string
 ) {
-  const url = normalizeUrl(
-    primaryImage
+  const candidates: Array<{
+    url: string;
+    width: number;
+    preferred: boolean;
+  }> = [];
+
+  const imageTags =
+    html.match(
+      /<img\b[^>]*>/gi
+    ) || [];
+
+  imageTags.forEach((tag) => {
+    const className =
+      instagramTagAttribute(
+        tag,
+        "class"
+      );
+
+    /*
+     * Exclude profile photos and avatars from the post.
+     */
+    if (
+      /avatar|profile/i.test(
+        className
+      )
+    ) {
+      return;
+    }
+
+    const preferred =
+      /EmbeddedMediaImage|MediaImage/i.test(
+        className
+      );
+
+    const src =
+      instagramTagAttribute(
+        tag,
+        "src"
+      );
+
+    if (
+      src &&
+      isInstagramImageUrl(src)
+    ) {
+      candidates.push({
+        url: src,
+        width: preferred
+          ? 100000
+          : 1,
+        preferred,
+      });
+    }
+
+    const srcset =
+      instagramTagAttribute(
+        tag,
+        "srcset"
+      );
+
+    if (srcset) {
+      srcset
+        .split(",")
+        .forEach((entry) => {
+          const match =
+            entry
+              .trim()
+              .match(
+                /^(https?:\/\/\S+?)(?:\s+(\d+)w)?$/i
+              );
+
+          if (!match) {
+            return;
+          }
+
+          const url =
+            cleanInstagramImageUrl(
+              match[1]
+            );
+
+          if (
+            !isInstagramImageUrl(
+              url
+            )
+          ) {
+            return;
+          }
+
+          const width =
+            Number(
+              match[2] || 0
+            );
+
+          candidates.push({
+            url,
+            width:
+              width +
+              (preferred
+                ? 100000
+                : 0),
+            preferred,
+          });
+        });
+    }
+  });
+
+  /*
+   * Prefer the largest image from Instagram's embed page.
+   * The embed page preserves the post's actual aspect ratio.
+   */
+  candidates.sort(
+    (a, b) => {
+      if (
+        a.preferred !==
+        b.preferred
+      ) {
+        return a.preferred
+          ? -1
+          : 1;
+      }
+
+      return (
+        b.width -
+        a.width
+      );
+    }
   );
 
-  if (!url) {
-    return [];
-  }
-
-  let parsedUrl: URL;
-
-  try {
-    parsedUrl = new URL(url);
-  } catch {
-    return [];
+    if (candidates.length) {
+    return [
+      candidates[0].url,
+    ];
   }
 
   /*
-   * Only og:image is guaranteed to belong to the
-   * requested post. Other CDN images in Instagram's HTML
-   * can come from recommended or neighboring posts.
+   * Fall back to og:image only when the embed page does
+   * not expose an image. Instagram sometimes crops this
+   * fallback into a square preview.
    */
-  if (
-    !parsedUrl.searchParams.get("oh") ||
-    !parsedUrl.searchParams.get("oe")
-  ) {
-    return [];
-  }
+  const fallback =
+    cleanInstagramImageUrl(
+      normalizeUrl(
+        primaryImage
+      )
+    );
 
-  return [url];
+  return fallback &&
+    isInstagramImageUrl(
+      fallback
+    )
+    ? [fallback]
+    : [];
 }
 
 async function importInstagramPost(
@@ -2758,28 +2933,67 @@ async function importInstagramPost(
       sourceUrl
     );
 
-  const response = await fetch(
-    details.canonicalUrl,
-    {
-      method: "GET",
-      headers: {
-        Accept:
-          "text/html,application/xhtml+xml",
-        "Accept-Language":
-          "en-US,en;q=0.9",
+  const requestHeaders = {
+    Accept:
+      "text/html,application/xhtml+xml",
+    "Accept-Language":
+      "en-US,en;q=0.9",
         "User-Agent":
-          "Mozilla/5.0",
-      },
-      cache: "no-store",
-      redirect: "follow",
-    }
-  );
+      "Mozilla/5.0",
+  };
 
-  const html = await response.text();
+  const response =
+    await fetch(
+      details.canonicalUrl,
+      {
+        method: "GET",
+        headers:
+          requestHeaders,
+        cache: "no-store",
+        redirect: "follow",
+      }
+    );
 
-  if (!response.ok || !html) {
+  const html =
+    await response.text();
+
+  if (
+    !response.ok ||
+    !html
+  ) {
     throw new Error(
       "Unable to import this Instagram post. Make sure the post is public."
+    );
+  }
+
+  /*
+   * Instagram's public embed page normally provides the
+   * complete image instead of the square og:image crop.
+   */
+  let embedHtml = "";
+
+  try {
+    const embedResponse =
+      await fetch(
+        details.canonicalUrl +
+          "embed/",
+        {
+          method: "GET",
+          headers:
+            requestHeaders,
+          cache: "no-store",
+          redirect: "follow",
+        }
+      );
+
+    if (embedResponse.ok) {
+      embedHtml =
+        await embedResponse.text();
+    }
+  } catch (error) {
+    console.warn(
+      "Instagram embed image unavailable:",
+      error
     );
   }
 
@@ -2790,7 +3004,10 @@ async function importInstagramPost(
     );
 
   const primaryImage =
-    getMetaContent(html, "og:image");
+    getMetaContent(
+      html,
+      "og:image"
+    );
 
   const canonicalUrl =
     normalizeUrl(
@@ -2812,7 +3029,7 @@ async function importInstagramPost(
 
   const imageUrls =
     extractInstagramImages(
-      html,
+      embedHtml || html,
       primaryImage
     );
 
@@ -2838,9 +3055,12 @@ async function importInstagramPost(
 
   return {
     ok: true,
-    marketplace: "instagram",
-    sourceUrl: canonicalUrl,
-    listingId: details.shortcode,
+    marketplace:
+      "instagram",
+    sourceUrl:
+      canonicalUrl,
+    listingId:
+      details.shortcode,
     title,
     seller:
       username
