@@ -3081,6 +3081,9 @@ async function importInstagramPost(
 const ALT_GRAPHQL_URL =
   "https://alt-platform-server.production.internal.onlyalt.com/graphql/SoldListing";
 
+const ALT_LIVE_GRAPHQL_URL =
+  "https://alt-platform-server.production.internal.onlyalt.com/graphql/PublicListingWithTransaction";
+
 const ALT_SOLD_LISTING_QUERY = `
   query SoldListing($id: ID!) {
     externalTransaction(id: $id) {
@@ -3122,6 +3125,69 @@ const ALT_SOLD_LISTING_QUERY = `
         }
       }
       subjectToChange
+    }
+  }
+`;
+
+const ALT_LIVE_LISTING_QUERY = `
+  query PublicListingWithTransaction($listingId: ID!) {
+    publicListing(id: $listingId) {
+      publicListing {
+        id
+        minOfferPrice
+        listPrice
+        state
+        createdAt
+        type
+        expiresAt
+        subtitle
+        description
+        items {
+          id
+          displayNames {
+            itemName
+            groupName
+            assetName
+          }
+          images {
+            position
+            url
+          }
+          attributes {
+            gradeNumber
+            gradingCompany
+            serial
+            printRun
+            certNumber
+            autograph
+            qualifier
+          }
+          asset {
+            id
+            name
+            year
+            subject
+            category
+            brand
+            variety
+            attributes {
+              cardNumber
+              printRun
+            }
+          }
+        }
+      }
+    }
+    listingExternalTransaction(
+      listingId: $listingId
+    ) {
+      id
+      date
+      auctionHouse
+      price
+      asset {
+        id
+      }
     }
   }
 `;
@@ -3430,6 +3496,344 @@ async function importAltSoldListing(
   };
 }
 
+async function importAltLiveListing(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const listingId =
+    extractAltListingId(sourceUrl);
+
+  const response = await fetch(
+    ALT_LIVE_GRAPHQL_URL,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type":
+          "application/json",
+        Origin: "https://alt.xyz",
+        Referer: sourceUrl,
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify({
+        operationName:
+          "PublicListingWithTransaction",
+        variables: {
+          listingId,
+        },
+        query:
+          ALT_LIVE_LISTING_QUERY,
+      }),
+      cache: "no-store",
+    }
+  );
+
+  const text = await response.text();
+
+  let json: any;
+
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Alt returned invalid JSON (${response.status}). First response text: ${text.slice(
+        0,
+        300
+      )}`
+    );
+  }
+
+  if (
+    !response.ok ||
+    json?.errors?.length
+  ) {
+    throw new Error(
+      clean(
+        json?.errors?.[0]?.message
+      ) ||
+        `Alt live listing import failed with status ${response.status}.`
+    );
+  }
+
+  const listing =
+    json?.data?.publicListing
+      ?.publicListing;
+
+  if (!listing) {
+    throw new Error(
+      "Alt returned no live-listing data for this URL."
+    );
+  }
+
+  const item = Array.isArray(
+    listing.items
+  )
+    ? listing.items[0]
+    : null;
+
+  if (!item) {
+    throw new Error(
+      "Alt returned no card information for this listing."
+    );
+  }
+
+  const asset =
+    item.asset || {};
+
+  const attributes =
+    item.attributes || {};
+
+  const assetAttributes =
+    asset.attributes || {};
+
+  const displayNames =
+    item.displayNames || {};
+
+  const year =
+    clean(asset.year);
+
+  const subject =
+    clean(asset.subject);
+
+  const brand =
+    clean(asset.brand);
+
+  const variety =
+    clean(asset.variety);
+
+  const cardNumber =
+    clean(
+      assetAttributes.cardNumber
+    );
+
+  const serial =
+    clean(attributes.serial);
+
+  const printRun =
+    clean(
+      attributes.printRun ||
+        assetAttributes.printRun
+    );
+
+  const sport =
+    normalizeAltSport(
+      asset.category
+    );
+
+  const gradingCompany =
+    clean(
+      attributes.gradingCompany
+    ).toUpperCase();
+
+  const numericGrade =
+    clean(
+      attributes.gradeNumber
+    );
+
+  const grade = [
+    gradingCompany,
+    numericGrade,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const imageRecords =
+    Array.isArray(item.images)
+      ? item.images
+          .map((image: any) => ({
+            position: clean(
+              image?.position
+            ).toUpperCase(),
+
+            url: normalizeUrl(
+              image?.url
+            ),
+          }))
+          .filter(
+            (image: {
+              position: string;
+              url: string;
+            }) => image.url
+          )
+      : [];
+
+  const frontImage =
+    imageRecords.find(
+      (image: {
+        position: string;
+        url: string;
+      }) =>
+        image.position === "FRONT"
+    )?.url || "";
+
+  const additionalImages =
+    uniqueUrls(
+      imageRecords
+        .filter(
+          (image: {
+            position: string;
+            url: string;
+          }) =>
+            image.url !== frontImage
+        )
+        .sort(
+          (
+            left: {
+              position: string;
+            },
+            right: {
+              position: string;
+            }
+          ) =>
+            Number(
+              right.position === "BACK"
+            ) -
+            Number(
+              left.position === "BACK"
+            )
+        )
+        .map(
+          (image: {
+            url: string;
+          }) => image.url
+        )
+    );
+
+  const aspects: Record<
+    string,
+    string[]
+  > = {};
+
+  if (year) {
+    aspects.Year = [year];
+    aspects.Season = [year];
+  }
+
+  if (subject) {
+    aspects["Player/Athlete"] = [
+      subject,
+    ];
+  }
+
+  if (sport) {
+    aspects.Sport = [sport];
+  }
+
+  if (brand) {
+    aspects.Brand = [brand];
+    aspects.Manufacturer = [brand];
+    aspects.Set = [brand];
+  }
+
+  if (cardNumber) {
+    aspects["Card Number"] = [
+      cardNumber,
+    ];
+  }
+
+  if (variety) {
+    aspects["Parallel/Variety"] = [
+      variety,
+    ];
+  }
+
+  const autographGrade =
+    clean(
+      attributes.autograph
+    ).replace(/\.0$/, "");
+
+  const rawPrice =
+    listing.listPrice ??
+    listing.minOfferPrice;
+
+  const numericPrice =
+    Number(rawPrice);
+
+  const price =
+    rawPrice === null ||
+    rawPrice === undefined ||
+    rawPrice === ""
+      ? ""
+      : Number.isFinite(
+          numericPrice
+        )
+      ? String(numericPrice)
+      : clean(rawPrice);
+
+  const serialNumber =
+    serial && printRun
+      ? `${serial}/${printRun}`
+      : printRun
+      ? `/${printRun}`
+      : serial;
+
+  const description = [
+    autographGrade
+      ? `Auto Grade ${autographGrade}`
+      : "",
+
+    clean(listing.description),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    ok: true,
+    marketplace: "alt",
+    sourceUrl,
+    listingId,
+
+    title:
+      clean(
+        displayNames.itemName
+      ) ||
+      clean(asset.name) ||
+      `Alt live listing ${listingId}`,
+
+    seller: "Alt",
+
+    price,
+    currency: "USD",
+
+    endDate:
+      clean(listing.expiresAt),
+
+    certNumber:
+      clean(
+        attributes.certNumber
+      ),
+
+    grade,
+    serialNumber,
+    description,
+    frontImage,
+    additionalImages,
+    aspects,
+  };
+}
+
+async function importAltListing(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const parsed =
+    new URL(sourceUrl);
+
+  const isSoldPage =
+    /\/sold\/?$/i.test(
+      parsed.pathname
+    );
+
+  if (isSoldPage) {
+    return importAltSoldListing(
+      sourceUrl
+    );
+  }
+
+  return importAltLiveListing(
+    sourceUrl
+  );
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -3512,12 +3916,12 @@ export async function importAuction(
   }
 
   if (isAltHostname(hostname)) {
-    return addNormalizedCardFields(
-      await importAltSoldListing(
-        cleanedUrl
-      )
-    );
-  }
+  return addNormalizedCardFields(
+    await importAltListing(
+      cleanedUrl
+    )
+  );
+}
 
   if (isGoldinHostname(hostname)) {
     return addNormalizedCardFields(
