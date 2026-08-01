@@ -23,9 +23,9 @@ export const dynamic =
   "force-dynamic";
 
 const MAX_CARDS_PER_REQUEST = 40;
-const SEARCH_RESULTS_PER_CARD = 50;
-const MAX_MATCHES_PER_CARD = 20;
-const SEARCH_CONCURRENCY = 4;
+const SEARCH_RESULTS_PER_CARD = 20;
+const MAX_MATCHES_PER_CARD = 12;
+const SEARCH_CONCURRENCY = 10;
 
 type AuctionWatchCardInput = {
   cardId?: unknown;
