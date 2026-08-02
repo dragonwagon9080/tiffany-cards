@@ -82,6 +82,7 @@ function buildVariationOptions(
 export default function RegistryMap({
   variation,
   cards,
+  groupContext = {},
   description = "",
   showVariationPicker = false,
   onVariationChange,
@@ -90,8 +91,9 @@ export default function RegistryMap({
   selectionMode = false,
   selectionTitle,
 }: {
-  variation: string;
+    variation: string;
   cards: any[];
+  groupContext?: any;
   description?: string;
   showVariationPicker?: boolean;
   onVariationChange?: (
@@ -165,12 +167,17 @@ export default function RegistryMap({
     number: number;
     denominator: number;
   }) {
-    const sample = cards?.[0] || {};
-    const serialNumber = `${number}/${denominator}`;
+        const sample = {
+      ...groupContext,
+      ...(cards?.[0] || {}),
+    };
+
+    const serialNumber =
+      `${number}/${denominator}`;
 
     const sampleTitle = String(
-      sample.Card_Title_Display ||
-        sample.Card_Title ||
+      sample.Card_Title ||
+        sample.Card_Title_Display ||
         sample.title ||
         "Missing RPA Card"
     ).trim();

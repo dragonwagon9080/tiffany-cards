@@ -323,9 +323,10 @@ export default function GroupClient({
               </div>
             )}
 
-            <RegistryMap
+              <RegistryMap
               variation={variation}
               cards={data.cards || []}
+              groupContext={group}
               description={
                 group.Description || ""
               }

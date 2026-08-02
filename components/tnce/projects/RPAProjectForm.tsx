@@ -42,18 +42,45 @@ function isPlaceholderContext(
   activeObject: ActiveObject
 ) {
   const id = String(
-    activeObject?.id || ""
-  ).toLowerCase();
+    activeObject?.id ||
+      activeObject?.Card_id ||
+      activeObject?.card_id ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
 
   const title = String(
-    activeObject?.title || ""
-  ).toLowerCase();
+    activeObject?.Card_Title ||
+      activeObject?.Card_Title_Display ||
+      activeObject?.title ||
+      ""
+  )
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 
   return (
-    id === "rpa-tracker-main-page" ||
-    id === "rpa-tracker-home" ||
-    title === "rpa tracker main page" ||
-    title === "rpa tracker home"
+    [
+      "rpa-tracker-main-page",
+      "rpa-tracker-home",
+      "rpa-new-card",
+      "new-rpa-card",
+      "rpa-tracker-new-card",
+      "missing-rpa-card",
+      "rpa-missing-card",
+    ].includes(id) ||
+    [
+      "rpa tracker main page",
+      "rpa tracker home",
+      "rpa new card",
+      "new rpa card",
+      "rpa tracker new card",
+      "new card",
+    ].includes(title) ||
+    /^(?:missing rpa card|rpa missing card)(?:\s|$)/i.test(
+      title
+    )
   );
 }
 

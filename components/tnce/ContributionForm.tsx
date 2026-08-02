@@ -115,13 +115,34 @@ function cardTitleFromActiveObject(
   const normalizedTitle =
     title.toLowerCase();
 
+    const placeholderIds = [
+    "rpa-tracker-main-page",
+    "rpa-tracker-home",
+    "rpa-new-card",
+    "new-rpa-card",
+    "rpa-tracker-new-card",
+  ];
+
+  const placeholderTitles = [
+    "rpa tracker main page",
+    "rpa tracker home",
+    "rpa new card",
+    "new rpa card",
+    "rpa tracker new card",
+    "new card",
+  ];
+
+    const isPlaceholderTitle =
+    placeholderTitles.includes(
+      normalizedTitle
+    ) ||
+    /^(?:missing rpa card|rpa missing card)(?:\s|$)/i.test(
+      normalizedTitle
+    );
+
   if (
-    id === "rpa-tracker-main-page" ||
-    id === "rpa-tracker-home" ||
-    normalizedTitle ===
-      "rpa tracker main page" ||
-    normalizedTitle ===
-      "rpa tracker home"
+    placeholderIds.includes(id) ||
+    isPlaceholderTitle
   ) {
     return "";
   }
@@ -129,7 +150,9 @@ function cardTitleFromActiveObject(
   return title;
 }
 
-function compactActiveObject(activeObject: ActiveObject): ActiveObject {
+function compactActiveObject(
+  activeObject: ActiveObject
+): ActiveObject {
   const allowedKeys = [
     "Card_id",
     "card_id",
@@ -167,11 +190,35 @@ function compactActiveObject(activeObject: ActiveObject): ActiveObject {
   const compact: ActiveObject = {};
 
   for (const key of allowedKeys) {
-    const value = activeObject[key];
+    const value =
+      activeObject[key];
 
-    if (value !== undefined && value !== null) {
+    if (
+      value !== undefined &&
+      value !== null
+    ) {
       compact[key] = value;
     }
+  }
+
+  /*
+   * Main-page and new-card objects are only UI
+   * context. Their placeholder titles and IDs must
+   * never reach Apps Script, card-ID generation, or
+   * permanent image folder naming.
+   */
+  if (
+    !cardTitleFromActiveObject(
+      activeObject
+    )
+  ) {
+    delete compact.Card_id;
+    delete compact.card_id;
+    delete compact.id;
+
+    delete compact.Card_Title;
+    delete compact.Card_Title_Display;
+    delete compact.title;
   }
 
   return compact;
@@ -1149,11 +1196,19 @@ const submissionId =
 
             Serial_Number: cleanedSerialNumber,
 
-            Card_id: valueFromActiveObject(activeObject, [
-              "Card_id",
-              "card_id",
-              "id",
-            ]),
+            Card_id:
+  cardTitleFromActiveObject(
+    activeObject
+  )
+    ? valueFromActiveObject(
+        activeObject,
+        [
+          "Card_id",
+          "card_id",
+          "id",
+        ]
+      )
+    : "",
 
             Variation_Input: variation.trim(),
 
