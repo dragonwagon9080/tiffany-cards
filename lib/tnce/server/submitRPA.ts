@@ -54,6 +54,17 @@ function isTemporaryGoogleHtml(
   );
 }
 
+function isUnexpectedAppsScriptResponse(
+  data: any
+) {
+  return (
+    !data ||
+    typeof data !== "object" ||
+    Array.isArray(data) ||
+    typeof data.ok !== "boolean"
+  );
+}
+
 function errorMessageFromData(
   data: any
 ) {
@@ -166,6 +177,47 @@ export async function submitRPAContribution(
         }
 
         throw error;
+      }
+
+      /*
+       * Google occasionally follows the Apps Script POST
+       * redirect as a GET and returns the public database
+       * response instead of the submission result.
+       *
+       * A valid TNCE response must be an object containing
+       * a boolean "ok" property.
+       */
+      if (
+        isUnexpectedAppsScriptResponse(
+          data
+        )
+      ) {
+        const unexpectedError =
+          new Error(
+            `Apps Script returned an unexpected JSON response. Status: ${
+              response.status
+            }. First response text: ${text.slice(
+              0,
+              300
+            )}`
+          );
+
+        if (
+          attempt < MAX_ATTEMPTS
+        ) {
+          lastError =
+            unexpectedError;
+
+          await wait(
+            attempt === 1
+              ? 1000
+              : 2500
+          );
+
+          continue;
+        }
+
+        throw unexpectedError;
       }
 
       if (

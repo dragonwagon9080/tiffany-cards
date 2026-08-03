@@ -54,6 +54,17 @@ function isTemporaryGoogleHtml(
   );
 }
 
+function isUnexpectedAppsScriptResponse(
+  data: any
+) {
+  return (
+    !data ||
+    typeof data !== "object" ||
+    Array.isArray(data) ||
+    typeof data.ok !== "boolean"
+  );
+}
+
 function errorMessageFromData(
   data: any
 ) {
@@ -78,6 +89,14 @@ function errorMessageFromData(
   );
 }
 
+function retryDelay(
+  attempt: number
+) {
+  return attempt === 1
+    ? 1000
+    : 2500;
+}
+
 export async function submitCardsAlertContribution(
   submission: TNCESubmission
 ) {
@@ -91,6 +110,10 @@ export async function submitCardsAlertContribution(
     );
   }
 
+  /*
+   * Every retry uses the identical payload and
+   * submission ID.
+   */
   const payload = JSON.stringify({
     ...submission,
     project: "cards-alert",
@@ -104,9 +127,12 @@ export async function submitCardsAlertContribution(
     attempt <= MAX_ATTEMPTS;
     attempt++
   ) {
+    let response: Response;
+
     try {
-      const response =
-        await fetch(url, {
+      response = await fetch(
+        url,
+        {
           method: "POST",
 
           headers: {
@@ -117,121 +143,140 @@ export async function submitCardsAlertContribution(
           body: payload,
           cache: "no-store",
           redirect: "follow",
-        });
-
-      const text =
-        await response.text();
-
-      let data: any;
-
-      try {
-        data = JSON.parse(text);
-      } catch {
-        const retryable =
-          isRetryableStatus(
-            response.status
-          ) ||
-          isTemporaryGoogleHtml(
-            response.status,
-            text
-          );
-
-        const error =
-          new Error(
-            `Cards Alert Apps Script returned non-JSON. Status: ${
-              response.status
-            }. First response text: ${text.slice(
-              0,
-              300
-            )}`
-          );
-
-        if (
-          retryable &&
-          attempt < MAX_ATTEMPTS
-        ) {
-          lastError = error;
-
-          await wait(
-            attempt === 1
-              ? 1000
-              : 2500
-          );
-
-          continue;
         }
-
-        throw error;
-      }
+      );
+    } catch (error: any) {
+      lastError =
+        error instanceof Error
+          ? error
+          : new Error(
+              "Unable to contact Cards Alert Apps Script."
+            );
 
       if (
-        (!response.ok ||
-          !data?.ok) &&
-        isRetryableStatus(
-          response.status
-        ) &&
         attempt < MAX_ATTEMPTS
       ) {
-        lastError =
-          new Error(
-            errorMessageFromData(
-              data
-            )
-          );
-
         await wait(
-          attempt === 1
-            ? 1000
-            : 2500
+          retryDelay(attempt)
         );
 
         continue;
       }
 
+      throw lastError;
+    }
+
+    const text =
+      await response.text();
+
+    let data: any;
+
+    try {
+      data = JSON.parse(text);
+    } catch {
+      const error =
+        new Error(
+          `Cards Alert Apps Script returned non-JSON. Status: ${
+            response.status
+          }. First response text: ${text.slice(
+            0,
+            300
+          )}`
+        );
+
+      const retryable =
+        isRetryableStatus(
+          response.status
+        ) ||
+        isTemporaryGoogleHtml(
+          response.status,
+          text
+        );
+
       if (
-        !response.ok ||
-        !data?.ok
+        retryable &&
+        attempt < MAX_ATTEMPTS
       ) {
-        throw new Error(
+        lastError = error;
+
+        await wait(
+          retryDelay(attempt)
+        );
+
+        continue;
+      }
+
+      throw error;
+    }
+
+    /*
+     * Google can occasionally return the public
+     * database JSON instead of the POST result.
+     */
+    if (
+      isUnexpectedAppsScriptResponse(
+        data
+      )
+    ) {
+      const error =
+        new Error(
+          `Cards Alert Apps Script returned an unexpected JSON response. Status: ${
+            response.status
+          }. First response text: ${text.slice(
+            0,
+            300
+          )}`
+        );
+
+      if (
+        attempt < MAX_ATTEMPTS
+      ) {
+        lastError = error;
+
+        await wait(
+          retryDelay(attempt)
+        );
+
+        continue;
+      }
+
+      throw error;
+    }
+
+    if (
+      (!response.ok ||
+        !data.ok) &&
+      isRetryableStatus(
+        response.status
+      ) &&
+      attempt < MAX_ATTEMPTS
+    ) {
+      lastError =
+        new Error(
           errorMessageFromData(
             data
           )
         );
-      }
 
-      return data;
-    } catch (error: any) {
-      const normalizedError =
-        error instanceof Error
-          ? error
-          : new Error(
-              String(
-                error ||
-                  "Cards Alert submission failed."
-              )
-            );
+      await wait(
+        retryDelay(attempt)
+      );
 
-      lastError =
-        normalizedError;
-
-      const isNetworkError =
-        error instanceof TypeError;
-
-      if (
-        isNetworkError &&
-        attempt < MAX_ATTEMPTS
-      ) {
-        await wait(
-          attempt === 1
-            ? 1000
-            : 2500
-        );
-
-        continue;
-      }
-
-      throw normalizedError;
+      continue;
     }
+
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+      throw new Error(
+        errorMessageFromData(
+          data
+        )
+      );
+    }
+
+    return data;
   }
 
   throw (
