@@ -1085,10 +1085,10 @@ previousUploadedImages: isSimilarCard
           />
         </div>
 
-        <section className="rounded-xl border border-neutral-700 bg-neutral-950 p-4">
-          <h3 className="text-sm font-black uppercase tracking-widest text-white">
-            Previous Card Condition
-          </h3>
+        <section className="rounded-xl border-2 border-green-500 bg-green-950/40 p-4 shadow-[0_0_14px_rgba(34,197,94,0.65)]">
+  <h3 className="text-sm font-black uppercase tracking-widest text-lime-300">
+    Previous Card Condition
+  </h3>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1 text-sm">
@@ -1133,7 +1133,7 @@ previousUploadedImages: isSimilarCard
               type="button"
               onClick={importPreviousAuctionListing}
               disabled={importingPrevious || !previousAuctionSourceUrl.trim()}
-              className="h-11 rounded-lg border border-[#d4af37] bg-[#9c7a2d] px-5 text-sm font-extrabold uppercase tracking-wide text-black disabled:opacity-50"
+              className="h-11 rounded-lg border border-lime-300 bg-lime-400 px-5 text-sm font-extrabold uppercase tracking-wide text-black shadow-[0_0_12px_rgba(163,230,53,0.55)] transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {importingPrevious ? "Importing..." : "⚡ Import Previous Source"}
             </button>
@@ -1164,7 +1164,7 @@ previousUploadedImages: isSimilarCard
         </section>
 
         <div>
-          <div className="mb-2 text-sm font-black uppercase tracking-widest text-white">
+          <div className="mb-2 text-sm font-black uppercase tracking-widest text-lime-300">
             Previous Card Images
           </div>
           <ImageSection

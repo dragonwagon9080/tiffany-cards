@@ -154,79 +154,281 @@ async function prepareRotatedImages(images: CleanImage[]) {
   return prepared;
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(
+  req: NextRequest
+) {
   try {
-    const body = await req.json();
+    const body =
+      await req.json();
 
-    const project = String(body?.project || "") as TNCEProject;
+    const project =
+      String(
+        body?.project || ""
+      ) as TNCEProject;
 
-    const submissionId = String(body?.submissionId || "").trim();
+    const submissionId =
+      String(
+        body?.submissionId || ""
+      ).trim();
 
-    const url = endpointForProject(project);
-    const adminSecret = secretForProject(project);
+    const url =
+      endpointForProject(
+        project
+      );
 
-    if (!url || !adminSecret || !submissionId) {
+    const adminSecret =
+      secretForProject(
+        project
+      );
+
+    if (
+      !url ||
+      !adminSecret ||
+      !submissionId
+    ) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Missing TNCE publish configuration or submission ID.",
+          error:
+            "Missing TNCE publish configuration or submission ID.",
         },
-        { status: 400 },
+        {
+          status: 400,
+        }
       );
     }
 
-    const organizedImages = cleanImages(body?.organizedImages);
+    const organizedImages =
+      cleanImages(
+        body?.organizedImages
+      );
 
-    const rotatedImages = await prepareRotatedImages(organizedImages);
+    const rotatedImages =
+      await prepareRotatedImages(
+        organizedImages
+      );
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({
-        action: "publish",
-        adminSecret,
-        submissionId,
-        reviewNotes: String(body?.reviewNotes || "").trim(),
-        contributorNotes: String(body?.contributorNotes || "").trim(),
-        productionRecord: cleanRecord(project, body?.productionRecord),
-        organizedImages,
-        rotatedImages,
-      }),
-      cache: "no-store",
-      redirect: "follow",
-    });
+    const publishPayload = {
+      action: "publish",
+      adminSecret,
+      submissionId,
 
-    const text = await response.text();
-    let data: any;
+      reviewNotes:
+        String(
+          body?.reviewNotes || ""
+        ).trim(),
+
+      contributorNotes:
+        String(
+          body?.contributorNotes ||
+            ""
+        ).trim(),
+
+      productionRecord:
+        cleanRecord(
+          project,
+          body?.productionRecord
+        ),
+
+      organizedImages,
+      rotatedImages,
+    };
+
+    let publishError = "";
 
     try {
-      data = JSON.parse(text);
+      const response =
+        await fetch(
+          url,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "text/plain;charset=utf-8",
+            },
+
+            body:
+              JSON.stringify(
+                publishPayload
+              ),
+
+            cache: "no-store",
+            redirect: "follow",
+          }
+        );
+
+      const text =
+        await response.text();
+
+      let data: any = null;
+
+      try {
+        data =
+          JSON.parse(text);
+      } catch {
+        publishError =
+          `TNCE publish returned invalid JSON: ${text.slice(
+            0,
+            500
+          )}`;
+      }
+
+      if (
+        data &&
+        response.ok &&
+        data.ok
+      ) {
+        return NextResponse.json(
+          data,
+          {
+            headers: {
+              "Cache-Control":
+                "no-store",
+            },
+          }
+        );
+      }
+
+      if (data) {
+        publishError =
+          String(
+            data.error ||
+              data.message ||
+              "Publishing failed."
+          );
+      } else if (!publishError) {
+        publishError =
+          `Publishing failed with status ${response.status}.`;
+      }
+    } catch (error: any) {
+      publishError =
+        error?.message ||
+        "The publish request did not return a result.";
+    }
+
+    /*
+     * The Apps Script operation may have completed even
+     * when its HTTP response failed or timed out.
+     *
+     * Check the queue before reporting a failure.
+     */
+    const verifyResponse =
+      await fetch(
+        url,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "text/plain;charset=utf-8",
+          },
+
+          body: JSON.stringify({
+            action: "adminQueue",
+            adminSecret,
+            project,
+          }),
+
+          cache: "no-store",
+          redirect: "follow",
+        }
+      );
+
+    const verifyText =
+      await verifyResponse.text();
+
+    let verifyData: any = null;
+
+    try {
+      verifyData =
+        JSON.parse(
+          verifyText
+        );
     } catch {
-      throw new Error(
-        `TNCE publish returned invalid JSON: ${text.slice(0, 500)}`,
+      verifyData = null;
+    }
+
+    const queueItems =
+      Array.isArray(
+        verifyData?.submissions
+      )
+        ? verifyData.submissions
+        : Array.isArray(
+              verifyData?.items
+            )
+          ? verifyData.items
+          : Array.isArray(
+                verifyData?.queue
+              )
+            ? verifyData.queue
+            : [];
+
+    const matchingSubmission =
+      queueItems.find(
+        (item: any) =>
+          String(
+            item?.Submission_ID ||
+              item?.submissionId ||
+              item?.id ||
+              ""
+          ).trim() ===
+          submissionId
+      );
+
+    const verifiedStatus =
+      String(
+        matchingSubmission
+          ?.TNCE_Status ||
+          matchingSubmission
+            ?.status ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      verifiedStatus ===
+      "published"
+    ) {
+      return NextResponse.json(
+        {
+          ok: true,
+          submissionId,
+          status: "Published",
+          recovered: true,
+          message:
+            "The card was published successfully, but the original publish response was interrupted.",
+        },
+        {
+          headers: {
+            "Cache-Control":
+              "no-store",
+          },
+        }
       );
     }
 
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || "Publishing failed.");
-    }
-
-    return NextResponse.json(data, {
-      headers: {
-        "Cache-Control": "no-store",
-      },
-    });
+    throw new Error(
+      publishError ||
+        "Publishing failed."
+    );
   } catch (error: any) {
-    console.error("TNCE publish route error:", error);
+    console.error(
+      "TNCE publish route error:",
+      error
+    );
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Publishing failed.",
+        error:
+          error?.message ||
+          "Publishing failed.",
       },
-      { status: 500 },
+      {
+        status: 500,
+      }
     );
   }
 }
