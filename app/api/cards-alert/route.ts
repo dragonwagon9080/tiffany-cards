@@ -22,6 +22,7 @@ function matchesSearch(card: any, q: string) {
     card.Card_Serial,
     card.Grade,
     card.Cert_Number,
+    card.Card_id,
     card.Status,
     card.Description,
     card.Sport,
@@ -234,7 +235,14 @@ export async function GET(req: Request) {
     status: searchParams.get("status") || "",
   };
 
-  const allCards = data.cards || [];
+  const allCards = (data.cards || []).map(
+  (card: any) => ({
+    ...card,
+    Card_id: String(
+      card.Card_id || ""
+    ).trim(),
+  })
+);
 
   if (mode === "startup") {
     const recentCards = allCards.slice(offset, offset + limit);

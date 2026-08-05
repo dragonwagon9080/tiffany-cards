@@ -565,13 +565,13 @@ function filterMouseLeave(
       <div className="grid grid-cols-1 gap-6 py-6 md:grid-cols-3 lg:grid-cols-4">
         {cards.map((card: any, i: number) => (
           <div
-            key={`${card.Cert_Number || card.ID || i}`}
+            key={`${card.Card_id || i}`}
             className="group overflow-hidden rounded-xl border border-transparent bg-zinc-900 transition duration-300 hover:-translate-y-1 hover:border-red-600 hover:shadow-[0_0_25px_rgba(220,38,38,.35)]"
           >
             <a
               href={`/cards-alert/card/${encodeURIComponent(
-                card.Cert_Number || card.ID || ""
-              )}`}
+                card.Card_id || ""
+          )}`}
               className="block bg-black p-3"
             >
               <div className="flex justify-center overflow-hidden rounded-lg">

@@ -194,7 +194,7 @@ export default function CardClient({
           ? 1
           : 0,
     );
-  }, [card?.ID, card?.Cert_Number]);
+  }, [card?.Card_id, card?.Cert_Number]);
 
   const title = `${card.Year || ""} ${card.First || ""} ${card.Last || ""} ${
     card.Num ? `#${card.Num}` : ""
@@ -214,7 +214,7 @@ export default function CardClient({
       "@type": "Brand",
       name: card.Brand || "Unknown",
     },
-    identifier: card.Cert_Number || id,
+    identifier: card.Card_id || id,
   };
 
   const goldButtonClass =
@@ -222,7 +222,7 @@ export default function CardClient({
 
   console.log("TNCE Active Object", {
     ...card,
-    id: card.ID || id,
+    id: card.Card_id || id,
     title,
   });
 
@@ -311,8 +311,8 @@ export default function CardClient({
                 type="alert"
                 title={title}
                 url={`https://www.tiffanycards.com/cards-alert/card/${encodeURIComponent(
-                  id,
-                )}`}
+                 card.Card_id || id,
+              )}`}
               />
             </div>
           </div>
@@ -395,7 +395,8 @@ export default function CardClient({
         reasons={reasons}
         activeObject={{
           ...card,
-          id: card.ID || id,
+          id: card.Card_id || id,
+          Card_id: card.Card_id,
           title,
         }}
       />
