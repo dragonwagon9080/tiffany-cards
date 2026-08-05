@@ -2269,13 +2269,38 @@ async function importPsaCertification(
     "https://api.psacard.com/publicapi/cert";
 
   const certResponse = await fetchPsaJson(
-    `${apiRoot}/GetByCertNumber/${encodeURIComponent(
-      certNumber
-    )}`,
-    token
-  );
+  `${apiRoot}/GetByCertNumber/${encodeURIComponent(
+    certNumber
+  )}`,
+  token
+);
 
-  const certSource =
+const isValidRequest =
+  certResponse?.IsValidRequest ??
+  certResponse?.isValidRequest;
+
+const serverMessage = clean(
+  certResponse?.ServerMessage ??
+    certResponse?.serverMessage
+);
+
+if (isValidRequest === false) {
+  throw new Error(
+    serverMessage ||
+      `PSA rejected cert number ${certNumber}.`
+  );
+}
+
+if (
+  isValidRequest === true &&
+  /no data found/i.test(serverMessage)
+) {
+  throw new Error(
+    `PSA returned no certification data for ${certNumber}.`
+  );
+}
+
+const certSource =
     certResponse?.PSACert ||
     certResponse?.psaCert ||
     certResponse?.Cert ||
