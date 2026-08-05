@@ -597,9 +597,19 @@ function filterMouseLeave(
 
               <div className="text-gray-300">Grade: {card.Grade}</div>
 
-              <div className="text-gray-400 flex items-center gap-1">
-  <span>Cert #:</span>
-  <CopyText value={card.Cert_Number} />
+              <div className="flex items-center gap-1 text-gray-400">
+  <span>
+    {card.Cert_Number
+      ? "Cert #:"
+      : "Card ID:"}
+  </span>
+
+  <CopyText
+    value={
+      card.Cert_Number ||
+      card.Card_id
+    }
+  />
 </div>
             </div>
           </div>

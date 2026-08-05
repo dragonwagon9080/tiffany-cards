@@ -220,13 +220,7 @@ export default function CardClient({
   const goldButtonClass =
     "inline-flex w-fit items-center rounded border border-[#d4af37] bg-[#9c7a2d] px-3 py-1.5 text-sm font-bold text-[#111111] transition hover:bg-[#b99236]";
 
-  console.log("TNCE Active Object", {
-    ...card,
-    id: card.Card_id || id,
-    title,
-  });
-
-  return (
+    return (
     <main className="min-h-screen bg-black px-4 py-8 text-white md:px-8">
       <script
         type="application/ld+json"
@@ -336,7 +330,17 @@ export default function CardClient({
           <div className="grid grid-cols-2 divide-x divide-y divide-[#9c7a2d]/60 sm:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
             <InfoBox label="Grade" value={card.Grade} />
 
-            <InfoBox label="Cert #" value={card.Cert_Number} />
+            <InfoBox
+  label={
+    card.Cert_Number
+      ? "Cert #"
+      : "Card ID"
+  }
+  value={
+    card.Cert_Number ||
+    card.Card_id
+  }
+/>
 
             <InfoBox
               label="Player"
