@@ -945,12 +945,27 @@ if (
        * Only fill blank serial and grade fields from the
        * imported listing title.
        */
-      if (
-        parsedTitle.serialNumber &&
-        (mode === "new" || mode === "missing" || !serialNumber.trim())
-      ) {
-        setSerialNumber(parsedTitle.serialNumber);
-      }
+      const importedSerial = String(
+  parsedTitle.serialNumber ||
+    data.serialNumber ||
+    ""
+).trim();
+
+/*
+ * The value already entered in the Serial Number field
+ * always takes priority over a serial detected from the
+ * imported listing.
+ *
+ * Only populate the field from the listing when it is blank.
+ */
+if (
+  importedSerial &&
+  !serialNumber.trim()
+) {
+  setSerialNumber(
+    importedSerial
+  );
+}
 
             const importedGrade = String(
         data.grade ||
@@ -967,10 +982,6 @@ if (
 
       if (data.certNumber && !certNumber.trim()) {
         setCertNumber(data.certNumber);
-      }
-
-      if (data.serialNumber && !serialNumber.trim()) {
-        setSerialNumber(data.serialNumber);
       }
 
       setFrontImage("");

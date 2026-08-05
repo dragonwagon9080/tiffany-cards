@@ -2740,6 +2740,110 @@ function extractInstagramCaption(
     .join("\n");
 }
 
+function extractInstagramPostDate(
+  html: string,
+  embedHtml: string,
+  metaDescription: string
+) {
+  const combinedHtml =
+    `${html}\n${embedHtml}`;
+
+  /*
+   * Prefer machine-readable timestamps exposed by
+   * Instagram's page or embed markup.
+   */
+  const timestampCandidates = [
+    combinedHtml.match(
+      /"uploadDate"\s*:\s*"([^"]+)"/i
+    )?.[1],
+
+    combinedHtml.match(
+      /"datePublished"\s*:\s*"([^"]+)"/i
+    )?.[1],
+
+    combinedHtml.match(
+      /"taken_at_timestamp"\s*:\s*(\d{10,13})/i
+    )?.[1],
+
+    combinedHtml.match(
+      /"taken_at"\s*:\s*(\d{10,13})/i
+    )?.[1],
+
+    combinedHtml.match(
+      /<time[^>]+datetime=["']([^"']+)["']/i
+    )?.[1],
+  ];
+
+  for (const candidate of timestampCandidates) {
+    const value =
+      String(candidate || "").trim();
+
+    if (!value) continue;
+
+    if (/^\d{10,13}$/.test(value)) {
+      const timestamp =
+        Number(value);
+
+      const milliseconds =
+        value.length === 10
+          ? timestamp * 1000
+          : timestamp;
+
+      const date =
+        new Date(milliseconds);
+
+      if (
+        !Number.isNaN(
+          date.getTime()
+        )
+      ) {
+        return date.toISOString();
+      }
+    }
+
+    const date =
+      new Date(value);
+
+    if (
+      !Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return date.toISOString();
+    }
+  }
+
+  /*
+   * Fallback: Instagram often formats og:description as:
+   *
+   * username on July 6, 2023: "caption"
+   */
+  const descriptionText =
+    decodeHtml(
+      metaDescription
+    );
+
+  const descriptionDate =
+    descriptionText.match(
+      /\bon\s+([A-Z][a-z]+\s+\d{1,2},\s+\d{4})\s*:/i
+    )?.[1];
+
+  if (descriptionDate) {
+    const date =
+      new Date(descriptionDate);
+
+    if (
+      !Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return date.toISOString();
+    }
+  }
+
+  return "";
+}
+
 function cleanInstagramImageUrl(
   value: string
 ) {
@@ -3052,6 +3156,13 @@ async function importInstagramPost(
       metaDescription
     );
 
+const postDate =
+  extractInstagramPostDate(
+    html,
+    embedHtml,
+    metaDescription
+  );
+
   const imageUrls =
     extractInstagramImages(
       embedHtml || html,
@@ -3093,7 +3204,7 @@ async function importInstagramPost(
         : "Instagram",
     price: "",
     currency: "",
-    endDate: "",
+    endDate: postDate,
     description,
     frontImage:
       imageUrls[0] || "",
