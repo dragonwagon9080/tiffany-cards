@@ -262,8 +262,13 @@ function addNormalizedCardFields(
       result.aspects
     );
 
-  const supplied =
-    result.cardFields || {};
+  const supplied:
+  Partial<
+    ParsedAuctionTitle & {
+      certNumber: string;
+    }
+  > =
+  result.cardFields || {};
 
   return {
     ...result,

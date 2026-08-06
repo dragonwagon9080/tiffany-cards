@@ -664,16 +664,17 @@ setShowPageTextFallback(
       );
 
     const blockedSource =
-      !copiedPageText &&
-      (
-        sourceMarketplace ===
-          "heritage" ||
-        sourceMarketplace ===
-          "psa" ||
-        /blocks automated imports|approved customers|403/i.test(
-          message
-        )
-      );
+  !copiedPageText &&
+  (
+    sourceMarketplace ===
+      "heritage" ||
+    /psacard\.com/i.test(
+      sourceUrl
+    ) ||
+    /blocks automated imports|approved customers|403/i.test(
+      message
+    )
+  );
 
     setShowPageTextFallback(
       blockedSource
@@ -934,16 +935,17 @@ setShowPageTextFallback(
       );
 
     const blockedSource =
-      !copiedPageText &&
-      (
-        sourceMarketplace ===
-          "heritage" ||
-        sourceMarketplace ===
-          "psa" ||
-        /blocks automated imports|approved customers|403/i.test(
-          message
-        )
-      );
+  !copiedPageText &&
+  (
+    sourceMarketplace ===
+      "heritage" ||
+    /psacard\.com/i.test(
+      sourceUrl
+    ) ||
+    /blocks automated imports|approved customers|403/i.test(
+      message
+    )
+  );
 
     setShowPreviousPageTextFallback(
       blockedSource
