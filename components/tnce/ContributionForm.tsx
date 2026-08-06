@@ -602,6 +602,11 @@ export default function ContributionForm({
   const [auctionSourceUrl, setAuctionSourceUrl] = useState("");
 
 const [
+  pageText,
+  setPageText,
+] = useState("");
+
+const [
   saleEventDate,
   setSaleEventDate,
 ] = useState(
@@ -618,6 +623,11 @@ const [
   const [importing, setImporting] = useState(false);
 
   const [importError, setImportError] = useState("");
+
+const [
+  showPageTextFallback,
+  setShowPageTextFallback,
+] = useState(false);
 
   const [importedListing, setImportedListing] =
     useState<AuctionImportResult | null>(null);
@@ -776,6 +786,7 @@ const [
     }
 
     setAuctionSourceUrl("");
+setPageText("");
 
 setSaleEventDate(
   todayDateInputValue()
@@ -783,8 +794,9 @@ setSaleEventDate(
 
 setSaleEventDateTouched(false);
 
-setImportedListing(null);
+    setImportedListing(null);
     setImportError("");
+    setShowPageTextFallback(false);
     setNotes("");
     setSubmitError("");
   }, [
@@ -838,127 +850,208 @@ setImportedListing(null);
   ]);
 
   async function importAuctionListing() {
-    const sourceUrl = auctionSourceUrl.trim();
+  const sourceUrl =
+    auctionSourceUrl.trim();
 
-    if (!sourceUrl) {
-      setImportError("Paste an auction or marketplace URL first.");
+  const copiedPageText =
+    pageText.trim();
 
-      return;
-    }
+  if (
+    !sourceUrl &&
+    !copiedPageText
+  ) {
+    setImportError(
+      "Paste an auction URL or copied webpage text first."
+    );
 
-    if (importing) return;
+    return;
+  }
 
-    setImporting(true);
-    setImportError("");
-    setImportedListing(null);
+  if (importing) return;
+
+  setImporting(true);
+  setImportError("");
+  setImportedListing(null);
+
+  try {
+    const response =
+      await fetch(
+        "/api/tnce/import-auction",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            url: copiedPageText
+              ? ""
+              : sourceUrl,
+
+            pageText:
+              copiedPageText,
+          }),
+        }
+      );
+
+    const responseText =
+      await response.text();
+
+    let data:
+      AuctionImportResult;
 
     try {
-      const response = await fetch("/api/tnce/import-auction", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: sourceUrl,
-        }),
-      });
-
-      const text = await response.text();
-
-      let data: AuctionImportResult;
-
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(
-          `Auction import returned invalid JSON. First response text: ${text.slice(
-            0,
-            300,
-          )}`,
+      data =
+        JSON.parse(
+          responseText
         );
-      }
+    } catch {
+      throw new Error(
+        `Import returned invalid JSON. First response text: ${responseText.slice(
+          0,
+          300
+        )}`
+      );
+    }
 
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Unable to import this listing.");
-      }
-      const parsedTitle = parseAuctionTitle(data.title);
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+      throw new Error(
+        data.error ||
+          "Unable to import this source."
+      );
+    }
 
-      const importedFront = String(data.frontImage || "").trim();
+    const parsedTitle =
+      parseAuctionTitle(
+        data.title
+      );
 
-      const importedAdditional = Array.isArray(data.additionalImages)
+    const importedFront =
+      String(
+        data.frontImage || ""
+      ).trim();
+
+    const importedAdditional =
+      Array.isArray(
+        data.additionalImages
+      )
         ? data.additionalImages
-            .map((url) => String(url || "").trim())
+            .map((url) =>
+              String(
+                url || ""
+              ).trim()
+            )
             .filter(Boolean)
         : [];
 
-      const importedBack = importedAdditional[0] || "";
+    const importedBack =
+      importedAdditional[0] ||
+      "";
 
-      const remainingImportedImages = importedAdditional.slice(1);
+    const remainingImportedImages =
+      importedAdditional.slice(1);
 
-      const importedUploads: PendingTNCEUpload[] = [];
+    const importedUploads:
+      PendingTNCEUpload[] = [];
 
-      if (importedFront) {
-        importedUploads.push(
-          await importImageAsUpload(importedFront, "front", 0),
-        );
-      }
+    if (importedFront) {
+      importedUploads.push(
+        await importImageAsUpload(
+          importedFront,
+          "front",
+          0
+        )
+      );
+    }
 
-      if (importedBack) {
-        importedUploads.push(
-          await importImageAsUpload(importedBack, "back", 1),
-        );
-      }
+    if (importedBack) {
+      importedUploads.push(
+        await importImageAsUpload(
+          importedBack,
+          "back",
+          1
+        )
+      );
+    }
 
-      for (let i = 0; i < remainingImportedImages.length; i++) {
-        importedUploads.push(
-          await importImageAsUpload(remainingImportedImages[i], "other", i + 2),
-        );
-      }
+    for (
+      let i = 0;
+      i <
+      remainingImportedImages.length;
+      i++
+    ) {
+      importedUploads.push(
+        await importImageAsUpload(
+          remainingImportedImages[
+            i
+          ],
+          "other",
+          i + 2
+        )
+      );
+    }
 
-      setAuctionSourceUrl(String(data.sourceUrl || sourceUrl));
+    /*
+     * Page-text imports may not contain a source URL.
+     * Preserve a URL already entered by the user.
+     */
+    const resolvedSourceUrl =
+      String(
+        data.sourceUrl ||
+          sourceUrl ||
+          auctionSourceUrl
+      ).trim();
 
-      const importedSaleDate =
-  dateInputFromValue(
-    data.endDate
-  );
+    if (resolvedSourceUrl) {
+      setAuctionSourceUrl(
+        resolvedSourceUrl
+      );
+    }
 
-if (
-  importedSaleDate &&
-  !saleEventDateTouched
+    const importedSaleDate =
+      dateInputFromValue(
+        data.endDate
+      );
+
+    if (
+      importedSaleDate &&
+      !saleEventDateTouched
+    ) {
+      setSaleEventDate(
+        importedSaleDate
+      );
+    }
+
+    if (
+  mode === "new" &&
+  !cardTitle.trim()
 ) {
-  setSaleEventDate(
-    importedSaleDate
+  setCardTitle(
+    cleanCardTitle(
+      String(
+        data.title || ""
+      )
+    )
   );
 }
 
-      /*
-       * New-card submissions can use the auction title.
-       * Existing and missing registry submissions keep the
-       * canonical registry card title already supplied by RPA.
-       */
-      if (mode === "new" || !cardTitle.trim()) {
-        setCardTitle(cleanCardTitle(String(data.title || cardTitle)));
-      }
+    const importedSerial =
+      String(
+        parsedTitle.serialNumber ||
+          data.serialNumber ||
+          ""
+      ).trim();
 
-      /*
-       * Keep Registry Map values when they already exist.
-       * Only fill blank serial and grade fields from the
-       * imported listing title.
-       */
-      const importedSerial = String(
-  parsedTitle.serialNumber ||
-    data.serialNumber ||
-    ""
-).trim();
-
-/*
- * The value already entered in the Serial Number field
- * always takes priority over a serial detected from the
- * imported listing.
- *
- * Only populate the field from the listing when it is blank.
- */
-if (
+    /*
+     * The value already entered in the form always wins.
+     */
+    if (
+  mode === "new" &&
   importedSerial &&
   !serialNumber.trim()
 ) {
@@ -967,35 +1060,79 @@ if (
   );
 }
 
-            const importedGrade = String(
+    const importedGrade =
+      String(
         data.grade ||
           parsedTitle.grade ||
           ""
       ).trim();
 
-      if (
-        importedGrade &&
-        !grade.trim()
-      ) {
-        setGrade(importedGrade);
-      }
-
-      if (data.certNumber && !certNumber.trim()) {
-        setCertNumber(data.certNumber);
-      }
-
-      setFrontImage("");
-      setBackImage("");
-      setOtherImages("");
-      setUploadedImages(importedUploads);
-
-      setImportedListing(data);
-    } catch (error: any) {
-      setImportError(error?.message || "Unable to import this listing.");
-    } finally {
-      setImporting(false);
+    if (
+      importedGrade &&
+      !grade.trim()
+    ) {
+      setGrade(
+        importedGrade
+      );
     }
+
+    if (
+      data.certNumber &&
+      !certNumber.trim()
+    ) {
+      setCertNumber(
+        data.certNumber
+      );
+    }
+
+    setFrontImage("");
+    setBackImage("");
+    setOtherImages("");
+    setUploadedImages(
+      importedUploads
+    );
+
+    setImportedListing(
+      data
+    );
+
+setShowPageTextFallback(false);
+
+  } catch (error: any) {
+  const message =
+    error?.message ||
+    "Unable to import this source.";
+
+  const sourceMarketplace =
+    detectMarketplace(
+      sourceUrl
+    );
+
+  const blockedSource =
+    !copiedPageText &&
+    (
+      sourceMarketplace ===
+        "heritage" ||
+      sourceMarketplace ===
+        "psa" ||
+      /blocks automated imports|approved customers|403/i.test(
+        message
+      )
+    );
+
+  setShowPageTextFallback(
+    blockedSource
+  );
+
+  setImportError(
+    blockedSource
+      ? "This website blocked the direct import. Copy the webpage text and paste it below."
+      : message
+  );
+} finally {
+    setImporting(false);
   }
+}
 
   async function uploadPendingImages(
     submissionId: string,
@@ -1357,35 +1494,92 @@ Sale_Event_Date:
             information and images automatically.
           </p>
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <input
-              type="url"
-              value={auctionSourceUrl}
-              onChange={(event) => {
-                setAuctionSourceUrl(event.target.value);
+         <div className="mt-3 grid gap-3">
+  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+    <input
+      type="url"
+      value={auctionSourceUrl}
+      onChange={(event) => {
+  setAuctionSourceUrl(
+    event.target.value
+  );
 
-                setImportError("");
-                setImportedListing(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  importAuctionListing();
-                }
-              }}
-              className="h-11 min-w-0 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
-              placeholder="https://www.ebay.com/... or https://goldin.co/..."
-            />
+  setPageText("");
+  setShowPageTextFallback(false);
+  setImportError("");
+  setImportedListing(null);
+}}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          importAuctionListing();
+        }
+      }}
+      className="h-11 min-w-0 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
+      placeholder="https://www.ebay.com/... or https://goldin.co/..."
+    />
 
-            <button
-              type="button"
-              onClick={importAuctionListing}
-              disabled={importing || !auctionSourceUrl.trim()}
-              className="h-11 rounded-lg border border-[#d4af37] bg-[#9c7a2d] px-5 text-sm font-extrabold uppercase tracking-wide text-black transition hover:bg-[#b99236] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {importing ? "Importing..." : "⚡ Import URL"}
-            </button>
-          </div>
+    <button
+      type="button"
+      onClick={
+        importAuctionListing
+      }
+      disabled={
+        importing ||
+        (
+          !auctionSourceUrl.trim() &&
+          !pageText.trim()
+        )
+      }
+      className="h-11 rounded-lg border border-[#d4af37] bg-[#9c7a2d] px-5 text-sm font-extrabold uppercase tracking-wide text-black transition hover:bg-[#b99236] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {importing
+        ? "Importing..."
+        : pageText.trim()
+          ? "⚡ Import Page Text"
+          : "⚡ Import URL"}
+    </button>
+  </div>
+
+{showPageTextFallback && (
+  <>
+    <div className="flex items-center gap-3">
+      <div className="h-px flex-1 bg-neutral-800" />
+
+      <span className="text-[11px] font-black uppercase tracking-widest text-neutral-500">
+        Direct Import Blocked
+      </span>
+
+      <div className="h-px flex-1 bg-neutral-800" />
+    </div>
+
+    <label className="grid gap-1.5">
+      <span className="text-xs font-black uppercase tracking-wide text-[#f1d36b]">
+        Paste Copied Page Text
+      </span>
+
+      <textarea
+        value={pageText}
+        onChange={(event) => {
+          setPageText(
+            event.target.value
+          );
+
+          setImportError("");
+          setImportedListing(null);
+        }}
+        className="min-h-40 rounded-lg border border-neutral-700 bg-black px-3 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
+        placeholder="Open the webpage, press Ctrl+A, then Ctrl+C, and paste the copied page text here."
+      />
+
+      <span className="text-xs leading-5 text-neutral-500">
+        The original source URL above will be preserved when this card is published.
+      </span>
+    </label>
+  </>
+)}
+
+</div>
 
 {project === "rpa-tracker" && (
   <label className="mt-4 grid gap-1.5">

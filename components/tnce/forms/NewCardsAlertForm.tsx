@@ -14,6 +14,9 @@ import {
   parseAuctionTitle,
   type ParsedAuctionTitle,
 } from "@/lib/tnce/auctionParser";
+import {
+  detectMarketplace,
+} from "@/lib/tnce/marketplaceDetector";
 
 type Props = {
   mode: "new" | "update" | "missing";
@@ -214,17 +217,59 @@ export default function NewCardsAlertForm({
     PendingTNCEUpload[]
   >([]);
 
-  const [auctionSourceUrl, setAuctionSourceUrl] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState("");
+  const [
+  auctionSourceUrl,
+  setAuctionSourceUrl,
+] = useState("");
+
+const [
+  pageText,
+  setPageText,
+] = useState("");
+
+const [
+  showPageTextFallback,
+  setShowPageTextFallback,
+] = useState(false);
+
+const [
+  importing,
+  setImporting,
+] = useState(false);
+
+const [
+  importError,
+  setImportError,
+] = useState("");
   const [importedListing, setImportedListing] =
     useState<AuctionImportResult | null>(null);
 
   const [currentSourceUrls, setCurrentSourceUrls] = useState<string[]>([]);
 
-  const [previousAuctionSourceUrl, setPreviousAuctionSourceUrl] = useState("");
-  const [importingPrevious, setImportingPrevious] = useState(false);
-  const [previousImportError, setPreviousImportError] = useState("");
+  const [
+  previousAuctionSourceUrl,
+  setPreviousAuctionSourceUrl,
+] = useState("");
+
+const [
+  previousPageText,
+  setPreviousPageText,
+] = useState("");
+
+const [
+  showPreviousPageTextFallback,
+  setShowPreviousPageTextFallback,
+] = useState(false);
+
+const [
+  importingPrevious,
+  setImportingPrevious,
+] = useState(false);
+
+const [
+  previousImportError,
+  setPreviousImportError,
+] = useState("");
   const [previousImportedListing, setPreviousImportedListing] =
     useState<AuctionImportResult | null>(null);
   const [previousSourceUrls, setPreviousSourceUrls] = useState<string[]>([]);
@@ -279,6 +324,8 @@ setPreviousCertNumber("");
 setPreviousSourceUrl("");
 setPreviousSourceUrls([]);
 setPreviousAuctionSourceUrl("");
+setPreviousPageText("");
+setShowPreviousPageTextFallback(false);
 setPreviousFrontImage("");
 setPreviousBackImage("");
 setPreviousOtherImages("");
@@ -293,268 +340,624 @@ setPreviousUploadedImages([]);
     setCurrentSourceUrls([]);
   }, [activeObject, isSimilarCard]);
 
-  async function importAuctionListing() {
-    if (importing || !auctionSourceUrl.trim()) {
-      return;
+async function importAuctionListing() {
+  const sourceUrl =
+    auctionSourceUrl.trim();
+
+  const copiedPageText =
+    pageText.trim();
+
+  if (
+    importing ||
+    (
+      !sourceUrl &&
+      !copiedPageText
+    )
+  ) {
+    if (
+      !sourceUrl &&
+      !copiedPageText
+    ) {
+      setImportError(
+        "Paste an auction URL or copied webpage text first."
+      );
     }
 
-    setImporting(true);
-    setImportError("");
-    setImportedListing(null);
+    return;
+  }
+
+  setImporting(true);
+  setImportError("");
+  setImportedListing(null);
+
+  try {
+    const response =
+      await fetch(
+        "/api/tnce/import-auction",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            url: copiedPageText
+              ? ""
+              : sourceUrl,
+
+            pageText:
+              copiedPageText,
+          }),
+        }
+      );
+
+    const responseText =
+      await response.text();
+
+    let result:
+      AuctionImportResult;
 
     try {
-      const response = await fetch("/api/tnce/import-auction", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: auctionSourceUrl.trim(),
-        }),
-      });
-
-      const text = await response.text();
-      let result: AuctionImportResult;
-
-      try {
-        result = JSON.parse(text);
-      } catch {
-        throw new Error(
-          `Auction import returned invalid JSON: ${text.slice(0, 200)}`,
+      result =
+        JSON.parse(
+          responseText
         );
-      }
+    } catch {
+      throw new Error(
+        `Auction import returned invalid JSON: ${responseText.slice(
+          0,
+          200
+        )}`
+      );
+    }
 
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error || "Unable to import this listing.");
-      }
+    if (
+      !response.ok ||
+      !result.ok
+    ) {
+      throw new Error(
+        result.error ||
+          "Unable to import this listing."
+      );
+    }
 
-      const parsedListing =
-        result.cardFields ||
-        {
-          ...parseAuctionTitle(
-            result.title,
-            result.aspects,
-          ),
-          certNumber:
-            result.certNumber || "",
-        };
+    const parsedListing =
+      result.cardFields ||
+      {
+        ...parseAuctionTitle(
+          result.title,
+          result.aspects
+        ),
 
-      const imageUrls = uniqueLines([
+        certNumber:
+          result.certNumber ||
+          "",
+      };
+
+    const imageUrls =
+      uniqueLines([
         result.frontImage || "",
-        ...(Array.isArray(result.additionalImages)
-          ? result.additionalImages
-          : []),
+
+        ...(
+          Array.isArray(
+            result.additionalImages
+          )
+            ? result.additionalImages
+            : []
+        ),
       ]);
 
-      const importedUploads: PendingTNCEUpload[] = [];
+    const importedUploads:
+      PendingTNCEUpload[] = [];
 
-      let hasFront = uploadedImages.some((image) => image.slot === "front");
-      let hasBack = uploadedImages.some((image) => image.slot === "back");
+    let hasFront =
+      uploadedImages.some(
+        (image) =>
+          image.slot === "front"
+      );
 
-      for (let index = 0; index < imageUrls.length; index += 1) {
-        const slot: "front" | "back" | "other" = !hasFront
+    let hasBack =
+      uploadedImages.some(
+        (image) =>
+          image.slot === "back"
+      );
+
+    for (
+      let index = 0;
+      index < imageUrls.length;
+      index += 1
+    ) {
+      const slot:
+        | "front"
+        | "back"
+        | "other" =
+        !hasFront
           ? "front"
           : !hasBack
             ? "back"
             : "other";
 
-        importedUploads.push(
-          await importImageAsUpload(imageUrls[index], slot, index),
-        );
-
-        if (slot === "front") {
-          hasFront = true;
-        }
-        if (slot === "back") {
-          hasBack = true;
-        }
-      }
-
-      if (parsedListing.year && !cardYear.trim()) {
-        setCardYear(parsedListing.year);
-      }
-
-      if (parsedListing.firstName && !firstName.trim()) {
-        setFirstName(parsedListing.firstName);
-      }
-
-      if (parsedListing.lastName && !lastName.trim()) {
-        setLastName(parsedListing.lastName);
-      }
-
-      if (parsedListing.cardNumber && !cardNumber.trim()) {
-        setCardNumber(parsedListing.cardNumber);
-      }
-
-      if (parsedListing.brand && !brand.trim()) {
-        setBrand(parsedListing.brand);
-      }
-
-      if (parsedListing.parallel && !parallel.trim()) {
-        setParallel(parsedListing.parallel);
-      }
-
-      if (parsedListing.sport && !sport.trim()) {
-        setSport(parsedListing.sport);
-      }
-
-      const importedGrade =
-        parsedListing.grade ||
-        result.grade;
-
-      if (importedGrade && !grade.trim()) {
-        setGrade(importedGrade);
-      }
-
-      const importedCertNumber =
-        parsedListing.certNumber ||
-        result.certNumber;
-
-      if (
-        importedCertNumber &&
-        !certNumber.trim()
-      ) {
-        setCertNumber(
-          importedCertNumber
-        );
-      }
-
-      const importedSerial =
-        parsedListing.serialNumber ||
-        result.serialNumber;
-
-      if (importedSerial && !serialNumber.trim()) {
-        setSerialNumber(importedSerial);
-      }
-
-      if (
-        result.description &&
-        !description.trim()
-      ) {
-        setDescription(
-          result.description
-        );
-      }
-
-      setUploadedImages((current) => [...current, ...importedUploads]);
-      setCurrentSourceUrls((current) =>
-        uniqueLines([...current, auctionSourceUrl.trim()]),
+      importedUploads.push(
+        await importImageAsUpload(
+          imageUrls[index],
+          slot,
+          index
+        )
       );
-      setImportedListing(result);
-      setAuctionSourceUrl("");
-    } catch (error: any) {
-      setImportError(error?.message || "Unable to import this listing.");
-    } finally {
-      setImporting(false);
+
+      if (slot === "front") {
+        hasFront = true;
+      }
+
+      if (slot === "back") {
+        hasBack = true;
+      }
     }
+
+    /*
+     * Add New Card may fill blank identity fields.
+     *
+     * Report Similar Card already contains the shared
+     * card identity, so imported data only fills fields
+     * that are still blank.
+     */
+    if (
+      parsedListing.year &&
+      !cardYear.trim()
+    ) {
+      setCardYear(
+        parsedListing.year
+      );
+    }
+
+    if (
+      parsedListing.firstName &&
+      !firstName.trim()
+    ) {
+      setFirstName(
+        parsedListing.firstName
+      );
+    }
+
+    if (
+      parsedListing.lastName &&
+      !lastName.trim()
+    ) {
+      setLastName(
+        parsedListing.lastName
+      );
+    }
+
+    if (
+      parsedListing.cardNumber &&
+      !cardNumber.trim()
+    ) {
+      setCardNumber(
+        parsedListing.cardNumber
+      );
+    }
+
+    if (
+      parsedListing.brand &&
+      !brand.trim()
+    ) {
+      setBrand(
+        parsedListing.brand
+      );
+    }
+
+    if (
+      parsedListing.parallel &&
+      !parallel.trim()
+    ) {
+      setParallel(
+        parsedListing.parallel
+      );
+    }
+
+    if (
+      parsedListing.sport &&
+      !sport.trim()
+    ) {
+      setSport(
+        parsedListing.sport
+      );
+    }
+
+    const importedGrade =
+      parsedListing.grade ||
+      result.grade;
+
+    if (
+      importedGrade &&
+      !grade.trim()
+    ) {
+      setGrade(
+        importedGrade
+      );
+    }
+
+    const importedCertNumber =
+      parsedListing.certNumber ||
+      result.certNumber;
+
+    if (
+      importedCertNumber &&
+      !certNumber.trim()
+    ) {
+      setCertNumber(
+        importedCertNumber
+      );
+    }
+
+    const importedSerial =
+      parsedListing.serialNumber ||
+      result.serialNumber;
+
+    if (
+      importedSerial &&
+      !serialNumber.trim()
+    ) {
+      setSerialNumber(
+        importedSerial
+      );
+    }
+
+    if (
+      result.description &&
+      !description.trim()
+    ) {
+      setDescription(
+        result.description
+      );
+    }
+
+    const resolvedSourceUrl =
+  clean(
+    copiedPageText
+      ? sourceUrl ||
+          result.sourceUrl
+      : result.sourceUrl ||
+          sourceUrl
+  );
+
+    if (resolvedSourceUrl) {
+      setCurrentSourceUrls(
+        (current) =>
+          uniqueLines([
+            ...current,
+            resolvedSourceUrl,
+          ])
+      );
+
+      setAuctionSourceUrl(
+        resolvedSourceUrl
+      );
+    }
+
+    setUploadedImages(
+      (current) => [
+        ...current,
+        ...importedUploads,
+      ]
+    );
+
+    setImportedListing(
+  result
+);
+
+setPageText("");
+
+setShowPageTextFallback(
+  false
+);
+  } catch (error: any) {
+    const message =
+      error?.message ||
+      "Unable to import this listing.";
+
+    const sourceMarketplace =
+      detectMarketplace(
+        sourceUrl
+      );
+
+    const blockedSource =
+      !copiedPageText &&
+      (
+        sourceMarketplace ===
+          "heritage" ||
+        sourceMarketplace ===
+          "psa" ||
+        /blocks automated imports|approved customers|403/i.test(
+          message
+        )
+      );
+
+    setShowPageTextFallback(
+      blockedSource
+    );
+
+    setImportError(
+      blockedSource
+        ? "This website blocked the direct import. Copy the webpage text and paste it below."
+        : message
+    );
+  } finally {
+    setImporting(false);
   }
+}
 
   async function importPreviousAuctionListing() {
-    if (importingPrevious || !previousAuctionSourceUrl.trim()) {
-      return;
+  const sourceUrl =
+    previousAuctionSourceUrl.trim();
+
+  const copiedPageText =
+    previousPageText.trim();
+
+  if (
+    importingPrevious ||
+    (
+      !sourceUrl &&
+      !copiedPageText
+    )
+  ) {
+    if (
+      !sourceUrl &&
+      !copiedPageText
+    ) {
+      setPreviousImportError(
+        "Paste a previous source URL or copied webpage text first."
+      );
     }
 
-    setImportingPrevious(true);
-    setPreviousImportError("");
-    setPreviousImportedListing(null);
+    return;
+  }
+
+  setImportingPrevious(true);
+  setPreviousImportError("");
+  setPreviousImportedListing(null);
+
+  try {
+    const response =
+      await fetch(
+        "/api/tnce/import-auction",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            url: copiedPageText
+              ? ""
+              : sourceUrl,
+
+            pageText:
+              copiedPageText,
+          }),
+        }
+      );
+
+    const responseText =
+      await response.text();
+
+    let result:
+      AuctionImportResult;
 
     try {
-      const response = await fetch("/api/tnce/import-auction", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: previousAuctionSourceUrl.trim(),
-        }),
-      });
-
-      const text = await response.text();
-      let result: AuctionImportResult;
-
-      try {
-        result = JSON.parse(text);
-      } catch {
-        throw new Error(
-          `Previous source import returned invalid JSON: ${text.slice(0, 200)}`,
+      result =
+        JSON.parse(
+          responseText
         );
-      }
+    } catch {
+      throw new Error(
+        `Previous source import returned invalid JSON: ${responseText.slice(
+          0,
+          200
+        )}`
+      );
+    }
 
-      if (!response.ok || !result.ok) {
-        throw new Error(
-          result.error || "Unable to import this previous source.",
-        );
-      }
+    if (
+      !response.ok ||
+      !result.ok
+    ) {
+      throw new Error(
+        result.error ||
+          "Unable to import this previous source."
+      );
+    }
 
-      const imageUrls = uniqueLines([
+    const parsedListing =
+      result.cardFields ||
+      {
+        ...parseAuctionTitle(
+          result.title,
+          result.aspects
+        ),
+
+        certNumber:
+          result.certNumber ||
+          "",
+      };
+
+    const imageUrls =
+      uniqueLines([
         result.frontImage || "",
-        ...(Array.isArray(result.additionalImages)
-          ? result.additionalImages
-          : []),
+
+        ...(
+          Array.isArray(
+            result.additionalImages
+          )
+            ? result.additionalImages
+            : []
+        ),
       ]);
 
-      const importedUploads: PendingTNCEUpload[] = [];
+    const importedUploads:
+      PendingTNCEUpload[] = [];
 
-      let hasFront = previousUploadedImages.some(
-        (image) => image.slot === "front",
+    let hasFront =
+      previousUploadedImages.some(
+        (image) =>
+          image.slot === "front"
       );
 
-      let hasBack = previousUploadedImages.some(
-        (image) => image.slot === "back",
+    let hasBack =
+      previousUploadedImages.some(
+        (image) =>
+          image.slot === "back"
       );
 
-      for (let index = 0; index < imageUrls.length; index += 1) {
-        const slot: "front" | "back" | "other" = !hasFront
+    for (
+      let index = 0;
+      index < imageUrls.length;
+      index += 1
+    ) {
+      const slot:
+        | "front"
+        | "back"
+        | "other" =
+        !hasFront
           ? "front"
           : !hasBack
             ? "back"
             : "other";
 
-        importedUploads.push(
-          await importImageAsUpload(imageUrls[index], slot, index),
-        );
-
-        if (slot === "front") {
-          hasFront = true;
-        }
-        if (slot === "back") {
-          hasBack = true;
-        }
-      }
-
-      if (result.grade && !previousGrade.trim()) {
-        setPreviousGrade(result.grade);
-      }
-
-      if (result.certNumber && !previousCertNumber.trim()) {
-        setPreviousCertNumber(result.certNumber);
-      }
-
-      if (
-        result.description &&
-        !description.trim()
-      ) {
-        setDescription(
-          result.description
-        );
-      }
-
-      setPreviousUploadedImages((current) => [...current, ...importedUploads]);
-
-      setPreviousSourceUrls((current) =>
-        uniqueLines([...current, previousAuctionSourceUrl.trim()]),
+      importedUploads.push(
+        await importImageAsUpload(
+          imageUrls[index],
+          slot,
+          index
+        )
       );
 
-      setPreviousImportedListing(result);
-      setPreviousAuctionSourceUrl("");
-    } catch (error: any) {
-      setPreviousImportError(
-        error?.message || "Unable to import this previous source.",
-      );
-    } finally {
-      setImportingPrevious(false);
+      if (slot === "front") {
+        hasFront = true;
+      }
+
+      if (slot === "back") {
+        hasBack = true;
+      }
     }
+
+    const importedGrade =
+      parsedListing.grade ||
+      result.grade;
+
+    if (
+      importedGrade &&
+      !previousGrade.trim()
+    ) {
+      setPreviousGrade(
+        importedGrade
+      );
+    }
+
+    const importedCertNumber =
+      parsedListing.certNumber ||
+      result.certNumber;
+
+    if (
+      importedCertNumber &&
+      !previousCertNumber.trim()
+    ) {
+      setPreviousCertNumber(
+        importedCertNumber
+      );
+    }
+
+    if (
+      result.description &&
+      !description.trim()
+    ) {
+      setDescription(
+        result.description
+      );
+    }
+
+    /*
+     * When copied page text is used, preserve the URL
+     * originally entered by the user.
+     */
+    const resolvedSourceUrl =
+      clean(
+        copiedPageText
+          ? sourceUrl ||
+              result.sourceUrl
+          : result.sourceUrl ||
+              sourceUrl
+      );
+
+    if (resolvedSourceUrl) {
+      setPreviousSourceUrls(
+        (current) =>
+          uniqueLines([
+            ...current,
+            resolvedSourceUrl,
+          ])
+      );
+
+      setPreviousAuctionSourceUrl(
+        resolvedSourceUrl
+      );
+    }
+
+    setPreviousUploadedImages(
+      (current) => [
+        ...current,
+        ...importedUploads,
+      ]
+    );
+
+    setPreviousImportedListing(
+      result
+    );
+
+    setPreviousPageText("");
+
+    setShowPreviousPageTextFallback(
+      false
+    );
+  } catch (error: any) {
+    const message =
+      error?.message ||
+      "Unable to import this previous source.";
+
+    const sourceMarketplace =
+      detectMarketplace(
+        sourceUrl
+      );
+
+    const blockedSource =
+      !copiedPageText &&
+      (
+        sourceMarketplace ===
+          "heritage" ||
+        sourceMarketplace ===
+          "psa" ||
+        /blocks automated imports|approved customers|403/i.test(
+          message
+        )
+      );
+
+    setShowPreviousPageTextFallback(
+      blockedSource
+    );
+
+    setPreviousImportError(
+      blockedSource
+        ? "This website blocked the direct import. Copy the webpage text and paste it below."
+        : message
+    );
+  } finally {
+    setImportingPrevious(false);
   }
+}
 
   async function uploadPendingImages(
     submissionId: string,
@@ -943,34 +1346,101 @@ previousUploadedImages: isSimilarCard
             source URL to import available card details, post text, and images.
           </p>
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <input
-              type="url"
-              value={auctionSourceUrl}
-              onChange={(event) => {
-                setAuctionSourceUrl(event.target.value);
-                setImportError("");
-                setImportedListing(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  importAuctionListing();
-                }
-              }}
-              className="h-11 min-w-0 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
-              placeholder="Paste auction or marketplace URL"
-            />
+          <div className="mt-3 grid gap-3">
+  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+    <input
+      type="url"
+      value={
+        auctionSourceUrl
+      }
+      onChange={(event) => {
+        setAuctionSourceUrl(
+          event.target.value
+        );
 
-            <button
-              type="button"
-              onClick={importAuctionListing}
-              disabled={importing || !auctionSourceUrl.trim()}
-              className="h-11 rounded-lg border border-[#d4af37] bg-[#9c7a2d] px-5 text-sm font-extrabold uppercase tracking-wide text-black transition hover:bg-[#b99236] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {importing ? "Importing..." : "⚡ Import URL"}
-            </button>
-          </div>
+        setPageText("");
+        setShowPageTextFallback(
+          false
+        );
+
+        setImportError("");
+        setImportedListing(null);
+      }}
+      onKeyDown={(event) => {
+        if (
+          event.key === "Enter"
+        ) {
+          event.preventDefault();
+
+          importAuctionListing();
+        }
+      }}
+      className="h-11 min-w-0 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
+      placeholder="Paste auction or marketplace URL"
+    />
+
+    <button
+      type="button"
+      onClick={
+        importAuctionListing
+      }
+      disabled={
+        importing ||
+        (
+          !auctionSourceUrl.trim() &&
+          !pageText.trim()
+        )
+      }
+      className="h-11 rounded-lg border border-[#d4af37] bg-[#9c7a2d] px-5 text-sm font-extrabold uppercase tracking-wide text-black transition hover:bg-[#b99236] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {importing
+        ? "Importing..."
+        : pageText.trim()
+          ? "⚡ Import Page Text"
+          : "⚡ Import URL"}
+    </button>
+  </div>
+
+  {showPageTextFallback && (
+    <>
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-neutral-800" />
+
+        <span className="text-[11px] font-black uppercase tracking-widest text-neutral-500">
+          Direct Import Blocked
+        </span>
+
+        <div className="h-px flex-1 bg-neutral-800" />
+      </div>
+
+      <label className="grid gap-1.5">
+        <span className="text-xs font-black uppercase tracking-wide text-[#f1d36b]">
+          Paste Copied Page Text
+        </span>
+
+        <textarea
+          value={pageText}
+          onChange={(event) => {
+            setPageText(
+              event.target.value
+            );
+
+            setImportError("");
+            setImportedListing(
+              null
+            );
+          }}
+          className="min-h-40 rounded-lg border border-neutral-700 bg-black px-3 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
+          placeholder="Open the webpage, press Ctrl+A, then Ctrl+C, and paste the copied page text here."
+        />
+
+        <span className="text-xs leading-5 text-neutral-500">
+          The original source URL above will be preserved when this card is published.
+        </span>
+      </label>
+    </>
+  )}
+</div>
 
           {importError && (
             <div className="mt-3 rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-200">
@@ -1111,33 +1581,110 @@ previousUploadedImages: isSimilarCard
             </label>
           </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <input
-              type="url"
-              value={previousAuctionSourceUrl}
-              onChange={(event) => {
-                setPreviousAuctionSourceUrl(event.target.value);
-                setPreviousImportError("");
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  importPreviousAuctionListing();
-                }
-              }}
-              className="h-11 min-w-0 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white"
-              placeholder="Previous auction or source URL"
-            />
+          <div className="mt-4 grid gap-3">
+  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+    <input
+      type="url"
+      value={
+        previousAuctionSourceUrl
+      }
+      onChange={(event) => {
+        setPreviousAuctionSourceUrl(
+          event.target.value
+        );
 
-            <button
-              type="button"
-              onClick={importPreviousAuctionListing}
-              disabled={importingPrevious || !previousAuctionSourceUrl.trim()}
-              className="h-11 rounded-lg border border-lime-300 bg-lime-400 px-5 text-sm font-extrabold uppercase tracking-wide text-black shadow-[0_0_12px_rgba(163,230,53,0.55)] transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {importingPrevious ? "Importing..." : "⚡ Import Previous Source"}
-            </button>
-          </div>
+        setPreviousPageText("");
+
+        setShowPreviousPageTextFallback(
+          false
+        );
+
+        setPreviousImportError("");
+
+        setPreviousImportedListing(
+          null
+        );
+      }}
+      onKeyDown={(event) => {
+        if (
+          event.key === "Enter"
+        ) {
+          event.preventDefault();
+
+          importPreviousAuctionListing();
+        }
+      }}
+      className="h-11 min-w-0 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white"
+      placeholder="Previous auction or source URL"
+    />
+
+    <button
+      type="button"
+      onClick={
+        importPreviousAuctionListing
+      }
+      disabled={
+        importingPrevious ||
+        (
+          !previousAuctionSourceUrl.trim() &&
+          !previousPageText.trim()
+        )
+      }
+      className="h-11 rounded-lg border border-lime-300 bg-lime-400 px-5 text-sm font-extrabold uppercase tracking-wide text-black shadow-[0_0_12px_rgba(163,230,53,0.55)] transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {importingPrevious
+        ? "Importing..."
+        : previousPageText.trim()
+          ? "⚡ Import Previous Page Text"
+          : "⚡ Import Previous Source"}
+    </button>
+  </div>
+
+  {showPreviousPageTextFallback && (
+    <>
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-green-800/60" />
+
+        <span className="text-[11px] font-black uppercase tracking-widest text-lime-300">
+          Direct Import Blocked
+        </span>
+
+        <div className="h-px flex-1 bg-green-800/60" />
+      </div>
+
+      <label className="grid gap-1.5">
+        <span className="text-xs font-black uppercase tracking-wide text-lime-300">
+          Paste Previous Page Text
+        </span>
+
+        <textarea
+          value={
+            previousPageText
+          }
+          onChange={(event) => {
+            setPreviousPageText(
+              event.target.value
+            );
+
+            setPreviousImportError(
+              ""
+            );
+
+            setPreviousImportedListing(
+              null
+            );
+          }}
+          className="min-h-40 rounded-lg border border-green-600 bg-black px-3 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-lime-300"
+          placeholder="Open the previous PSA or Heritage page, press Ctrl+A, then Ctrl+C, and paste the copied page text here."
+        />
+
+        <span className="text-xs leading-5 text-green-200/70">
+          The original previous-source URL above will be preserved when this card is published.
+        </span>
+      </label>
+    </>
+  )}
+</div>
 
           {previousImportError && (
             <div className="mt-3 rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-200">

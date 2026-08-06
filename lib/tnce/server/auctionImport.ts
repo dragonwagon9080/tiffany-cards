@@ -3970,6 +3970,555 @@ async function importAltListing(
   );
 }
 
+function extractHeritageLotDetails(
+  sourceUrl: string
+) {
+  const parsed =
+    new URL(sourceUrl);
+
+  /*
+   * Heritage lot URLs normally end with:
+   *
+   * /a/50074-81418.s
+   *
+   * First number = auction number
+   * Second number = lot number
+   */
+  const pathMatch =
+    parsed.pathname.match(
+      /\/a\/(\d+)-(\d+)\.s(?:\/|$)/i
+    );
+
+  if (!pathMatch) {
+    throw new Error(
+      "Unable to determine the Heritage auction and lot numbers."
+    );
+  }
+
+  return {
+    auctionNumber:
+      pathMatch[1],
+
+    lotNumber:
+      pathMatch[2],
+
+    canonicalUrl:
+      `${parsed.protocol}//${parsed.host}${parsed.pathname}`,
+  };
+}
+
+function stripHeritageHtml(
+  value: unknown
+) {
+  return decodeHtml(
+    String(value || "")
+      .replace(
+        /<script[\s\S]*?<\/script>/gi,
+        " "
+      )
+      .replace(
+        /<style[\s\S]*?<\/style>/gi,
+        " "
+      )
+      .replace(
+        /<[^>]+>/g,
+        " "
+      )
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+function normalizeHeritageImageUrl(
+  value: unknown,
+  sourceUrl: string
+) {
+  let url =
+    normalizeUrl(
+      value,
+      sourceUrl
+    );
+
+  if (!url) {
+    return "";
+  }
+
+  url = url
+    .replace(/\\u0026/gi, "&")
+    .replace(/\\\//g, "/");
+
+  try {
+    const parsed =
+      new URL(url);
+
+    const hostname =
+      parsed.hostname.toLowerCase();
+
+    const allowed =
+      hostname ===
+        "heritagestatic.com" ||
+      hostname.endsWith(
+        ".heritagestatic.com"
+      ) ||
+      hostname === "ha.com" ||
+      hostname.endsWith(".ha.com");
+
+    if (!allowed) {
+      return "";
+    }
+
+    if (
+      /logo|avatar|icon|sprite|placeholder|headquarters|office-building/i.test(
+        parsed.pathname
+      )
+    ) {
+      return "";
+    }
+
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function extractHeritageImages(
+  html: string,
+  sourceUrl: string
+) {
+  const candidates: string[] = [];
+
+  /*
+   * Start with structured-data images because these are
+   * most likely to belong to the actual auction lot.
+   */
+  const jsonLdScripts =
+    extractScriptContents(
+      html,
+      "application/ld+json"
+    );
+
+  jsonLdScripts.forEach(
+    (script) => {
+      try {
+        const parsed =
+          JSON.parse(script);
+
+        collectImageUrlsFromJson(
+          parsed,
+          candidates
+        );
+      } catch {
+        // Ignore malformed JSON-LD.
+      }
+    }
+  );
+
+  /*
+   * Heritage commonly exposes its primary lot image in
+   * Open Graph and Twitter metadata.
+   */
+  candidates.push(
+    getMetaContent(
+      html,
+      "og:image"
+    ),
+
+    getMetaContent(
+      html,
+      "og:image:url"
+    ),
+
+    getMetaContent(
+      html,
+      "og:image:secure_url"
+    ),
+
+    getMetaContent(
+      html,
+      "twitter:image"
+    ),
+
+    getMetaContent(
+      html,
+      "twitter:image:src"
+    )
+  );
+
+  /*
+   * Add only Heritage-hosted image URLs from the page.
+   * Do not collect arbitrary images from unrelated hosts.
+   */
+  const imageRegex =
+    /https?:\\?\/\\?\/[^"'<>\\\s]*(?:heritagestatic\.com|ha\.com)[^"'<>\\\s]*?\.(?:jpe?g|png|webp)(?:\\?[^"'<>\\\s]*)?/gi;
+
+  for (
+    const match of html.matchAll(
+      imageRegex
+    )
+  ) {
+    candidates.push(
+      match[0]
+        .replace(
+          /\\u0026/gi,
+          "&"
+        )
+        .replace(
+          /\\\//g,
+          "/"
+        )
+    );
+  }
+
+  const unique: string[] = [];
+  const seen =
+    new Set<string>();
+
+  candidates.forEach(
+    (candidate) => {
+      const url =
+        normalizeHeritageImageUrl(
+          candidate,
+          sourceUrl
+        );
+
+      if (!url) {
+        return;
+      }
+
+      /*
+       * Ignore common resize and quality parameters when
+       * deciding whether two URLs represent the same image.
+       */
+      const key = url
+        .replace(
+          /[?&](?:width|height|w|h|quality|q|format)=[^&]+/gi,
+          ""
+        )
+        .replace(/[?&]$/g, "")
+        .toLowerCase();
+
+      if (seen.has(key)) {
+        return;
+      }
+
+      seen.add(key);
+      unique.push(url);
+    }
+  );
+
+  return unique.slice(0, 10);
+}
+
+function extractHeritageSoldDate(
+  html: string
+) {
+  const text =
+    stripHeritageHtml(html);
+
+  const soldDate =
+    text.match(
+      /\bSold on\s+([A-Z][a-z]{2,8}\s+\d{1,2},\s+\d{4})\b/i
+    )?.[1];
+
+  if (soldDate) {
+    const parsed =
+      new Date(soldDate);
+
+    if (
+      !Number.isNaN(
+        parsed.getTime()
+      )
+    ) {
+      return parsed.toISOString();
+    }
+  }
+
+  const structuredDate =
+    html.match(
+      /"(?:endDate|datePublished|dateCreated|availabilityEnds)"\s*:\s*"([^"]+)"/i
+    )?.[1];
+
+  if (structuredDate) {
+    const parsed =
+      new Date(
+        structuredDate
+      );
+
+    if (
+      !Number.isNaN(
+        parsed.getTime()
+      )
+    ) {
+      return parsed.toISOString();
+    }
+  }
+
+  return "";
+}
+
+function extractHeritagePrice(
+  html: string
+) {
+  const text =
+    stripHeritageHtml(html);
+
+  const soldPrice =
+    text.match(
+      /Sold on\s+[A-Z][a-z]{2,8}\s+\d{1,2},\s+\d{4}\s+for:\s*\$([\d,]+(?:\.\d{1,2})?)/i
+    )?.[1] ||
+    text.match(
+      /\bSold For:\s*\$([\d,]+(?:\.\d{1,2})?)/i
+    )?.[1];
+
+  if (soldPrice) {
+    return {
+      price:
+        soldPrice.replace(
+          /,/g,
+          ""
+        ),
+
+      currency: "USD",
+    };
+  }
+
+  const structuredPrice =
+    html.match(
+      /"(?:price|highPrice|lowPrice)"\s*:\s*"?\$?([\d,]+(?:\.\d{1,2})?)"?/i
+    )?.[1];
+
+  return {
+    price:
+      structuredPrice
+        ? structuredPrice.replace(
+            /,/g,
+            ""
+          )
+        : "",
+
+    currency:
+      structuredPrice
+        ? "USD"
+        : "",
+  };
+}
+
+function extractHeritageDescription(
+  html: string
+) {
+  const metaDescription =
+    getMetaContent(
+      html,
+      "description"
+    ) ||
+    getMetaContent(
+      html,
+      "og:description"
+    );
+
+  if (metaDescription) {
+    return stripHeritageHtml(
+      metaDescription
+    );
+  }
+
+  const descriptionMatch =
+    html.match(
+      /<h2[^>]*>\s*Description\s*<\/h2>([\s\S]{0,20000}?)(?:<h2|Auction Info|<\/section>)/i
+    )?.[1];
+
+  return stripHeritageHtml(
+    descriptionMatch || ""
+  );
+}
+
+function extractHeritageCertNumber(
+  html: string
+) {
+  const patterns = [
+    /psacard\.com\/cert\/(\d{6,12})/i,
+    /\/cert\/(\d{6,12})(?:\/|["'?&])/i,
+    /\bcert(?:ification)?\s*(?:number|#|no\.?)?\s*[:#]?\s*(\d{6,12})\b/i,
+  ];
+
+  for (
+    const pattern of patterns
+  ) {
+    const match =
+      html.match(pattern);
+
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return "";
+}
+
+async function importHeritageAuction(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const lotDetails =
+    extractHeritageLotDetails(
+      sourceUrl
+    );
+
+  const response =
+    await fetch(
+      lotDetails.canonicalUrl,
+      {
+        method: "GET",
+
+        headers: {
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+
+          "Accept-Language":
+            "en-US,en;q=0.9",
+
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
+        },
+
+        cache: "no-store",
+        redirect: "follow",
+      }
+    );
+
+  const html =
+    await response.text();
+
+  if (
+    !response.ok ||
+    !html ||
+    html.length < 500
+  ) {
+    throw new Error(
+      `Heritage Auctions import failed with status ${response.status}.`
+    );
+  }
+
+  const finalUrl =
+    response.url ||
+    lotDetails.canonicalUrl;
+
+  const title =
+    getMetaContent(
+      html,
+      "og:title"
+    ) ||
+    getMetaContent(
+      html,
+      "twitter:title"
+    ) ||
+    stripHeritageHtml(
+      html.match(
+        /<h1[^>]*>([\s\S]*?)<\/h1>/i
+      )?.[1] || ""
+    ) ||
+    stripHeritageHtml(
+      html.match(
+        /<title[^>]*>([\s\S]*?)<\/title>/i
+      )?.[1] || ""
+    );
+
+  const cleanedTitle =
+    title
+      .replace(
+        /\s*\|\s*Lot\s*#?\d+[\s\S]*$/i,
+        ""
+      )
+      .replace(
+        /\s*\|\s*Heritage Auctions\s*$/i,
+        ""
+      )
+      .trim();
+
+  const images =
+    extractHeritageImages(
+      html,
+      finalUrl
+    );
+
+  const price =
+    extractHeritagePrice(
+      html
+    );
+
+  const description =
+    extractHeritageDescription(
+      html
+    );
+
+  if (
+    !cleanedTitle &&
+    images.length === 0
+  ) {
+    throw new Error(
+      "Heritage Auctions did not expose the lot title or images."
+    );
+  }
+
+  return {
+    ok: true,
+
+    marketplace:
+      "heritage",
+
+    sourceUrl:
+      getCanonicalUrl(
+        html,
+        finalUrl
+      ) || finalUrl,
+
+    listingId:
+      lotDetails.lotNumber,
+
+    lotNumber:
+      lotDetails.lotNumber,
+
+    title:
+      cleanedTitle,
+
+    seller:
+      "Heritage Auctions",
+
+    price:
+      price.price,
+
+    currency:
+      price.currency,
+
+    endDate:
+      extractHeritageSoldDate(
+        html
+      ),
+
+    certNumber:
+      extractHeritageCertNumber(
+        html
+      ),
+
+    description,
+
+    frontImage:
+      images[0] || "",
+
+    additionalImages:
+      images.slice(1),
+
+    aspects: {
+      "Auction Number": [
+        lotDetails.auctionNumber,
+      ],
+
+      "Lot Number": [
+        lotDetails.lotNumber,
+      ],
+    },
+  };
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -4051,6 +4600,16 @@ export async function importAuction(
     );
   }
 
+if (
+  isHeritageHostname(
+    hostname
+  )
+) {
+  throw new Error(
+    "Heritage Auctions blocks automated imports. Please enter the sale details manually and upload or link the card images."
+  );
+}
+
   if (isAltHostname(hostname)) {
   return addNormalizedCardFields(
     await importAltListing(
@@ -4100,6 +4659,15 @@ function isInstagramHostname(
   );
 }
 
+function isHeritageHostname(
+  hostname: string
+) {
+  return (
+    hostname === "ha.com" ||
+    hostname.endsWith(".ha.com")
+  );
+}
+
 function isAltHostname(
   hostname: string
 ) {
@@ -4110,6 +4678,6 @@ function isAltHostname(
 }
 
 throw new Error(
-  "This source is not supported yet. eBay, Alt, X, Instagram, PSA, Goldin, and Fanatics Collect are currently available."
+  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, PSA, Goldin, and Fanatics Collect are currently available."
 );
 }
