@@ -893,6 +893,226 @@ aspects: {
   });
 }
 
+function parseGenericPageText(
+  copiedText: string
+): PageTextImportResult {
+  const text =
+    normalizeCopiedPageText(
+      copiedText
+    );
+
+  const lines =
+    text
+      .split("\n")
+      .map((line) =>
+        clean(line)
+      )
+      .filter(Boolean);
+
+  if (!lines.length) {
+    throw new Error(
+      "No usable webpage text was found."
+    );
+  }
+
+  const sourceUrl =
+    extractPageUrl(text);
+
+  /*
+   * Try common labeled values first.
+   */
+  const soldPrice =
+    extractLabelValue(
+      text,
+      [
+        "Sold Price",
+        "Sale Price",
+        "Final Price",
+        "Price Realized",
+        "Sold For",
+        "Price",
+      ]
+    );
+
+  const soldDate =
+    extractLabelValue(
+      text,
+      [
+        "Sold Date",
+        "Sale Date",
+        "Date Sold",
+        "End Date",
+        "Ended",
+      ]
+    );
+
+  const certNumber =
+    clean(
+      text.match(
+        /\b(?:cert(?:ification)?(?:\s*(?:number|no\.?|#))?)\s*:?\s*(\d{6,12})\b/i
+      )?.[1]
+    );
+
+  const serialNumber =
+    clean(
+      text.match(
+        /\b(\d{1,6}\s*\/\s*(?:\d{1,6}|xx))\b/i
+      )?.[1]
+    ).replace(
+      /\s+/g,
+      ""
+    );
+
+  /*
+   * Find the most likely card title.
+   *
+   * Prefer a reasonably long line containing a year.
+   */
+  let title =
+    lines.find(
+      (line) =>
+        /\b(?:19|20)\d{2}(?:-\d{2})?\b/.test(
+          line
+        ) &&
+        line.length >= 15 &&
+        !/^https?:\/\//i.test(
+          line
+        ) &&
+        !/sold price|sold date|listing type|feedback|population|^pop$/i.test(
+          line
+        )
+    ) || "";
+
+  /*
+   * If no year-based title was found, use the first
+   * substantial line that doesn't look like metadata.
+   */
+  if (!title) {
+    title =
+      lines.find(
+        (line) =>
+          line.length >= 15 &&
+          !/^https?:\/\//i.test(
+            line
+          ) &&
+          !/sold price|sold date|listing type|feedback|population|^pop$/i.test(
+            line
+          )
+      ) || "";
+  }
+
+  if (!title) {
+    throw new Error(
+      "The page text was copied successfully, but a card title could not be identified. Enter the card information manually."
+    );
+  }
+
+  /*
+   * Detect the source loosely from the copied text.
+   */
+  let marketplace =
+    "generic-text";
+
+  if (
+    /\bebay\b/i.test(text)
+  ) {
+    marketplace =
+      "ebay-text";
+  } else if (
+    /\bgoldin\b/i.test(text)
+  ) {
+    marketplace =
+      "goldin-text";
+  } else if (
+    /\bfanatics\b/i.test(text)
+  ) {
+    marketplace =
+      "fanatics-text";
+  } else if (
+    /\binstagram\b/i.test(text)
+  ) {
+    marketplace =
+      "instagram-text";
+  } else if (
+    /\bfacebook\b/i.test(text)
+  ) {
+    marketplace =
+      "facebook-text";
+  }
+
+  /*
+   * Find a grading company/grade when it appears
+   * anywhere in the copied title or page text.
+   */
+  const gradeMatch =
+    text.match(
+      /\b(PSA|BGS|SGC|CGC)\s+(AUTH(?:ENTIC)?(?:\s+ALTERED)?|GEM\s+MINT\s+10|MINT\s+9|NM-MT\s+8|NM\s+7|EX-MT\s+6|EX\s+5|VG-EX\s+4|VG\s+3|GOOD\s+2|POOR\s+1|\d+(?:\.\d+)?)\b/i
+    );
+
+  const grade =
+    gradeMatch
+      ? clean(
+          gradeMatch[0]
+        )
+          .replace(
+            /\bAUTH\b/i,
+            "Authentic"
+          )
+      : "";
+
+  const numericPrice =
+    clean(soldPrice)
+      .replace(
+        /[$,\s]/g,
+        ""
+      );
+
+  return addNormalizedCardFields({
+    ok: true,
+
+    marketplace,
+
+    sourceUrl,
+
+    listingId: "",
+
+    title,
+
+    seller: "",
+
+    price:
+      /^\d+(?:\.\d+)?$/.test(
+        numericPrice
+      )
+        ? numericPrice
+        : "",
+
+    currency:
+      /\$/i.test(soldPrice)
+        ? "USD"
+        : "",
+
+    endDate:
+      parseDate(
+        soldDate
+      ),
+
+    certNumber,
+
+    grade,
+
+    serialNumber,
+
+    description: "",
+
+    frontImage: "",
+
+    additionalImages: [],
+
+    aspects: {},
+  });
+}
+
 export async function importPageText(
   copiedText: string
 ): Promise<PageTextImportResult> {
@@ -957,7 +1177,7 @@ export async function importPageText(
     );
   }
 
-  throw new Error(
-    "The copied page text was not recognized as Heritage Auctions or PSA."
-  );
+  return parseGenericPageText(
+  text
+);
 }

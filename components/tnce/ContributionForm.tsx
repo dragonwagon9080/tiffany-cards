@@ -1103,23 +1103,9 @@ setShowPageTextFallback(false);
     error?.message ||
     "Unable to import this source.";
 
-  const sourceMarketplace =
-    detectMarketplace(
-      sourceUrl
-    );
-
   const blockedSource =
-  !copiedPageText &&
-  (
-    sourceMarketplace ===
-      "heritage" ||
-    /psacard\.com/i.test(
-      sourceUrl
-    ) ||
-    /blocks automated imports|approved customers|403/i.test(
-      message
-    )
-  );
+    !copiedPageText &&
+    Boolean(sourceUrl);
 
   setShowPageTextFallback(
     blockedSource
@@ -1127,10 +1113,11 @@ setShowPageTextFallback(false);
 
   setImportError(
     blockedSource
-      ? "This website blocked the direct import. Copy the webpage text and paste it below."
+      ? "The direct import failed. Copy the webpage text and paste it below."
       : message
   );
 } finally {
+  
     setImporting(false);
   }
 }

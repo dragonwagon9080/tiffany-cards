@@ -14,9 +14,6 @@ import {
   parseAuctionTitle,
   type ParsedAuctionTitle,
 } from "@/lib/tnce/auctionParser";
-import {
-  detectMarketplace,
-} from "@/lib/tnce/marketplaceDetector";
 
 type Props = {
   mode: "new" | "update" | "missing";
@@ -658,23 +655,9 @@ setShowPageTextFallback(
       error?.message ||
       "Unable to import this listing.";
 
-    const sourceMarketplace =
-      detectMarketplace(
-        sourceUrl
-      );
-
     const blockedSource =
   !copiedPageText &&
-  (
-    sourceMarketplace ===
-      "heritage" ||
-    /psacard\.com/i.test(
-      sourceUrl
-    ) ||
-    /blocks automated imports|approved customers|403/i.test(
-      message
-    )
-  );
+  Boolean(sourceUrl);
 
     setShowPageTextFallback(
       blockedSource
@@ -928,24 +911,10 @@ setShowPageTextFallback(
     const message =
       error?.message ||
       "Unable to import this previous source.";
-
-    const sourceMarketplace =
-      detectMarketplace(
-        sourceUrl
-      );
-
+    
     const blockedSource =
   !copiedPageText &&
-  (
-    sourceMarketplace ===
-      "heritage" ||
-    /psacard\.com/i.test(
-      sourceUrl
-    ) ||
-    /blocks automated imports|approved customers|403/i.test(
-      message
-    )
-  );
+  Boolean(sourceUrl);
 
     setShowPreviousPageTextFallback(
       blockedSource
