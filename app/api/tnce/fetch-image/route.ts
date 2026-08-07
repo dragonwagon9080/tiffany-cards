@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_IMAGE_BYTES =
-  12 * 1024 * 1024;
+  25 * 1024 * 1024;
 
 function cleanImageUrl(
   value: unknown
@@ -198,6 +198,14 @@ export async function POST(
 
     const arrayBuffer =
       await response.arrayBuffer();
+
+console.log(
+  "Downloaded image:",
+  parsedUrl.toString(),
+  "Size:",
+  arrayBuffer.byteLength,
+  "bytes"
+);
 
     if (
       arrayBuffer.byteLength >
