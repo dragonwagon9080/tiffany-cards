@@ -327,35 +327,34 @@ export default function CardClient({
         <Divider />
 
         <section className="mt-8 overflow-hidden rounded-lg border border-[#9c7a2d] bg-black">
-          <div className="grid grid-cols-2 divide-x divide-y divide-[#9c7a2d]/60 sm:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
-            <InfoBox label="Grade" value={card.Grade} />
+  <div className="grid grid-cols-2 divide-x divide-y divide-[#9c7a2d]/60 sm:grid-cols-4 xl:grid-cols-8 xl:divide-y-0">
+    <InfoBox label="Grade" value={card.Grade} />
 
-            <InfoBox
-  label={
-    card.Cert_Number
-      ? "Cert #"
-      : "Card ID"
-  }
-  value={
-    card.Cert_Number ||
-    card.Card_id
-  }
-/>
+    <InfoBox label="Cert #" value={card.Cert_Number} />
 
-            <InfoBox
-              label="Player"
-              value={`${card.First || ""} ${card.Last || ""}`.trim()}
-            />
+    <InfoBox
+      label="Player"
+      value={`${card.First || ""} ${card.Last || ""}`.trim()}
+    />
 
-            <InfoBox label="Year" value={card.Year} />
+    <InfoBox label="Year" value={card.Year} />
 
-            <InfoBox label="Brand" value={card.Brand} />
+    <InfoBox label="Brand" value={card.Brand} />
 
-            <InfoBox label="Card #" value={card.Num} />
+    <InfoBox label="Card #" value={card.Num} />
 
-            <InfoBox label="Sport" value={card.Sport} />
-          </div>
-        </section>
+    <InfoBox label="Sport" value={card.Sport} />
+
+    <InfoBox
+      label="Card ID"
+      value={
+        card.Card_id ||
+        card.card_id ||
+        card.ID
+      }
+    />
+  </div>
+</section>
 
         <Divider />
 

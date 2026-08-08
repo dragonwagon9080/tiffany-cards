@@ -92,27 +92,42 @@ export default function ProjectFields({
   if (project === "cards-alert" && cardsAlertFields) {
     return (
       <CardsAlertProjectForm
-        reasons={reasons}
-        sports={sports}
-        status={cardsAlertFields.status}
-        setStatus={cardsAlertFields.setStatus}
-        cardYear={cardsAlertFields.cardYear}
-        setCardYear={cardsAlertFields.setCardYear}
-        sport={cardsAlertFields.sport}
-        setSport={cardsAlertFields.setSport}
-        firstName={cardsAlertFields.firstName}
-        setFirstName={cardsAlertFields.setFirstName}
-        lastName={cardsAlertFields.lastName}
-        setLastName={cardsAlertFields.setLastName}
-        cardNumber={cardsAlertFields.cardNumber}
-        setCardNumber={cardsAlertFields.setCardNumber}
-        parallel={cardsAlertFields.parallel}
-        setParallel={cardsAlertFields.setParallel}
-        serialNumber={serialNumber}
-        setSerialNumber={setSerialNumber}
-        brand={cardsAlertFields.brand}
-        setBrand={cardsAlertFields.setBrand}
-      />
+  reasons={reasons}
+  sports={sports}
+
+  status={cardsAlertFields.status}
+  setStatus={cardsAlertFields.setStatus}
+
+  cardYear={cardsAlertFields.cardYear}
+  setCardYear={cardsAlertFields.setCardYear}
+
+  sport={cardsAlertFields.sport}
+  setSport={cardsAlertFields.setSport}
+
+  firstName={cardsAlertFields.firstName}
+  setFirstName={cardsAlertFields.setFirstName}
+
+  lastName={cardsAlertFields.lastName}
+  setLastName={cardsAlertFields.setLastName}
+
+  cardNumber={cardsAlertFields.cardNumber}
+  setCardNumber={cardsAlertFields.setCardNumber}
+
+  parallel={cardsAlertFields.parallel}
+  setParallel={cardsAlertFields.setParallel}
+
+  serialNumber={serialNumber}
+  setSerialNumber={setSerialNumber}
+
+  brand={cardsAlertFields.brand}
+  setBrand={cardsAlertFields.setBrand}
+
+  grade={grade}
+  setGrade={setGrade}
+
+  certNumber={certNumber}
+  setCertNumber={setCertNumber}
+/>
     );
   }
 

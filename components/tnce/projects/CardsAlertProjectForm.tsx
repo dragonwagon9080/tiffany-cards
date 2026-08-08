@@ -32,6 +32,12 @@ type Props = {
 
   brand?: string;
   setBrand?: (value: string) => void;
+
+  grade?: string;
+  setGrade?: (value: string) => void;
+
+  certNumber?: string;
+  setCertNumber?: (value: string) => void;
 };
 
 function uniqueOptions(values: string[]) {
@@ -157,24 +163,39 @@ function ListSelect({
 export default function CardsAlertProjectForm({
   reasons = [],
   sports = [],
+
   status = "",
   setStatus,
+
   cardYear,
   setCardYear,
+
   sport = "",
   setSport,
+
   firstName,
   setFirstName,
+
   lastName,
   setLastName,
+
   cardNumber,
   setCardNumber,
+
   parallel,
   setParallel,
+
   serialNumber,
   setSerialNumber,
+
   brand,
   setBrand,
+
+  grade,
+  setGrade,
+
+  certNumber,
+  setCertNumber,
 }: Props) {
   return (
     <div className="grid gap-6">
@@ -310,6 +331,36 @@ export default function CardsAlertProjectForm({
             placeholder="Panini National Treasures, Topps Chrome - Diamond Moments, Topps Tiffany"
           />
         </label>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm">
+            Grade
+            <input
+              value={grade ?? ""}
+              onChange={(event) =>
+                setGrade?.(
+                  event.target.value
+                )
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="PSA 9, BGS 9.5, Raw, etc."
+            />
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            Cert #
+            <input
+              value={certNumber ?? ""}
+              onChange={(event) =>
+                setCertNumber?.(
+                  event.target.value
+                )
+              }
+              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+              placeholder="Certification number"
+            />
+          </label>
+        </div>
       </section>
     </div>
   );
