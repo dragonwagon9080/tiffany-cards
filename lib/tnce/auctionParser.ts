@@ -122,6 +122,9 @@ function parseGrade(
     ]
   );
 
+  /*
+   * Prefer an explicit card-grade aspect when one exists.
+   */
   if (aspectGrade) {
     if (/authentic/i.test(aspectGrade)) {
       return {
@@ -154,28 +157,59 @@ function parseGrade(
   const companyPattern =
     "BECKETT|PSA|BGS|SGC|CGC|CSG|TAG|HGA";
 
-  const match = title.match(
+  /*
+   * Goldin commonly formats a card grade followed by an
+   * autograph grade, for example:
+   *
+   *   BGS NM-MT+ 8.5/BGS 10
+   *   BGS MINT 9/BGS 10
+   *   BGS 9.5/BGS 10
+   *
+   * The first grade is the CARD grade. The grade after the
+   * slash is the autograph grade and must not replace it.
+   *
+   * Accept common descriptive grade text that may appear
+   * between the grading company and the numeric grade.
+   */
+  const cardGradeMatch = title.match(
     new RegExp(
-      `\\b(${companyPattern})\\s*(?:MINT|GEM\\s*MINT|PRISTINE)?\\s*(10(?:\\.0)?|[1-9](?:\\.5|\\.0)?)\\b`,
+      `\\b(${companyPattern})\\s*` +
+        `(?:` +
+          `GEM\\s*MINT\\+?|` +
+          `GEM\\s*MT\\+?|` +
+          `PRISTINE\\+?|` +
+          `MINT\\+?|` +
+          `NM[\\s-]*MT\\+?|` +
+          `NM\\+?|` +
+          `EX[\\s-]*MT\\+?|` +
+          `EX\\+?|` +
+          `VG[\\s-]*EX\\+?|` +
+          `VG\\+?|` +
+          `GOOD\\+?|` +
+          `POOR\\+?` +
+        `)?\\s*` +
+        `(10(?:\\.0)?|[1-9](?:\\.5|\\.0)?)\\b`,
       "i",
     ),
   );
 
-  if (!match) {
+  if (!cardGradeMatch) {
     return {
       grade: "",
       gradingCompany: "",
     };
   }
 
-  let gradingCompany = match[1].toUpperCase();
+  let gradingCompany =
+    cardGradeMatch[1].toUpperCase();
 
   if (gradingCompany === "BECKETT") {
     gradingCompany = "BGS";
   }
 
   return {
-    grade: `${gradingCompany} ${Number(match[2])}`,
+    grade:
+      `${gradingCompany} ${Number(cardGradeMatch[2])}`,
     gradingCompany,
   };
 }
