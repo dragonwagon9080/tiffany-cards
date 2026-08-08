@@ -23,6 +23,8 @@ type ApiResponse = {
   meta: TrackerMeta;
 };
 
+const PAGE_SIZE = 50;
+
 export default function RPATrackerClient({
   theme,
   logoUrl,
@@ -31,6 +33,7 @@ export default function RPATrackerClient({
   logoUrl?: string;
 }) {
   const searchParams = useSearchParams();
+
   const initialQuery =
     searchParams.get("q") || "";
 
@@ -53,69 +56,129 @@ export default function RPATrackerClient({
   const [loading, setLoading] =
     useState(true);
 
+  const [loadingMore, setLoadingMore] =
+    useState(false);
+
   const [search, setSearch] =
     useState(initialQuery);
 
-  const [sport, setSport] = useState("");
-  const [player, setPlayer] = useState("");
-  const [year, setYear] = useState("");
-  const [brand, setBrand] = useState("");
+  const [sport, setSport] =
+    useState("");
+
+  const [player, setPlayer] =
+    useState("");
+
+  const [year, setYear] =
+    useState("");
+
+  const [brand, setBrand] =
+    useState("");
+
   const [variation, setVariation] =
     useState("");
-  const [sort, setSort] = useState("");
-  const [limit, setLimit] = useState(50);
 
-  const [showContribute, setShowContribute] =
-    useState(false);
+  const [sort, setSort] =
+    useState("");
 
-  async function loadData() {
-    setLoading(true);
+  const [
+    showContribute,
+    setShowContribute,
+  ] = useState(false);
 
-        try {
-      const params = new URLSearchParams();
+  function buildParams(
+    offset: number
+  ) {
+    const params =
+      new URLSearchParams();
 
+    params.set(
+      "mode",
+      search.trim()
+        ? "filter"
+        : "startup"
+    );
+
+    if (search.trim()) {
       params.set(
-        "mode",
+        "q",
         search.trim()
-          ? "filter"
-          : "startup"
       );
+    }
 
-      if (search.trim()) {
-        params.set("q", search.trim());
-      }
-
-      if (sport) {
-        params.set("sport", sport);
-      }
-
-      if (player) {
-        params.set("player", player);
-      }
-
-      if (year) {
-        params.set("year", year);
-      }
-
-      if (brand) {
-        params.set("brand", brand);
-      }
-
-      if (variation) {
-        params.set(
-          "variation",
-          variation
-        );
-      }
-
-      if (sort) {
-        params.set("sort", sort);
-      }
-
+    if (sport) {
       params.set(
-        "limit",
-        String(limit)
+        "sport",
+        sport
       );
+    }
+
+    if (player) {
+      params.set(
+        "player",
+        player
+      );
+    }
+
+    if (year) {
+      params.set(
+        "year",
+        year
+      );
+    }
+
+    if (brand) {
+      params.set(
+        "brand",
+        brand
+      );
+    }
+
+    if (variation) {
+      params.set(
+        "variation",
+        variation
+      );
+    }
+
+    if (sort) {
+      params.set(
+        "sort",
+        sort
+      );
+    }
+
+    params.set(
+      "limit",
+      String(PAGE_SIZE)
+    );
+
+    params.set(
+      "offset",
+      String(offset)
+    );
+
+    return params;
+  }
+
+  async function loadData({
+    append = false,
+  }: {
+    append?: boolean;
+  } = {}) {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const offset =
+        append
+          ? groups.length
+          : 0;
+
+      const params =
+        buildParams(offset);
 
       const res = await fetch(
         `/api/rpa-tracker?${params.toString()}`,
@@ -133,7 +196,37 @@ export default function RPATrackerClient({
       const json: ApiResponse =
         await res.json();
 
-      setGroups(json.groups || []);
+      const incomingGroups =
+        json.groups || [];
+
+      if (append) {
+        setGroups((current) => {
+          const seen =
+            new Set(
+              current.map(
+                (group) =>
+                  group.Slug
+              )
+            );
+
+          const next =
+            incomingGroups.filter(
+              (group) =>
+                !seen.has(
+                  group.Slug
+                )
+            );
+
+          return [
+            ...current,
+            ...next,
+          ];
+        });
+      } else {
+        setGroups(
+          incomingGroups
+        );
+      }
 
       setOptions(
         json.options || {
@@ -145,13 +238,15 @@ export default function RPATrackerClient({
         }
       );
 
-      setMeta(json.meta || null);
+      setMeta(
+        json.meta || null
+      );
     } finally {
-      /*
-       * Prevents the loader from flashing too
-       * quickly to recognize.
-       */
-      setLoading(false);
+      if (append) {
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
   }
 
@@ -165,12 +260,12 @@ export default function RPATrackerClient({
     brand,
     variation,
     sort,
-    limit,
   ]);
 
   useEffect(() => {
     const q =
-      searchParams.get("q") || "";
+      searchParams.get("q") ||
+      "";
 
     setSearch(q);
   }, [searchParams]);
@@ -183,21 +278,23 @@ export default function RPATrackerClient({
     setBrand("");
     setVariation("");
     setSort("");
-    setLimit(50);
   }
 
   if (loading) {
     return (
       <TiffanyLoadingScreen
-        message="Loading RPA Tracker"
-        detail="Retrieving the latest registry information."
+        message="Loading RPA Tracker..."
       />
     );
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-10">
-      <UniversalSearchBar defaultTarget="rpa" />
+    <section>
+      <UniversalSearchBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Search player, card, cert #, serial #..."
+      />
 
       <div className="mt-8">
         <SearchFilters
@@ -211,11 +308,15 @@ export default function RPATrackerClient({
           brand={brand}
           setBrand={setBrand}
           variation={variation}
-          setVariation={setVariation}
+          setVariation={
+            setVariation
+          }
           sort={sort}
           setSort={setSort}
           options={options}
-          onReset={resetFilters}
+          onReset={
+            resetFilters
+          }
         />
       </div>
 
@@ -223,7 +324,9 @@ export default function RPATrackerClient({
         meta={meta}
         theme={theme}
         onContribute={() =>
-          setShowContribute(true)
+          setShowContribute(
+            true
+          )
         }
       />
 
@@ -236,29 +339,38 @@ export default function RPATrackerClient({
         <div className="mt-10 flex justify-center">
           <button
             type="button"
-            onClick={() =>
-              setLimit(
-                (current) =>
-                  current + 50
-              )
+            disabled={
+              loadingMore
             }
-            className="rounded-lg border border-blue-500 bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500"
+            onClick={() =>
+              loadData({
+                append: true,
+              })
+            }
+            className="rounded-lg border border-blue-500 bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-wait disabled:opacity-60"
           >
-            Show More Registries
+            {loadingMore
+              ? "Loading..."
+              : "Show More Registries"}
           </button>
         </div>
       )}
 
       <ContributionModal
-        open={showContribute}
+        open={
+          showContribute
+        }
         onClose={() =>
-          setShowContribute(false)
+          setShowContribute(
+            false
+          )
         }
         project="rpa-tracker"
         projectLabel="RPA Tracker"
         logoUrl={logoUrl}
         activeObject={{
-          id: "rpa-tracker-main-page",
+          id:
+            "rpa-tracker-main-page",
           title:
             "RPA Tracker Main Page",
         }}

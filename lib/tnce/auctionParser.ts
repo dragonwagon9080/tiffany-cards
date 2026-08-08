@@ -158,18 +158,17 @@ function parseGrade(
     "BECKETT|PSA|BGS|SGC|CGC|CSG|TAG|HGA";
 
   /*
-   * Goldin commonly formats a card grade followed by an
-   * autograph grade, for example:
+   * Auction titles may include descriptive grade text
+   * between the grading company and the numeric grade:
    *
    *   BGS NM-MT+ 8.5/BGS 10
+   *   PSA GEM MT 10
+   *   PSA GEM MINT 10
    *   BGS MINT 9/BGS 10
-   *   BGS 9.5/BGS 10
    *
-   * The first grade is the CARD grade. The grade after the
-   * slash is the autograph grade and must not replace it.
-   *
-   * Accept common descriptive grade text that may appear
-   * between the grading company and the numeric grade.
+   * The first grading-company/grade pair is treated as the
+   * card grade. A later grade after "/" is commonly the
+   * autograph grade and should not replace the card grade.
    */
   const cardGradeMatch = title.match(
     new RegExp(
