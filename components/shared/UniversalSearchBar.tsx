@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type SearchTarget = "tiffany" | "rpa" | "cardsalert";
 
@@ -29,17 +29,40 @@ const TARGETS = {
   },
 };
 
+function isLikelyExactRpaLookup(value: string) {
+  const q = value.trim();
+
+  return (
+    /^\\d{6,}$/.test(q) ||
+    /^[A-Za-z]{1,3}[A-Fa-f0-9]{8}$/.test(q)
+  );
+}
+
 export default function UniversalSearchBar({
   defaultTarget = "rpa",
 }: {
   defaultTarget?: SearchTarget;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [target, setTarget] = useState<SearchTarget>(defaultTarget);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q") || "");
+  const [submitting, setSubmitting] = useState(false);
+
+  const exactLookupRef = useRef<AbortController | null>(null);
 
   const active = TARGETS[target];
+
+  useEffect(() => {
+    setQuery(searchParams.get("q") || "");
+  }, [searchParams]);
+
+  useEffect(() => {
+    return () => {
+      exactLookupRef.current?.abort();
+    };
+  }, []);
 
   async function submitSearch(e: FormEvent) {
     e.preventDefault();
@@ -47,28 +70,59 @@ export default function UniversalSearchBar({
     const q = query.trim();
     if (!q) return;
 
-    if (target === "rpa") {
-      try {
-        const res = await fetch(
-          `/api/rpa-tracker?mode=exact&q=${encodeURIComponent(q)}`,
-          { cache: "no-store" }
-        );
+    exactLookupRef.current?.abort();
 
+    if (target !== "rpa" || !isLikelyExactRpaLookup(q)) {
+      router.push(
+        `${active.destination}?q=${encodeURIComponent(q)}`
+      );
+      return;
+    }
+
+    const controller = new AbortController();
+    exactLookupRef.current = controller;
+    setSubmitting(true);
+
+    try {
+      const res = await fetch(
+        `/api/rpa-tracker?mode=exact&q=${encodeURIComponent(q)}`,
+        {
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      );
+
+      if (res.ok) {
         const card = await res.json();
 
         if (card?.Card_id) {
-          router.push(`/rpa-tracker/card/${card.Card_id}`);
+          router.push(
+            `/rpa-tracker/card/${encodeURIComponent(card.Card_id)}`
+          );
           return;
         }
-      } catch {}
-    }
+      }
 
-    router.push(`${active.destination}?q=${encodeURIComponent(q)}`);
+      router.push(
+        `/rpa-tracker?q=${encodeURIComponent(q)}`
+      );
+    } catch (error: any) {
+      if (error?.name === "AbortError") return;
+
+      router.push(
+        `/rpa-tracker?q=${encodeURIComponent(q)}`
+      );
+    } finally {
+      if (exactLookupRef.current === controller) {
+        exactLookupRef.current = null;
+        setSubmitting(false);
+      }
+    }
   }
 
   return (
-    <section className="mb-8 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-      <div className="mb-3 text-center text-sm font-black uppercase tracking-widest text-zinc-400">
+    <section>
+      <div className="mb-4 text-center text-sm font-black uppercase tracking-widest text-zinc-400">
         Search Database
       </div>
 
@@ -95,7 +149,10 @@ export default function UniversalSearchBar({
         })}
       </div>
 
-      <form onSubmit={submitSearch} className="mx-auto flex max-w-3xl gap-2">
+      <form
+        onSubmit={submitSearch}
+        className="mx-auto flex max-w-3xl gap-2"
+      >
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -106,16 +163,19 @@ export default function UniversalSearchBar({
 
         <button
           type="submit"
-          className="h-11 rounded px-5 text-sm font-black uppercase text-white transition"
+          disabled={submitting}
+          className="h-11 rounded px-5 text-sm font-black uppercase text-white transition disabled:cursor-wait disabled:opacity-60"
           style={{ backgroundColor: active.color }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = active.hover;
+            if (!submitting) {
+              e.currentTarget.style.backgroundColor = active.hover;
+            }
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = active.color;
           }}
         >
-          Search
+          {submitting ? "Searching..." : "Search"}
         </button>
       </form>
     </section>

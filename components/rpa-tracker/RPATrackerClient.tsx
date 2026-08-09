@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "next/navigation";
 
 import SearchFilters from "./SearchFilters";
@@ -59,6 +63,9 @@ export default function RPATrackerClient({
   const [loadingMore, setLoadingMore] =
     useState(false);
 
+  const [searching, setSearching] =
+    useState(false);
+
   const [search, setSearch] =
     useState(initialQuery);
 
@@ -84,6 +91,14 @@ export default function RPATrackerClient({
     showContribute,
     setShowContribute,
   ] = useState(false);
+
+  const requestRef =
+    useRef<AbortController | null>(
+      null
+    );
+
+  const requestIdRef =
+    useRef(0);
 
   function buildParams(
     offset: number
@@ -165,10 +180,40 @@ export default function RPATrackerClient({
   }: {
     append?: boolean;
   } = {}) {
+    const requestId =
+      ++requestIdRef.current;
+
+    /*
+     * For a brand-new search/filter request,
+     * cancel the previous one immediately.
+     *
+     * For "Show More", keep the current result set
+     * and fetch only the next page.
+     */
+    if (!append) {
+      requestRef.current?.abort();
+    }
+
+    const controller =
+      new AbortController();
+
+    if (!append) {
+      requestRef.current =
+        controller;
+    }
+
     if (append) {
       setLoadingMore(true);
-    } else {
+    } else if (
+      groups.length === 0
+    ) {
       setLoading(true);
+    } else {
+      /*
+       * Keep the existing results visible while
+       * the new search/filter request runs.
+       */
+      setSearching(true);
     }
 
     try {
@@ -184,6 +229,8 @@ export default function RPATrackerClient({
         `/api/rpa-tracker?${params.toString()}`,
         {
           cache: "no-store",
+          signal:
+            controller.signal,
         }
       );
 
@@ -196,32 +243,47 @@ export default function RPATrackerClient({
       const json: ApiResponse =
         await res.json();
 
+      /*
+       * An older request may finish after a newer
+       * one. Only the newest non-append request is
+       * allowed to replace the screen.
+       */
+      if (
+        !append &&
+        requestId !==
+          requestIdRef.current
+      ) {
+        return;
+      }
+
       const incomingGroups =
         json.groups || [];
 
       if (append) {
-        setGroups((current) => {
-          const seen =
-            new Set(
-              current.map(
-                (group) =>
-                  group.Slug
-              )
-            );
-
-          const next =
-            incomingGroups.filter(
-              (group) =>
-                !seen.has(
-                  group.Slug
+        setGroups(
+          (current) => {
+            const seen =
+              new Set(
+                current.map(
+                  (group) =>
+                    group.Slug
                 )
-            );
+              );
 
-          return [
-            ...current,
-            ...next,
-          ];
-        });
+            const next =
+              incomingGroups.filter(
+                (group) =>
+                  !seen.has(
+                    group.Slug
+                  )
+              );
+
+            return [
+              ...current,
+              ...next,
+            ];
+          }
+        );
       } else {
         setGroups(
           incomingGroups
@@ -241,17 +303,42 @@ export default function RPATrackerClient({
       setMeta(
         json.meta || null
       );
+    } catch (error: any) {
+      if (
+        error?.name ===
+        "AbortError"
+      ) {
+        return;
+      }
+
+      console.error(
+        "RPA Tracker load error:",
+        error
+      );
     } finally {
       if (append) {
         setLoadingMore(false);
       } else {
-        setLoading(false);
+        if (
+          requestRef.current ===
+          controller
+        ) {
+          requestRef.current =
+            null;
+
+          setLoading(false);
+          setSearching(false);
+        }
       }
     }
   }
 
   useEffect(() => {
     loadData();
+
+    return () => {
+      requestRef.current?.abort();
+    };
   }, [
     search,
     sport,
@@ -264,8 +351,7 @@ export default function RPATrackerClient({
 
   useEffect(() => {
     const q =
-      searchParams.get("q") ||
-      "";
+      searchParams.get("q") || "";
 
     setSearch(q);
   }, [searchParams]);
@@ -293,6 +379,12 @@ export default function RPATrackerClient({
       <UniversalSearchBar
         defaultTarget="rpa"
       />
+
+      {searching && (
+        <div className="mt-4 text-center text-sm font-semibold text-blue-300">
+          Searching...
+        </div>
+      )}
 
       <div className="mt-8">
         <SearchFilters
