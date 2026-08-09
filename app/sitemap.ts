@@ -7,7 +7,16 @@ import {
   getPages,
 } from "@/lib/cms";
 
-const SITE_URL = "https://www.tiffanycards.com";
+import {
+  getCachedCardsAlertData,
+} from "@/lib/cards-alert/cache";
+
+import {
+  getCachedRPATrackerData,
+} from "@/lib/rpa-tracker/cache";
+
+const SITE_URL =
+  "https://www.tiffanycards.com";
 
 function cleanSlug(value: any) {
   return String(value || "")
@@ -16,12 +25,26 @@ function cleanSlug(value: any) {
 }
 
 function isActive(item: any) {
-  const value = String(item?.active ?? "true").toLowerCase().trim();
-  return value !== "false" && value !== "no" && value !== "0";
+  const value = String(
+    item?.active ?? "true"
+  )
+    .toLowerCase()
+    .trim();
+
+  return (
+    value !== "false" &&
+    value !== "no" &&
+    value !== "0"
+  );
 }
 
-function pageUrl(path: string): MetadataRoute.Sitemap[number] {
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+function pageUrl(
+  path: string
+): MetadataRoute.Sitemap[number] {
+  const cleanPath =
+    path.startsWith("/")
+      ? path
+      : `/${path}`;
 
   return {
     url: `${SITE_URL}${cleanPath}`,
@@ -29,7 +52,10 @@ function pageUrl(path: string): MetadataRoute.Sitemap[number] {
   };
 }
 
-async function safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+async function safeFetch<T>(
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<T> {
   try {
     return await fn();
   } catch {
@@ -37,13 +63,43 @@ async function safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   }
 }
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const pages = await safeFetch(() => getPages(), []);
-  const cardSets = await safeFetch(() => getCardSets(), []);
-  const guides = await safeFetch(() => getGuides(), []);
-  const interactiveGuides = await safeFetch(() => getInteractiveGuides(), []);
+function cleanCardId(value: any) {
+  return String(value || "").trim();
+}
 
-  const urls: MetadataRoute.Sitemap = [
+export default async function sitemap(): Promise<
+  MetadataRoute.Sitemap
+> {
+  const [
+    pages,
+    cardSets,
+    guides,
+    interactiveGuides,
+    cardsAlertData,
+    rpaData,
+  ] = await Promise.all([
+    safeFetch(() => getPages(), []),
+    safeFetch(() => getCardSets(), []),
+    safeFetch(() => getGuides(), []),
+    safeFetch(
+      () => getInteractiveGuides(),
+      []
+    ),
+    safeFetch(
+      () => getCachedCardsAlertData(),
+      { cards: [] } as any
+    ),
+    safeFetch(
+      () => getCachedRPATrackerData(),
+      {
+        cards: [],
+        groups: [],
+      } as any
+    ),
+  ]);
+
+  const urls:
+    MetadataRoute.Sitemap = [
     {
       url: SITE_URL,
       lastModified: new Date(),
@@ -129,7 +185,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   for (const guide of guides || []) {
     if (!isActive(guide)) continue;
 
-    const slug = cleanSlug(guide.slug || guide.guide_slug);
+    const slug = cleanSlug(
+      guide.slug ||
+        guide.guide_slug
+    );
+
     if (!slug) continue;
 
     urls.push({
@@ -139,10 +199,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
   }
 
-  for (const guide of interactiveGuides || []) {
+  for (
+    const guide of interactiveGuides || []
+  ) {
     if (!isActive(guide)) continue;
 
-    const slug = cleanSlug(guide.slug || guide.guide_slug);
+    const slug = cleanSlug(
+      guide.slug ||
+        guide.guide_slug
+    );
+
     if (!slug) continue;
 
     urls.push({
@@ -152,5 +218,75 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
   }
 
-  return Array.from(new Map(urls.map((item) => [item.url, item])).values());
+  const cardsAlertCards =
+    cardsAlertData?.cards || [];
+
+  for (const card of cardsAlertCards) {
+    const cardId = cleanCardId(
+      card?.Card_id
+    );
+
+    if (!cardId) continue;
+
+    urls.push({
+      url:
+        `${SITE_URL}/cards-alert/card/${encodeURIComponent(
+          cardId
+        )}`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.75,
+    });
+  }
+
+  const rpaGroups =
+    rpaData?.groups || [];
+
+  for (const group of rpaGroups) {
+    const slug = cleanSlug(
+      group?.Slug
+    );
+
+    if (!slug) continue;
+
+    urls.push({
+      url:
+        `${SITE_URL}/rpa-tracker/group/${encodeURIComponent(
+          slug
+        )}`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.8,
+    });
+  }
+
+  const rpaCards =
+    rpaData?.cards || [];
+
+  for (const card of rpaCards) {
+    const cardId = cleanCardId(
+      card?.Card_id
+    );
+
+    if (!cardId) continue;
+
+    urls.push({
+      url:
+        `${SITE_URL}/rpa-tracker/card/${encodeURIComponent(
+          cardId
+        )}`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.7,
+    });
+  }
+
+  return Array.from(
+    new Map(
+      urls.map((item) => [
+        item.url,
+        item,
+      ])
+    ).values()
+  );
 }

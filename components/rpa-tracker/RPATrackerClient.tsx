@@ -291,9 +291,7 @@ export default function RPATrackerClient({
   return (
     <section>
       <UniversalSearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search player, card, cert #, serial #..."
+        defaultTarget="rpa"
       />
 
       <div className="mt-8">
