@@ -1113,8 +1113,13 @@ setShowPageTextFallback(false);
 
   setImportError(
     blockedSource
-      ? "The direct import failed. Copy the webpage text and paste it below."
+      ? `DIRECT IMPORT ERROR: ${message}`
       : message
+  );
+
+  console.error(
+    "TNCE auction import failed:",
+    error
   );
 } finally {
   

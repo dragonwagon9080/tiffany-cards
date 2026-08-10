@@ -684,12 +684,20 @@ function isGoldinHostname(hostname: string) {
     hostname.endsWith(".goldin.co")
   );
 }
+
 function isFanaticsHostname(hostname: string) {
   return (
     hostname === "fanaticscollect.com" ||
     hostname.endsWith(".fanaticscollect.com") ||
     hostname === "pwccmarketplace.com" ||
     hostname.endsWith(".pwccmarketplace.com")
+  );
+}
+
+function isMySlabsHostname(hostname: string) {
+  return (
+    hostname === "myslabs.com" ||
+    hostname.endsWith(".myslabs.com")
   );
 }
 
@@ -4519,6 +4527,607 @@ async function importHeritageAuction(
   };
 }
 
+/* =========================================================
+MYSLABS
+========================================================= */
+
+function extractMySlabsListingId(
+  sourceUrl: string
+) {
+  const parsed =
+    new URL(sourceUrl);
+
+  const match =
+    parsed.pathname.match(
+      /\/slab\/view\/(\d+)(?:\/|$)/i
+    );
+
+  if (!match?.[1]) {
+    throw new Error(
+      "Unable to determine the MySlabs listing ID from this URL."
+    );
+  }
+
+  return match[1];
+}
+
+function stripMySlabsHtml(
+  value: unknown
+) {
+  return decodeHtml(
+    clean(value)
+      .replace(
+        /<script[\s\S]*?<\/script>/gi,
+        " "
+      )
+      .replace(
+        /<style[\s\S]*?<\/style>/gi,
+        " "
+      )
+      .replace(
+        /<[^>]+>/g,
+        " "
+      )
+      .replace(
+        /\s+/g,
+        " "
+      )
+  ).trim();
+}
+
+function cleanMySlabsTitle(
+  value: unknown
+) {
+  return stripMySlabsHtml(
+    value
+  )
+    .replace(
+      /\s*\|\s*MySlabs\s*$/i,
+      ""
+    )
+    .replace(
+      /\s+on\s+MySlabs\s*$/i,
+      ""
+    )
+    .trim();
+}
+
+function extractMySlabsImages(
+  html: string,
+  sourceUrl: string
+) {
+  const candidates: string[] = [];
+
+  /*
+   * Collect normal image attributes.
+   */
+  const attributeRegex =
+    /(?:src|data-src|data-lazy-src|href)=["']([^"']+\.(?:jpe?g|png|webp|avif)(?:\?[^"']*)?)["']/gi;
+
+  for (
+    const match of html.matchAll(
+      attributeRegex
+    )
+  ) {
+    if (match[1]) {
+      candidates.push(
+        match[1]
+      );
+    }
+  }
+
+  /*
+   * MySlabs can also expose image URLs inside
+   * escaped JavaScript/page data.
+   */
+  const escapedRegex =
+    /https?:\\?\/\\?\/[^"'<>\\\s]+?\.(?:jpe?g|png|webp|avif)(?:\\?[^"'<>\\\s]*)?/gi;
+
+  for (
+    const match of html.matchAll(
+      escapedRegex
+    )
+  ) {
+    candidates.push(
+      match[0]
+        .replace(
+          /\\u0026/g,
+          "&"
+        )
+        .replace(
+          /\\\//g,
+          "/"
+        )
+    );
+  }
+
+  /*
+   * Metadata fallbacks.
+   */
+  candidates.push(
+    getMetaContent(
+      html,
+      "og:image"
+    ),
+    getMetaContent(
+      html,
+      "og:image:url"
+    ),
+    getMetaContent(
+      html,
+      "twitter:image"
+    )
+  );
+
+  const excluded = [
+    /logo/i,
+    /favicon/i,
+    /banner/i,
+    /social/i,
+    /instagram/i,
+    /twitter/i,
+    /facebook/i,
+    /ebay/i,
+    /beckett-logo/i,
+    /spinner/i,
+    /placeholder/i,
+    /icon/i,
+    /flag/i,
+    /google/i,
+    /130point/i,
+  ];
+
+  const normalized =
+    uniqueUrls(
+      candidates,
+      sourceUrl
+    ).filter(
+      (url) =>
+        !excluded.some(
+          (pattern) =>
+            pattern.test(url)
+        )
+    );
+
+  /*
+   * Prefer actual MySlabs listing photos.
+   *
+   * Current MySlabs filenames look like:
+   *
+   *   NZRKXFA_1646178569_1.png
+   *   NZRKXFA_1646178569_2.png
+   *
+   * The same physical image may appear several
+   * times with different width/quality parameters.
+   *
+   * Deduplicate by pathname so all resized versions
+   * of _1.png become one image, all resized versions
+   * of _2.png become one image, etc.
+   */
+  const numbered =
+    normalized.filter(
+      (url) =>
+        /_\d+\.(?:jpe?g|png|webp|avif)(?:\?|$)/i.test(
+          url
+        )
+    );
+
+  if (numbered.length) {
+    const byImage =
+      new Map<
+        string,
+        string
+      >();
+
+    for (
+      const imageUrl of numbered
+    ) {
+      let parsed: URL;
+
+      try {
+        parsed =
+          new URL(imageUrl);
+      } catch {
+        continue;
+      }
+
+      /*
+       * Query parameters such as width and quality
+       * do not define a different physical photo.
+       */
+      const key =
+        `${parsed.hostname}${parsed.pathname}`
+          .toLowerCase();
+
+      const existing =
+        byImage.get(key);
+
+      if (!existing) {
+        byImage.set(
+          key,
+          imageUrl
+        );
+        continue;
+      }
+
+      /*
+       * If several resized versions exist,
+       * keep the one with the largest requested width.
+       */
+      const widthOf = (
+        value: string
+      ) => {
+        try {
+          const url =
+            new URL(value);
+
+          return Number(
+            url.searchParams.get(
+              "width"
+            ) ||
+              url.searchParams.get(
+                "w"
+              ) ||
+              0
+          );
+        } catch {
+          return 0;
+        }
+      };
+
+      if (
+        widthOf(imageUrl) >
+        widthOf(existing)
+      ) {
+        byImage.set(
+          key,
+          imageUrl
+        );
+      }
+    }
+
+    /*
+     * Sort _1, _2, _3... in their intended order.
+     */
+    return Array.from(
+      byImage.values()
+    ).sort(
+      (a, b) => {
+        const aNumber =
+          Number(
+            a.match(
+              /_(\d+)\.(?:jpe?g|png|webp|avif)(?:\?|$)/i
+            )?.[1] ||
+              999999
+          );
+
+        const bNumber =
+          Number(
+            b.match(
+              /_(\d+)\.(?:jpe?g|png|webp|avif)(?:\?|$)/i
+            )?.[1] ||
+              999999
+          );
+
+        return (
+          aNumber -
+          bNumber
+        );
+      }
+    );
+  }
+
+  /*
+   * Fallback for MySlabs pages that do not use
+   * numbered listing-image filenames.
+   */
+  const large =
+    normalized.filter(
+      (url) =>
+        /(?:\?|&)width=(?:800|1000|1200|1600)(?:&|$)/i.test(
+          url
+        ) ||
+        /(?:\?|&)w=(?:800|1000|1200|1600)(?:&|$)/i.test(
+          url
+        )
+    );
+
+  return large.length
+    ? large
+    : normalized;
+}
+
+function extractMySlabsPrice(
+  html: string
+) {
+  const structured =
+    getMetaContent(
+      html,
+      "product:price:amount"
+    ) ||
+    getMetaContent(
+      html,
+      "og:price:amount"
+    );
+
+  if (structured) {
+    return {
+      price:
+        structured.replace(
+          /,/g,
+          ""
+        ),
+
+      currency:
+        getMetaContent(
+          html,
+          "product:price:currency"
+        ) ||
+        getMetaContent(
+          html,
+          "og:price:currency"
+        ) ||
+        "USD",
+    };
+  }
+
+  const patterns =
+    [
+      /\b(?:asking\s+price|sale\s+price|price)\s*[:\-]?\s*\$([\d,]+(?:\.\d{1,2})?)/i,
+
+      /\b(?:sold\s+for|sold)\s*[:\-]?\s*\$([\d,]+(?:\.\d{1,2})?)/i,
+
+      /\$\s*([\d,]+(?:\.\d{1,2})?)/,
+    ];
+
+  for (
+    const pattern of patterns
+  ) {
+    const match =
+      html.match(pattern);
+
+    if (match?.[1]) {
+      return {
+        price:
+          match[1].replace(
+            /,/g,
+            ""
+          ),
+
+        currency:
+          "USD",
+      };
+    }
+  }
+
+  return {
+    price: "",
+    currency: "",
+  };
+}
+
+function extractMySlabsSoldDate(
+  html: string
+) {
+  /*
+   * MySlabs displays completed-sale dates as:
+   *
+   * Mar 12, 2022
+   *
+   * Search the visible page text rather than scripts/styles
+   * so unrelated JavaScript dates are not selected.
+   */
+  const text =
+    stripMySlabsHtml(html);
+
+  const monthPattern =
+    "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
+
+  /*
+   * Prefer a date appearing shortly after SOLD.
+   * Example:
+   *
+   * $2,225 / SOLD
+   * Mar 12, 2022
+   */
+  const soldMatch =
+    text.match(
+      new RegExp(
+        `\\bSOLD\\b[\\s\\S]{0,150}?(${monthPattern}\\s+\\d{1,2},\\s+\\d{4})`,
+        "i"
+      )
+    );
+
+  if (soldMatch?.[1]) {
+    return soldMatch[1];
+  }
+
+  /*
+   * Fallback for MySlabs pages where the date is visible
+   * but SOLD is separated from it by additional markup/text.
+   */
+  const dateMatch =
+    text.match(
+      new RegExp(
+        `\\b(${monthPattern}\\s+\\d{1,2},\\s+\\d{4})\\b`,
+        "i"
+      )
+    );
+
+  return dateMatch?.[1] || "";
+}
+
+function extractMySlabsDescription(
+  html: string
+) {
+  return stripMySlabsHtml(
+    getMetaContent(
+      html,
+      "description"
+    ) ||
+      getMetaContent(
+        html,
+        "og:description"
+      )
+  );
+}
+
+async function importMySlabsListing(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const listingId =
+    extractMySlabsListingId(
+      sourceUrl
+    );
+
+  const response =
+    await fetch(
+      sourceUrl,
+      {
+        method:
+          "GET",
+
+        redirect:
+          "follow",
+
+        cache:
+          "no-store",
+
+        headers: {
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+
+          "Accept-Language":
+            "en-US,en;q=0.9",
+
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
+        },
+      }
+    );
+
+  const html =
+    await response.text();
+
+  if (
+    !response.ok ||
+    !html ||
+    html.length < 500
+  ) {
+    throw new Error(
+      `MySlabs import failed with status ${response.status}.`
+    );
+  }
+
+  const finalUrl =
+    response.url ||
+    sourceUrl;
+
+  const rawTitle =
+    getMetaContent(
+      html,
+      "og:title"
+    ) ||
+    getMetaContent(
+      html,
+      "twitter:title"
+    ) ||
+    decodeHtml(
+      html.match(
+        /<title[^>]*>([\s\S]*?)<\/title>/i
+      )?.[1] ||
+        ""
+    );
+
+  const title =
+    cleanMySlabsTitle(
+      rawTitle
+    );
+
+  const images =
+    extractMySlabsImages(
+      html,
+      finalUrl
+    );
+
+  const price =
+    extractMySlabsPrice(
+      html
+    );
+
+  const description =
+    extractMySlabsDescription(
+      html
+    );
+
+  /*
+   * IMPORTANT:
+   *
+   * The MySlabs page contains generic CertNumber
+   * JavaScript, but the actual listing-specific
+   * BGS cert was not present as searchable text
+   * in the Larry Bird test listing.
+   *
+   * Do NOT OCR or guess the cert number.
+   */
+  const certNumber = "";
+
+  if (
+    !title &&
+    images.length === 0
+  ) {
+    throw new Error(
+      "MySlabs did not expose the listing title or card images."
+    );
+  }
+
+  return {
+    ok: true,
+
+    marketplace:
+      "myslabs",
+
+    sourceUrl:
+      getCanonicalUrl(
+        html,
+        finalUrl
+      ) ||
+      finalUrl,
+
+    listingId,
+
+    title,
+
+    seller:
+      "MySlabs",
+
+    price:
+      price.price,
+
+    currency:
+      price.currency ||
+      "USD",
+
+    endDate:
+  extractMySlabsSoldDate(
+    html
+  ),
+
+    certNumber,
+
+    description,
+
+    frontImage:
+      images[0] ||
+      "",
+
+    additionalImages:
+      images.slice(1),
+
+    aspects: {},
+  };
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -4619,11 +5228,23 @@ if (
 }
 
   if (isGoldinHostname(hostname)) {
-    return addNormalizedCardFields(
-      await importGoldinAuction(
-        cleanedUrl
-      )
-    );
+  return addNormalizedCardFields(
+    await importGoldinAuction(
+      cleanedUrl
+    )
+  );
+}
+
+if (
+  isMySlabsHostname(
+    hostname
+  )
+) {
+  return addNormalizedCardFields(
+    await importMySlabsListing(
+      cleanedUrl
+    )
+  );
 }
 
 if (
@@ -4678,6 +5299,6 @@ function isAltHostname(
 }
 
 throw new Error(
-  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, PSA, Goldin, and Fanatics Collect are currently available."
+  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, PSA, Goldin, Fanatics Collect, and MySlabs are currently available."
 );
 }

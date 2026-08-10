@@ -21,6 +21,7 @@ const ALLOWED_HOSTS = [
   "alt-images.b-cdn.net",
   "onlyalt.imgix.net",
   "onlyalt-images.s3.us-east-2.amazonaws.com",
+  "cdn.myslabs.com",
 ];
 
 function isAllowedHost(
@@ -111,6 +112,12 @@ function refererForHost(
   ) {
     return "https://alt.xyz/";
   }
+
+  if (
+  normalized === "cdn.myslabs.com"
+) {
+  return "https://myslabs.com/";
+}
 
   return "https://goldin.co/";
 }
