@@ -22,6 +22,7 @@ const ALLOWED_HOSTS = [
   "onlyalt.imgix.net",
   "onlyalt-images.s3.us-east-2.amazonaws.com",
   "cdn.myslabs.com",
+  "img.auctiva.com",
 ];
 
 function isAllowedHost(
@@ -45,6 +46,7 @@ function refererForHost(
   const normalized =
     hostname.toLowerCase();
 
+  // X / Twitter
   if (
     normalized === "pbs.twimg.com" ||
     normalized.endsWith(
@@ -54,6 +56,7 @@ function refererForHost(
     return "https://x.com/";
   }
 
+  // Instagram / Facebook CDN
   if (
     normalized ===
       "cdninstagram.com" ||
@@ -68,6 +71,7 @@ function refererForHost(
     return "https://www.instagram.com/";
   }
 
+  // eBay
   if (
     normalized === "ebayimg.com" ||
     normalized.endsWith(
@@ -80,6 +84,15 @@ function refererForHost(
     return "https://www.ebay.com/";
   }
 
+  // PSA image CDN
+  if (
+    normalized ===
+    "d1htnxwo4o0jhw.cloudfront.net"
+  ) {
+    return "https://www.psacard.com/";
+  }
+
+  // Fanatics Collect
   if (
     normalized ===
       "fanaticscollect.com" ||
@@ -87,15 +100,10 @@ function refererForHost(
       ".fanaticscollect.com"
     )
   ) {
-      if (
-    normalized ===
-      "d1htnxwo4o0jhw.cloudfront.net"
-  ) {
-    return "https://www.psacard.com/";
-  }
     return "https://www.fanaticscollect.com/";
   }
 
+  // ALT
   if (
     normalized ===
       "alt-images.b-cdn.net" ||
@@ -113,12 +121,26 @@ function refererForHost(
     return "https://alt.xyz/";
   }
 
+  // MySlabs
   if (
-  normalized === "cdn.myslabs.com"
-) {
-  return "https://myslabs.com/";
-}
+    normalized ===
+    "cdn.myslabs.com"
+  ) {
+    return "https://myslabs.com/";
+  }
 
+  // Blowout Forums / Auctiva images
+  if (
+    normalized ===
+      "img.auctiva.com" ||
+    normalized.endsWith(
+      ".img.auctiva.com"
+    )
+  ) {
+    return "https://www.blowoutforums.com/";
+  }
+
+  // Default / Goldin
   return "https://goldin.co/";
 }
 
@@ -263,6 +285,7 @@ export async function POST(
       } else {
         throw new Error(
           `The imported URL did not return a recognized image.
+
 Content-Type: ${
             contentType || "unknown"
           }

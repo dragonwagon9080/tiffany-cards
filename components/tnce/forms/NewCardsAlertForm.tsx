@@ -36,6 +36,7 @@ type AuctionImportResult = {
   seller?: string;
   price?: string;
   currency?: string;
+  endDate?: string;
   certNumber?: string;
   grade?: string;
   serialNumber?: string;
@@ -51,6 +52,36 @@ type AuctionImportResult = {
 
 function clean(value: unknown) {
   return String(value || "").trim();
+}
+
+function dateInputFromValue(
+  value: unknown
+) {
+  const text = clean(value);
+
+  if (!text) {
+    return "";
+  }
+
+  const directMatch = text.match(
+    /^(\d{4})-(\d{2})-(\d{2})/
+  );
+
+  if (directMatch) {
+    return `${directMatch[1]}-${directMatch[2]}-${directMatch[3]}`;
+  }
+
+  const parsed = new Date(text);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const year = parsed.getUTCFullYear();
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function activeValue(activeObject: any, keys: string[]) {
@@ -225,6 +256,11 @@ const [
 ] = useState("");
 
 const [
+  pageHtml,
+  setPageHtml,
+] = useState("");
+
+const [
   showPageTextFallback,
   setShowPageTextFallback,
 ] = useState(false);
@@ -241,6 +277,9 @@ const [
   const [importedListing, setImportedListing] =
     useState<AuctionImportResult | null>(null);
 
+  const [saleEventDate, setSaleEventDate] = useState("");
+  const [saleEventDateTouched, setSaleEventDateTouched] = useState(false);
+
   const [currentSourceUrls, setCurrentSourceUrls] = useState<string[]>([]);
 
   const [
@@ -251,6 +290,11 @@ const [
 const [
   previousPageText,
   setPreviousPageText,
+] = useState("");
+
+const [
+  previousPageHtml,
+  setPreviousPageHtml,
 ] = useState("");
 
 const [
@@ -322,6 +366,7 @@ setPreviousSourceUrl("");
 setPreviousSourceUrls([]);
 setPreviousAuctionSourceUrl("");
 setPreviousPageText("");
+setPreviousPageHtml("");
 setShowPreviousPageTextFallback(false);
 setPreviousFrontImage("");
 setPreviousBackImage("");
@@ -335,6 +380,8 @@ setPreviousUploadedImages([]);
     setOtherImages("");
     setUploadedImages([]);
     setCurrentSourceUrls([]);
+    setSaleEventDate("");
+    setSaleEventDateTouched(false);
   }, [activeObject, isSimilarCard]);
 
 async function importAuctionListing() {
@@ -380,12 +427,13 @@ async function importAuctionListing() {
           },
 
           body: JSON.stringify({
-            url: copiedPageText
-              ? ""
-              : sourceUrl,
+            url: sourceUrl,
 
             pageText:
               copiedPageText,
+
+            pageHtml:
+              pageHtml,
           }),
         }
       );
@@ -563,9 +611,22 @@ async function importAuctionListing() {
       );
     }
 
+    const detectedGrades =
+      Array.isArray(
+        result.aspects?.["Detected Grades"]
+      )
+        ? result.aspects!["Detected Grades"]
+            .map(clean)
+            .filter(Boolean)
+        : [];
+
     const importedGrade =
       parsedListing.grade ||
-      result.grade;
+      result.grade ||
+      detectedGrades[
+        detectedGrades.length - 1
+      ] ||
+      "";
 
     if (
       importedGrade &&
@@ -573,6 +634,22 @@ async function importAuctionListing() {
     ) {
       setGrade(
         importedGrade
+      );
+    }
+
+    /*
+     * Blowout alteration posts often document
+     * an earlier grade and a later/current grade
+     * in the same post. When multiple grades are
+     * detected, use the first as Previous Grade
+     * and the last as Current Grade.
+     */
+    if (
+      detectedGrades.length > 1 &&
+      !previousGrade.trim()
+    ) {
+      setPreviousGrade(
+        detectedGrades[0]
       );
     }
 
@@ -611,6 +688,20 @@ async function importAuctionListing() {
       );
     }
 
+    const importedSaleDate =
+      dateInputFromValue(
+        result.endDate
+      );
+
+    if (
+      importedSaleDate &&
+      !saleEventDateTouched
+    ) {
+      setSaleEventDate(
+        importedSaleDate
+      );
+    }
+
     const resolvedSourceUrl =
   clean(
     copiedPageText
@@ -646,6 +737,7 @@ async function importAuctionListing() {
 );
 
 setPageText("");
+setPageHtml("");
 
 setShowPageTextFallback(
   false
@@ -716,12 +808,13 @@ setShowPageTextFallback(
           },
 
           body: JSON.stringify({
-            url: copiedPageText
-              ? ""
-              : sourceUrl,
+            url: sourceUrl,
 
             pageText:
               copiedPageText,
+
+            pageHtml:
+              previousPageHtml,
           }),
         }
       );
@@ -829,9 +922,20 @@ setShowPageTextFallback(
       }
     }
 
+    const detectedGrades =
+      Array.isArray(
+        result.aspects?.["Detected Grades"]
+      )
+        ? result.aspects!["Detected Grades"]
+            .map(clean)
+            .filter(Boolean)
+        : [];
+
     const importedGrade =
       parsedListing.grade ||
-      result.grade;
+      result.grade ||
+      detectedGrades[0] ||
+      "";
 
     if (
       importedGrade &&
@@ -903,6 +1007,7 @@ setShowPageTextFallback(
     );
 
     setPreviousPageText("");
+    setPreviousPageHtml("");
 
     setShowPreviousPageTextFallback(
       false
@@ -1158,6 +1263,7 @@ if (!isSimilarCard) {
           Cert_Number: certNumber.trim(),
           Status: status.trim(),
           Description: description.trim(),
+          Sale_Event_Date: saleEventDate.trim(),
           Previous_Grade: isSimilarCard
   ? ""
   : previousGrade.trim(),
@@ -1330,6 +1436,7 @@ previousUploadedImages: isSimilarCard
         );
 
         setPageText("");
+        setPageHtml("");
         setShowPageTextFallback(
           false
         );
@@ -1401,6 +1508,21 @@ previousUploadedImages: isSimilarCard
               null
             );
           }}
+          onPaste={(event) => {
+            const clipboardHtml =
+              event.clipboardData.getData(
+                "text/html"
+              );
+
+            setPageHtml(
+              clipboardHtml || ""
+            );
+
+            setImportError("");
+            setImportedListing(
+              null
+            );
+          }}
           className="min-h-40 rounded-lg border border-neutral-700 bg-black px-3 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
           placeholder="Open the webpage, press Ctrl+A, then Ctrl+C, and paste the copied page text here."
         />
@@ -1438,6 +1560,27 @@ previousUploadedImages: isSimilarCard
               </p>
             </div>
           )}
+
+
+          <label className="mt-4 grid gap-1.5">
+            <span className="text-xs font-black uppercase tracking-wide text-[#f1d36b]">
+              Sale / Event Date
+            </span>
+
+            <input
+              type="date"
+              value={saleEventDate}
+              onChange={(event) => {
+                setSaleEventDate(event.target.value);
+                setSaleEventDateTouched(true);
+              }}
+              className="h-11 rounded-lg border border-neutral-700 bg-black px-3 text-sm text-white outline-none transition focus:border-[#d4af37]"
+            />
+
+            <span className="text-xs text-neutral-500">
+              Imported from the source when available. You can correct it before submitting.
+            </span>
+          </label>
         </section>
 
         <ProjectFields
@@ -1481,6 +1624,7 @@ previousUploadedImages: isSimilarCard
           setGrade={setGrade}
           certNumber={certNumber}
           setCertNumber={setCertNumber}
+          hideCardsAlertGradeCert
         />
 
         <section className="rounded-xl border border-red-500/40 bg-red-950/20 p-4">
@@ -1565,6 +1709,7 @@ previousUploadedImages: isSimilarCard
         );
 
         setPreviousPageText("");
+        setPreviousPageHtml("");
 
         setShowPreviousPageTextFallback(
           false
@@ -1635,6 +1780,24 @@ previousUploadedImages: isSimilarCard
           onChange={(event) => {
             setPreviousPageText(
               event.target.value
+            );
+
+            setPreviousImportError(
+              ""
+            );
+
+            setPreviousImportedListing(
+              null
+            );
+          }}
+          onPaste={(event) => {
+            const clipboardHtml =
+              event.clipboardData.getData(
+                "text/html"
+              );
+
+            setPreviousPageHtml(
+              clipboardHtml || ""
             );
 
             setPreviousImportError(

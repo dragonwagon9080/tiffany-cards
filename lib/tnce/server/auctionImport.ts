@@ -5128,6 +5128,735 @@ async function importMySlabsListing(
   };
 }
 
+/* =========================================================
+BLOWOUT FORUMS
+========================================================= */
+
+function extractBlowoutPostId(
+  sourceUrl: string
+) {
+  const parsed =
+    new URL(sourceUrl);
+
+  /*
+   * Individual post:
+   * showpost.php?p=17061022
+   *
+   * Thread URL:
+   * showthread.php?p=17061022
+   */
+  const queryPost =
+    clean(
+      parsed.searchParams.get(
+        "p"
+      )
+    );
+
+  if (
+    /^\d+$/.test(queryPost)
+  ) {
+    return queryPost;
+  }
+
+  /*
+   * Also support:
+   * #post17061022
+   */
+  const hashMatch =
+    parsed.hash.match(
+      /post(\d+)/i
+    );
+
+  if (hashMatch?.[1]) {
+    return hashMatch[1];
+  }
+
+  throw new Error(
+    "Unable to determine the Blowout post ID from this URL."
+  );
+}
+
+function extractBlowoutMessageHtml(
+  html: string,
+  postId: string
+) {
+  /*
+   * First locate the post ID anywhere in the
+   * server-returned HTML.
+   */
+  const postIdIndex =
+    html.indexOf(postId);
+
+  /*
+   * Look for the normal vBulletin message ID,
+   * allowing whitespace around "=" and either
+   * quote style.
+   */
+  const markerRegex =
+    new RegExp(
+      `id\\s*=\\s*["']post_message_${escapeRegExp(
+        postId
+      )}["']`,
+      "i"
+    );
+
+  const markerMatch =
+    markerRegex.exec(html);
+
+  if (!markerMatch) {
+    /*
+     * TEMPORARY DIAGNOSTIC:
+     *
+     * Show us the actual HTML surrounding the
+     * post ID returned to the Next.js server.
+     */
+    const nearby =
+      postIdIndex >= 0
+        ? html.slice(
+            Math.max(
+              0,
+              postIdIndex - 500
+            ),
+            Math.min(
+              html.length,
+              postIdIndex + 1500
+            )
+          )
+        : html.slice(
+            0,
+            2000
+          );
+
+    throw new Error(
+      `Blowout post container could not be located.
+
+Post ID: ${postId}
+HTML length: ${html.length}
+Contains post ID: ${
+        postIdIndex >= 0
+      }
+Contains post_message_: ${html.includes(
+        "post_message_"
+      )}
+
+SERVER HTML:
+${nearby}`
+    );
+  }
+
+  const markerIndex =
+    markerMatch.index;
+
+  const contentStart =
+    html.indexOf(
+      ">",
+      markerIndex
+    );
+
+  if (contentStart < 0) {
+    throw new Error(
+      "Blowout post message opening tag could not be parsed."
+    );
+  }
+
+  /*
+   * vBulletin ends the message area with:
+   *
+   * <!-- / message -->
+   *
+   * Allow whitespace differences in that
+   * comment instead of requiring one exact
+   * literal string.
+   */
+  const afterStart =
+    html.slice(
+      contentStart + 1
+    );
+
+  const endMatch =
+    /<!--\s*\/\s*message\s*-->/i.exec(
+      afterStart
+    );
+
+  if (!endMatch) {
+    throw new Error(
+      `Blowout post message end marker could not be located.
+
+Post ID: ${postId}
+HTML length: ${html.length}
+
+SERVER HTML:
+${afterStart.slice(0, 2000)}`
+    );
+  }
+
+  const contentEnd =
+    contentStart +
+    1 +
+    endMatch.index;
+
+  let messageHtml =
+    html
+      .slice(
+        contentStart + 1,
+        contentEnd
+      )
+      .trim();
+
+  /*
+   * Remove the closing tag belonging to the
+   * post_message container itself.
+   */
+  messageHtml =
+    messageHtml.replace(
+      /<\/div>\s*$/i,
+      ""
+    );
+
+  return messageHtml.trim();
+}
+
+function stripBlowoutPostHtml(
+  value: string
+) {
+  return decodeHtml(
+    value
+      /*
+       * Preserve the author's intended
+       * line breaks before stripping tags.
+       */
+      .replace(
+        /<br\s*\/?>/gi,
+        "\n"
+      )
+      .replace(
+        /<\/p>/gi,
+        "\n"
+      )
+      .replace(
+        /<\/div>/gi,
+        "\n"
+      )
+      .replace(
+        /<img\b[^>]*>/gi,
+        ""
+      )
+      .replace(
+        /<[^>]+>/g,
+        ""
+      )
+      .replace(
+        /\r/g,
+        ""
+      )
+      .replace(
+        /[ \t]+\n/g,
+        "\n"
+      )
+      .replace(
+        /\n[ \t]+/g,
+        "\n"
+      )
+      .replace(
+        /\n{3,}/g,
+        "\n\n"
+      )
+      .trim()
+  );
+}
+
+function extractBlowoutUsername(
+  html: string,
+  postId: string
+) {
+  const marker =
+    `post_message_${postId}`;
+
+  const index =
+    html.indexOf(marker);
+
+  if (index < 0) {
+    return "";
+  }
+
+  /*
+   * Username appears before the message body
+   * in the individual post container.
+   */
+  const before =
+    html.slice(
+      Math.max(
+        0,
+        index - 12000
+      ),
+      index
+    );
+
+  const matches =
+    Array.from(
+      before.matchAll(
+        /<a[^>]+class=["'][^"']*\bbigusername\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi
+      )
+    );
+
+  const last =
+    matches[
+      matches.length - 1
+    ];
+
+  return last?.[1]
+    ? stripBlowoutPostHtml(
+        last[1]
+      )
+    : "";
+}
+
+function extractBlowoutPostDate(
+  html: string,
+  postId: string
+) {
+  const marker =
+    `post_message_${postId}`;
+
+  const index =
+    html.indexOf(marker);
+
+  if (index < 0) {
+    return "";
+  }
+
+  /*
+   * The post header is immediately before
+   * the message body.
+   *
+   * Example:
+   * 03-02-2021, 01:04 PM
+   */
+  const before =
+    html.slice(
+      Math.max(
+        0,
+        index - 12000
+      ),
+      index
+    );
+
+  const matches =
+    Array.from(
+      before.matchAll(
+        /\b(\d{1,2}-\d{1,2}-\d{4})(?:,\s*\d{1,2}:\d{2}\s*(?:AM|PM))?/gi
+      )
+    );
+
+  const last =
+    matches[
+      matches.length - 1
+    ];
+
+  return last?.[1] || "";
+}
+
+function extractBlowoutImages(
+  messageHtml: string,
+  sourceUrl: string
+) {
+  const candidates: string[] = [];
+
+  /*
+   * Prefer full-size images linked around
+   * thumbnails when Blowout users use them.
+   */
+  for (
+    const match of messageHtml.matchAll(
+      /<a[^>]+href=["']([^"']+\.(?:jpe?g|png|webp|gif)(?:\?[^"']*)?)["'][^>]*>[\s\S]*?<img\b/gi
+    )
+  ) {
+    if (match[1]) {
+      candidates.push(
+        match[1]
+      );
+    }
+  }
+
+  /*
+   * Normal embedded post images.
+   */
+  for (
+    const match of messageHtml.matchAll(
+      /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+    )
+  ) {
+    if (match[1]) {
+      candidates.push(
+        match[1]
+      );
+    }
+  }
+
+  return uniqueUrls(
+    candidates,
+    sourceUrl
+  ).filter(
+    (url) =>
+      !/\/(?:images|image)\/(?:smilies|avatars|icons)\//i.test(
+        url
+      ) &&
+      !/smilie|avatar|signature|favicon/i.test(
+        url
+      )
+  );
+}
+
+function detectBlowoutCertNumbers(
+  text: string
+) {
+  const certs =
+    new Set<string>();
+
+  const patterns = [
+    /\b(?:PSA|BGS|BECKETT|SGC|CGC|CSG)\s+(?:CERT(?:IFICATION)?\s*)?#?\s*(\d{6,12})\b/gi,
+
+    /\bCERT(?:IFICATION)?\s*#?\s*(\d{6,12})\b/gi,
+  ];
+
+  for (
+    const pattern of patterns
+  ) {
+    for (
+      const match of text.matchAll(
+        pattern
+      )
+    ) {
+      if (match[1]) {
+        certs.add(
+          match[1]
+        );
+      }
+    }
+  }
+
+  return Array.from(certs);
+}
+
+function detectBlowoutGrades(
+  text: string
+) {
+  const grades =
+    new Set<string>();
+
+  const pattern =
+    /\b(PSA|BGS|BECKETT|SGC|CGC|CSG)\s+(AUTHENTIC(?:\s+ALTERED)?|10|9\.5|9|8\.5|8|7\.5|7|6\.5|6|5\.5|5|4\.5|4|3\.5|3|2\.5|2|1\.5|1)\b/gi;
+
+  for (
+    const match of text.matchAll(
+      pattern
+    )
+  ) {
+    const company =
+      String(
+        match[1] || ""
+      )
+        .toUpperCase()
+        .replace(
+          "BECKETT",
+          "BGS"
+        );
+
+    const grade =
+      clean(match[2]);
+
+    if (
+      company &&
+      grade
+    ) {
+      grades.add(
+        `${company} ${grade}`
+      );
+    }
+  }
+
+  return Array.from(grades);
+}
+
+function chooseBlowoutCardTitle(
+  postText: string
+) {
+  const lines =
+    postText
+      .split("\n")
+      .map((line) =>
+        line.trim()
+      )
+      .filter(Boolean);
+
+  /*
+   * Strongest card-title signal:
+   * year + descriptive text + card number.
+   *
+   * Example:
+   * 1949 Bowman Bob Lemon #238
+   */
+  const yearCardLine =
+    lines.find(
+      (line) =>
+        /\b(?:18|19|20)\d{2}(?:-\d{2})?\b/.test(
+          line
+        ) &&
+        /#\s*[A-Za-z0-9-]+/.test(
+          line
+        )
+    );
+
+  if (yearCardLine) {
+    return yearCardLine;
+  }
+
+  /*
+   * Otherwise prefer a year-containing line
+   * that isn't simply a cert or price note.
+   */
+  const yearLine =
+    lines.find(
+      (line) =>
+        /\b(?:18|19|20)\d{2}(?:-\d{2})?\b/.test(
+          line
+        ) &&
+        !/\bcert\b/i.test(
+          line
+        )
+    );
+
+  if (yearLine) {
+    return yearLine;
+  }
+
+  /*
+   * Last fallback: first meaningful line that
+   * isn't only a cert/value/registry statement.
+   */
+  return (
+    lines.find(
+      (line) =>
+        !/^(?:PSA|BGS|SGC|CGC|CSG)?\s*cert\b/i.test(
+          line
+        ) &&
+        !/^value\s+(?:gain|increase|change)/i.test(
+          line
+        ) &&
+        !/^PSA\s+Set\s+Registry/i.test(
+          line
+        )
+    ) ||
+    lines[0] ||
+    "Blowout Forums Post"
+  );
+}
+
+async function importBlowoutPost(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const postId =
+    extractBlowoutPostId(
+      sourceUrl
+    );
+
+  const response =
+    await fetch(
+      sourceUrl,
+      {
+        method: "GET",
+        redirect: "follow",
+        cache: "no-store",
+
+        headers: {
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+
+          "Accept-Language":
+            "en-US,en;q=0.9",
+
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
+        },
+      }
+    );
+
+  const html =
+    await response.text();
+
+  /*
+   * Blowout Forums is protected by
+   * Imperva / Incapsula.
+   *
+   * Browser visits work, but server-side fetches
+   * may receive an anti-bot page instead of the
+   * actual forum post.
+   */
+  const blockedByImperva =
+    /_Incapsula_Resource/i.test(
+      html
+    ) ||
+    /Incapsula incident ID/i.test(
+      html
+    ) ||
+    /Request unsuccessful/i.test(
+      html
+    ) ||
+    /NOINDEX,\s*NOFOLLOW/i.test(
+      html
+    ) &&
+      html.length < 5000;
+
+  if (blockedByImperva) {
+    throw new Error(
+      "Blowout Forums blocks automated imports. Open the post in your browser, copy the webpage source/text, and paste it below."
+    );
+  }
+
+  if (
+    !response.ok ||
+    !html ||
+    html.length < 500
+  ) {
+    throw new Error(
+      `Blowout Forums import failed with status ${response.status}.`
+    );
+  }
+
+  const messageHtml =
+    extractBlowoutMessageHtml(
+      html,
+      postId
+    );
+
+  const postText =
+    stripBlowoutPostHtml(
+      messageHtml
+    );
+
+  const images =
+    extractBlowoutImages(
+      messageHtml,
+      response.url ||
+        sourceUrl
+    );
+
+  const username =
+    extractBlowoutUsername(
+      html,
+      postId
+    );
+
+  const postDate =
+    extractBlowoutPostDate(
+      html,
+      postId
+    );
+
+  const certNumbers =
+    detectBlowoutCertNumbers(
+      postText
+    );
+
+  const grades =
+    detectBlowoutGrades(
+      postText
+    );
+
+  const title =
+    chooseBlowoutCardTitle(
+      postText
+    );
+
+  if (
+    !postText &&
+    images.length === 0
+  ) {
+    throw new Error(
+      "Blowout Forums post was found, but no post content or images could be extracted."
+    );
+  }
+
+  return {
+    ok: true,
+
+    marketplace:
+      "blowout",
+
+    sourceUrl:
+      response.url ||
+      sourceUrl,
+
+    listingId:
+      postId,
+
+    title,
+
+    seller:
+      username ||
+      "Blowout Forums",
+
+    price:
+      "",
+
+    currency:
+      "",
+
+    /*
+     * Blowout post date =
+     * Sale / Event Date.
+     */
+    endDate:
+      postDate,
+
+    /*
+     * If exactly one cert/grade is detected,
+     * it is safe to populate automatically.
+     *
+     * Multiple states remain available in
+     * aspects and are NOT arbitrarily chosen.
+     */
+    certNumber:
+      certNumbers.length === 1
+        ? certNumbers[0]
+        : "",
+
+    grade:
+      grades.length === 1
+        ? grades[0]
+        : "",
+
+    description:
+      postText,
+
+    frontImage:
+      images[0] || "",
+
+    additionalImages:
+      images.slice(1),
+
+    aspects: {
+      "Blowout Post ID": [
+        postId,
+      ],
+
+      ...(certNumbers.length
+        ? {
+            "Detected Cert Numbers":
+              certNumbers,
+          }
+        : {}),
+
+      ...(grades.length
+        ? {
+            "Detected Grades":
+              grades,
+          }
+        : {}),
+    },
+  };
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -5248,6 +5977,29 @@ if (
 }
 
 if (
+  isBlowoutHostname(
+    hostname
+  )
+) {
+  return addNormalizedCardFields(
+    await importBlowoutPost(
+      cleanedUrl
+    )
+  );
+}
+
+function isBlowoutHostname(
+  hostname: string
+) {
+  return (
+    hostname === "blowoutforums.com" ||
+    hostname.endsWith(
+      ".blowoutforums.com"
+    )
+  );
+}
+
+if (
   hostname === "fanaticscollect.com" ||
   hostname.endsWith(".fanaticscollect.com") ||
   hostname === "pwccmarketplace.com" ||
@@ -5299,6 +6051,6 @@ function isAltHostname(
 }
 
 throw new Error(
-  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, PSA, Goldin, Fanatics Collect, and MySlabs are currently available."
+  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, PSA, Goldin, Fanatics Collect, MySlabs, and Blowout Forums are currently available."
 );
 }

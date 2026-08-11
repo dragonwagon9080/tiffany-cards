@@ -31,9 +31,15 @@ export async function POST(
         body?.pageText || ""
       ).trim();
 
+    const pageHtml =
+      String(
+        body?.pageHtml || ""
+      ).trim();
+
     if (
       !url &&
-      !pageText
+      !pageText &&
+      !pageHtml
     ) {
       return NextResponse.json(
         {
@@ -48,9 +54,12 @@ export async function POST(
     }
 
     const result =
-      pageText
+      pageText ||
+      pageHtml
         ? await importPageText(
-            pageText
+            pageText,
+            url,
+            pageHtml
           )
         : await importAuction(
             url

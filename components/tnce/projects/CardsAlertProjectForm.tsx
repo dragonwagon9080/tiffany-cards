@@ -38,6 +38,8 @@ type Props = {
 
   certNumber?: string;
   setCertNumber?: (value: string) => void;
+
+  hideGradeCert?: boolean;
 };
 
 function uniqueOptions(values: string[]) {
@@ -196,6 +198,8 @@ export default function CardsAlertProjectForm({
 
   certNumber,
   setCertNumber,
+
+  hideGradeCert = false,
 }: Props) {
   return (
     <div className="grid gap-6">
@@ -332,35 +336,37 @@ export default function CardsAlertProjectForm({
           />
         </label>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm">
-            Grade
-            <input
-              value={grade ?? ""}
-              onChange={(event) =>
-                setGrade?.(
-                  event.target.value
-                )
-              }
-              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-              placeholder="PSA 9, BGS 9.5, Raw, etc."
-            />
-          </label>
+        {!hideGradeCert && (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1 text-sm">
+              Grade
+              <input
+                value={grade ?? ""}
+                onChange={(event) =>
+                  setGrade?.(
+                    event.target.value
+                  )
+                }
+                className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+                placeholder="PSA 9, BGS 9.5, Raw, etc."
+              />
+            </label>
 
-          <label className="grid gap-1 text-sm">
-            Cert #
-            <input
-              value={certNumber ?? ""}
-              onChange={(event) =>
-                setCertNumber?.(
-                  event.target.value
-                )
-              }
-              className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
-              placeholder="Certification number"
-            />
-          </label>
-        </div>
+            <label className="grid gap-1 text-sm">
+              Cert #
+              <input
+                value={certNumber ?? ""}
+                onChange={(event) =>
+                  setCertNumber?.(
+                    event.target.value
+                  )
+                }
+                className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
+                placeholder="Certification number"
+              />
+            </label>
+          </div>
+        )}
       </section>
     </div>
   );

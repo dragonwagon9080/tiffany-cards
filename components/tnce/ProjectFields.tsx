@@ -52,6 +52,13 @@ type Props = {
   setGrade: (value: string) => void;
   certNumber: string;
   setCertNumber: (value: string) => void;
+
+  /*
+   * Add New Card / Report Similar Card have their
+   * own Current Card Condition section. Hide the
+   * duplicate Grade / Cert fields inside Card Identity.
+   */
+  hideCardsAlertGradeCert?: boolean;
 };
 
 export default function ProjectFields({
@@ -59,7 +66,7 @@ export default function ProjectFields({
   activeObject,
   cardsAlertFields,
   sports = [],
-    reasons = [],
+  reasons = [],
   cardTitle,
   setCardTitle,
   serialNumber,
@@ -70,6 +77,7 @@ export default function ProjectFields({
   setGrade,
   certNumber,
   setCertNumber,
+  hideCardsAlertGradeCert = false,
 }: Props) {
   if (project === "rpa-tracker") {
     return (
@@ -92,42 +100,32 @@ export default function ProjectFields({
   if (project === "cards-alert" && cardsAlertFields) {
     return (
       <CardsAlertProjectForm
-  reasons={reasons}
-  sports={sports}
-
-  status={cardsAlertFields.status}
-  setStatus={cardsAlertFields.setStatus}
-
-  cardYear={cardsAlertFields.cardYear}
-  setCardYear={cardsAlertFields.setCardYear}
-
-  sport={cardsAlertFields.sport}
-  setSport={cardsAlertFields.setSport}
-
-  firstName={cardsAlertFields.firstName}
-  setFirstName={cardsAlertFields.setFirstName}
-
-  lastName={cardsAlertFields.lastName}
-  setLastName={cardsAlertFields.setLastName}
-
-  cardNumber={cardsAlertFields.cardNumber}
-  setCardNumber={cardsAlertFields.setCardNumber}
-
-  parallel={cardsAlertFields.parallel}
-  setParallel={cardsAlertFields.setParallel}
-
-  serialNumber={serialNumber}
-  setSerialNumber={setSerialNumber}
-
-  brand={cardsAlertFields.brand}
-  setBrand={cardsAlertFields.setBrand}
-
-  grade={grade}
-  setGrade={setGrade}
-
-  certNumber={certNumber}
-  setCertNumber={setCertNumber}
-/>
+        reasons={reasons}
+        sports={sports}
+        status={cardsAlertFields.status}
+        setStatus={cardsAlertFields.setStatus}
+        cardYear={cardsAlertFields.cardYear}
+        setCardYear={cardsAlertFields.setCardYear}
+        sport={cardsAlertFields.sport}
+        setSport={cardsAlertFields.setSport}
+        firstName={cardsAlertFields.firstName}
+        setFirstName={cardsAlertFields.setFirstName}
+        lastName={cardsAlertFields.lastName}
+        setLastName={cardsAlertFields.setLastName}
+        cardNumber={cardsAlertFields.cardNumber}
+        setCardNumber={cardsAlertFields.setCardNumber}
+        parallel={cardsAlertFields.parallel}
+        setParallel={cardsAlertFields.setParallel}
+        serialNumber={serialNumber}
+        setSerialNumber={setSerialNumber}
+        brand={cardsAlertFields.brand}
+        setBrand={cardsAlertFields.setBrand}
+        grade={grade}
+        setGrade={setGrade}
+        certNumber={certNumber}
+        setCertNumber={setCertNumber}
+        hideGradeCert={hideCardsAlertGradeCert}
+      />
     );
   }
 

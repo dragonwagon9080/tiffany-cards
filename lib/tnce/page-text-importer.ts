@@ -893,6 +893,934 @@ aspects: {
   });
 }
 
+
+function decodeHtmlEntities(
+  value: string
+) {
+  return String(value || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_match, code) =>
+      String.fromCharCode(Number(code))
+    );
+}
+
+function stripBlowoutHtml(
+  value: string
+) {
+  return decodeHtmlEntities(
+    String(value || "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<\/div>/gi, "\n")
+      .replace(/<img\b[^>]*>/gi, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\r/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+}
+
+function extractBlowoutPostId(
+  originalUrl: string,
+  html: string
+) {
+  const fromUrl =
+    clean(
+      originalUrl.match(
+        /[?&]p=(\d+)/i
+      )?.[1]
+    );
+
+  if (fromUrl) {
+    return fromUrl;
+  }
+
+  return clean(
+    html.match(
+      /id=["']post_message_(\d+)["']/i
+    )?.[1] ||
+    html.match(
+      /showpost\.php\?p=(\d+)/i
+    )?.[1]
+  );
+}
+
+function extractBlowoutMessageHtml(
+  html: string,
+  postId: string
+) {
+  if (!postId) {
+    return "";
+  }
+
+  const marker =
+    new RegExp(
+      `id\\s*=\\s*["']post_message_${escapeRegExp(postId)}["']`,
+      "i"
+    ).exec(html);
+
+  if (!marker) {
+    return "";
+  }
+
+  const contentStart =
+    html.indexOf(
+      ">",
+      marker.index
+    );
+
+  if (contentStart < 0) {
+    return "";
+  }
+
+  const afterStart =
+    html.slice(
+      contentStart + 1
+    );
+
+  const endMatch =
+    /<!--\s*\/\s*message\s*-->/i.exec(
+      afterStart
+    );
+
+  if (!endMatch) {
+    return "";
+  }
+
+  let messageHtml =
+    afterStart
+      .slice(
+        0,
+        endMatch.index
+      )
+      .trim();
+
+  messageHtml =
+    messageHtml.replace(
+      /<\/div>\s*$/i,
+      ""
+    );
+
+  return messageHtml.trim();
+}
+
+function extractBlowoutUsername(
+  html: string,
+  postId: string
+) {
+  const marker =
+    `post_message_${postId}`;
+
+  const index =
+    html.indexOf(marker);
+
+  if (index < 0) {
+    return "";
+  }
+
+  const before =
+    html.slice(
+      Math.max(0, index - 12000),
+      index
+    );
+
+  const matches =
+    Array.from(
+      before.matchAll(
+        /<a[^>]+class=["'][^"']*\bbigusername\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi
+      )
+    );
+
+  const last =
+    matches[
+      matches.length - 1
+    ];
+
+  return last?.[1]
+    ? stripBlowoutHtml(
+        last[1]
+      )
+    : "";
+}
+
+function extractBlowoutPostDate(
+  html: string,
+  postId: string
+) {
+  const marker =
+    `post_message_${postId}`;
+
+  const index =
+    html.indexOf(marker);
+
+  if (index < 0) {
+    return "";
+  }
+
+  const before =
+    html.slice(
+      Math.max(0, index - 12000),
+      index
+    );
+
+  const matches =
+    Array.from(
+      before.matchAll(
+        /\b(\d{1,2}-\d{1,2}-\d{4})(?:,\s*\d{1,2}:\d{2}\s*(?:AM|PM))?/gi
+      )
+    );
+
+  const raw =
+    matches[
+      matches.length - 1
+    ]?.[1] || "";
+
+  const parts =
+    raw.split("-");
+
+  if (parts.length !== 3) {
+    return "";
+  }
+
+  const [month, day, year] =
+    parts;
+
+  return parseDate(
+    `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+  );
+}
+
+function extractBlowoutImages(
+  messageHtml: string,
+  sourceUrl: string
+) {
+  const candidates: string[] = [];
+
+  for (
+    const match of messageHtml.matchAll(
+      /<a[^>]+href=["']([^"']+\.(?:jpe?g|png|webp|gif)(?:\?[^"']*)?)["'][^>]*>[\s\S]*?<img\b/gi
+    )
+  ) {
+    if (match[1]) {
+      candidates.push(
+        match[1]
+      );
+    }
+  }
+
+  for (
+    const match of messageHtml.matchAll(
+      /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+    )
+  ) {
+    if (match[1]) {
+      candidates.push(
+        match[1]
+      );
+    }
+  }
+
+  const seen = new Set<string>();
+  const urls: string[] = [];
+
+  for (const raw of candidates) {
+    let resolved =
+      decodeHtmlEntities(raw)
+        .trim();
+
+    try {
+      resolved =
+        new URL(
+          resolved,
+          sourceUrl ||
+            "https://www.blowoutforums.com/"
+        ).toString();
+    } catch {
+      continue;
+    }
+
+    if (
+      /(?:avatar|smilie|emoji|favicon|statusicon|quote\.gif)/i.test(
+        resolved
+      )
+    ) {
+      continue;
+    }
+
+    const key =
+      resolved.toLowerCase();
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    urls.push(resolved);
+  }
+
+  return urls;
+}
+
+function detectBlowoutCertNumbers(
+  text: string
+) {
+  const certs = new Set<string>();
+
+  const patterns = [
+    /\b(?:PSA|BGS|BECKETT|SGC|CGC|CSG)\s+(?:CERT(?:IFICATION)?\s*)?#?\s*(\d{6,12})\b/gi,
+    /\bCERT(?:IFICATION)?\s*#?\s*(\d{6,12})\b/gi,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      if (match[1]) {
+        certs.add(match[1]);
+      }
+    }
+  }
+
+  return Array.from(certs);
+}
+
+function detectBlowoutGrades(
+  text: string
+) {
+  const grades = new Set<string>();
+
+  const pattern =
+    /\b(PSA|BGS|BECKETT|SGC|CGC|CSG)\s+(AUTHENTIC(?:\s+ALTERED)?|10|9\.5|9|8\.5|8|7\.5|7|6\.5|6|5\.5|5|4\.5|4|3\.5|3|2\.5|2|1\.5|1)\b/gi;
+
+  for (const match of text.matchAll(pattern)) {
+    const company =
+      String(match[1] || "")
+        .toUpperCase()
+        .replace(
+          "BECKETT",
+          "BGS"
+        );
+
+    const grade =
+      clean(match[2]);
+
+    if (company && grade) {
+      grades.add(
+        `${company} ${grade}`
+      );
+    }
+  }
+
+  return Array.from(grades);
+}
+
+function chooseBlowoutCardTitle(
+  postText: string
+) {
+  const lines =
+    postText
+      .split("\n")
+      .map((line) =>
+        line.trim()
+      )
+      .filter(Boolean);
+
+  const yearCardLine =
+    lines.find(
+      (line) =>
+        /\b(?:18|19|20)\d{2}(?:-\d{2})?\b/.test(line) &&
+        /#\s*[A-Za-z0-9-]+/.test(line) &&
+        !/thread|view single post|blowout/i.test(line)
+    );
+
+  if (yearCardLine) {
+    return yearCardLine;
+  }
+
+  const yearLine =
+    lines.find(
+      (line) =>
+        /\b(?:18|19|20)\d{2}(?:-\d{2})?\b/.test(line) &&
+        !/\bcert\b|thread|view single post|blowout/i.test(line)
+    );
+
+  if (yearLine) {
+    return yearLine;
+  }
+
+  return (
+    lines.find(
+      (line) =>
+        !/^(?:PSA|BGS|SGC|CGC|CSG)?\s*cert\b/i.test(line) &&
+        !/^value\s+(?:gain|increase|change)/i.test(line) &&
+        !/^PSA\s+Set\s+Registry/i.test(line) &&
+        !/thread|view single post|blowout/i.test(line)
+    ) ||
+    lines[0] ||
+    "Blowout Forums Post"
+  );
+}
+
+function extractBlowoutUsernameFromText(
+  copiedText: string
+) {
+  const text =
+    normalizeCopiedPageText(
+      copiedText
+    );
+
+  const memberLinkMatch =
+    text.match(
+      /(?:^|\n)\s*([^\n|]{2,80})\s*(?=\n|\s).*?member\.php\?u=\d+/i
+    );
+
+  if (memberLinkMatch?.[1]) {
+    const candidate =
+      clean(memberLinkMatch[1])
+        .replace(/[*_`[\]]/g, "")
+        .trim();
+
+    if (
+      candidate &&
+      !/thread|view single post|join date|location|posts/i.test(
+        candidate
+      )
+    ) {
+      return candidate;
+    }
+  }
+
+  const lines =
+    text
+      .split("\n")
+      .map((line) =>
+        clean(
+          line
+            .replace(/[*_`]/g, "")
+            .replace(/\[[^\]]+\]\([^)]+\)/g, "")
+        )
+      )
+      .filter(Boolean);
+
+  const dateIndex =
+    lines.findIndex(
+      (line) =>
+        /^\d{1,2}-\d{1,2}-\d{4},\s*\d{1,2}:\d{2}\s*(?:AM|PM)/i.test(
+          line
+        )
+    );
+
+  if (dateIndex >= 0) {
+    for (
+      let index = dateIndex + 1;
+      index < Math.min(
+        lines.length,
+        dateIndex + 8
+      );
+      index += 1
+    ) {
+      const line =
+        lines[index];
+
+      if (
+        line &&
+        !/^#?\d+$/.test(line) &&
+        !/join date|location|posts|view single post|thread/i.test(
+          line
+        ) &&
+        line.length <= 80
+      ) {
+        return line;
+      }
+    }
+  }
+
+  return "";
+}
+
+function extractBlowoutPostDateFromText(
+  copiedText: string
+) {
+  const raw =
+    normalizeCopiedPageText(
+      copiedText
+    ).match(
+      /(?:^|\n|\s)(\d{1,2}-\d{1,2}-\d{4})(?:,\s*\d{1,2}:\d{2}\s*(?:AM|PM))?/i
+    )?.[1] || "";
+
+  const parts =
+    raw.split("-");
+
+  if (parts.length !== 3) {
+    return "";
+  }
+
+  const [month, day, year] =
+    parts;
+
+  return parseDate(
+    `${year}-${month.padStart(
+      2,
+      "0"
+    )}-${day.padStart(
+      2,
+      "0"
+    )}`
+  );
+}
+
+function extractBlowoutPostNumber(
+  copiedText: string,
+  originalUrl: string
+) {
+  return clean(
+    originalUrl.match(
+      /[?&]postcount=(\d+)/i
+    )?.[1] ||
+    copiedText.match(
+      /showpost\.php\?p=\d+(?:&|&amp;)postcount=(\d+)/i
+    )?.[1] ||
+    copiedText.match(
+      /(?:^|\s)#\s*(\d{1,8})\b/
+    )?.[1]
+  );
+}
+
+function cleanBlowoutVisibleText(
+  copiedText: string
+) {
+  return normalizeCopiedPageText(
+    decodeHtmlEntities(
+      copiedText
+    )
+  )
+    .replace(
+      /\[([^\]]+)\]\(https?:\/\/[^)]+\)/g,
+      "$1"
+    )
+    .replace(
+      /\*\*([^*]+)\*\*/g,
+      "$1"
+    )
+    .replace(
+      /__([^_]+)__/g,
+      "$1"
+    )
+    .replace(
+      /<br\s*\/?>/gi,
+      "\n"
+    )
+    .trim();
+}
+
+function extractBlowoutPostTextFromVisibleText(
+  copiedText: string
+) {
+  const text =
+    cleanBlowoutVisibleText(
+      copiedText
+    );
+
+  const lines =
+    text
+      .split("\n")
+      .map((line) =>
+        clean(line)
+      )
+      .filter(Boolean);
+
+  if (!lines.length) {
+    return "";
+  }
+
+  let startIndex =
+    lines.findIndex(
+      (line) =>
+        /\b(?:PSA|BGS|BECKETT|SGC|CGC|CSG)\s+Cert(?:ification)?\s*#?\s*\d{6,12}\b/i.test(
+          line
+        )
+    );
+
+  if (startIndex < 0) {
+    startIndex =
+      lines.findIndex(
+        (line) =>
+          /\b(?:18|19|20)\d{2}(?:-\d{2})?\b/.test(
+            line
+          ) &&
+          /#\s*[A-Za-z0-9-]+/.test(
+            line
+          ) &&
+          !/thread|view single post/i.test(
+            line
+          )
+      );
+  }
+
+  if (startIndex < 0) {
+    startIndex =
+      lines.findIndex(
+        (line) =>
+          !/thread|view single post|join date|location|posts|^#\d+$/i.test(
+            line
+          )
+      );
+  }
+
+  if (startIndex < 0) {
+    return text;
+  }
+
+  let endIndex =
+    lines.length;
+
+  for (
+    let index = startIndex + 1;
+    index < lines.length;
+    index += 1
+  ) {
+    const line =
+      lines[index];
+
+    if (
+      /^_{8,}$/.test(line) ||
+      /^-{8,}$/.test(line) ||
+      /^He has no rival/i.test(line) ||
+      /^Quick Reply$/i.test(line) ||
+      /^Posting Rules$/i.test(line)
+    ) {
+      endIndex =
+        index;
+      break;
+    }
+  }
+
+  return lines
+    .slice(
+      startIndex,
+      endIndex
+    )
+    .filter(
+      (line) =>
+        !/^\|\s*-/.test(line) &&
+        line !== "|" &&
+        !/^\s*---+\s*$/.test(line)
+    )
+    .join("\n")
+    .trim();
+}
+
+function extractBlowoutImagesFromClipboardHtml(
+  copiedHtml: string,
+  sourceUrl: string
+) {
+  const html =
+    String(copiedHtml || "");
+
+  if (!html) {
+    return [];
+  }
+
+  const candidates: string[] =
+    [];
+
+  for (
+    const match of html.matchAll(
+      /<a[^>]+href=["']([^"']+\.(?:jpe?g|png|webp|gif)(?:\?[^"']*)?)["'][^>]*>[\s\S]*?<img\b/gi
+    )
+  ) {
+    if (match[1]) {
+      candidates.push(
+        match[1]
+      );
+    }
+  }
+
+  for (
+    const match of html.matchAll(
+      /<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>/gi
+    )
+  ) {
+    if (match[1]) {
+      candidates.push(
+        match[1]
+      );
+    }
+  }
+
+  const seen =
+    new Set<string>();
+
+  const urls: string[] =
+    [];
+
+  for (const raw of candidates) {
+    let resolved =
+      decodeHtmlEntities(
+        raw
+      ).trim();
+
+    if (
+      !resolved ||
+      /^data:/i.test(
+        resolved
+      )
+    ) {
+      continue;
+    }
+
+    try {
+      resolved =
+        new URL(
+          resolved,
+          sourceUrl ||
+            "https://www.blowoutforums.com/"
+        ).toString();
+    } catch {
+      continue;
+    }
+
+    if (
+      /blowoutforums\.com\/(?:images|image|clientscript|styles|customavatars|customprofilepics)\//i.test(
+        resolved
+      ) ||
+      /(?:avatar|smilie|emoji|favicon|statusicon|quote\.gif|collapse|buttons|logo)/i.test(
+        resolved
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      !/\.(?:jpe?g|png|webp|gif)(?:[?#]|$)/i.test(
+        resolved
+      )
+    ) {
+      continue;
+    }
+
+    const key =
+      resolved.toLowerCase();
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    urls.push(
+      resolved
+    );
+  }
+
+  return urls;
+}
+
+function parseBlowoutPageText(
+  copiedText: string,
+  originalUrl = "",
+  copiedHtml = ""
+): PageTextImportResult {
+  const visibleText =
+    String(copiedText || "");
+
+  const clipboardHtml =
+    String(copiedHtml || "");
+
+  const combinedHtml =
+    clipboardHtml ||
+    (
+      /<html\b|<div\b|post_message_/i.test(
+        visibleText
+      )
+        ? visibleText
+        : ""
+    );
+
+  const sourceUrl =
+    clean(originalUrl) ||
+    extractPageUrl(
+      visibleText
+    ) ||
+    extractPageUrl(
+      clipboardHtml
+    ) ||
+    "https://www.blowoutforums.com/";
+
+  const postId =
+    extractBlowoutPostId(
+      sourceUrl,
+      combinedHtml ||
+        visibleText
+    );
+
+  const messageHtml =
+    combinedHtml
+      ? extractBlowoutMessageHtml(
+          combinedHtml,
+          postId
+        )
+      : "";
+
+  const postText =
+    messageHtml
+      ? stripBlowoutHtml(
+          messageHtml
+        )
+      : extractBlowoutPostTextFromVisibleText(
+          visibleText
+        );
+
+  if (!postText) {
+    throw new Error(
+      "Blowout Forums was detected, but no usable post text could be extracted from the pasted content."
+    );
+  }
+
+  const messageImages =
+    messageHtml
+      ? extractBlowoutImages(
+          messageHtml,
+          sourceUrl
+        )
+      : [];
+
+  const clipboardImages =
+    extractBlowoutImagesFromClipboardHtml(
+      clipboardHtml,
+      sourceUrl
+    );
+
+  const images =
+    Array.from(
+      new Set([
+        ...messageImages,
+        ...clipboardImages,
+      ])
+    );
+
+  const username =
+    (
+      combinedHtml &&
+      postId
+        ? extractBlowoutUsername(
+            combinedHtml,
+            postId
+          )
+        : ""
+    ) ||
+    extractBlowoutUsernameFromText(
+      visibleText
+    );
+
+  const endDate =
+    (
+      combinedHtml &&
+      postId
+        ? extractBlowoutPostDate(
+            combinedHtml,
+            postId
+          )
+        : ""
+    ) ||
+    extractBlowoutPostDateFromText(
+      visibleText
+    );
+
+  const postNumber =
+    extractBlowoutPostNumber(
+      visibleText,
+      sourceUrl
+    );
+
+  const certNumbers =
+    detectBlowoutCertNumbers(
+      postText
+    );
+
+  const grades =
+    detectBlowoutGrades(
+      postText
+    );
+
+  const title =
+    chooseBlowoutCardTitle(
+      postText
+    );
+
+  return addNormalizedCardFields({
+    ok: true,
+    marketplace:
+      "blowout-text",
+    sourceUrl,
+    listingId:
+      postId ||
+      postNumber,
+    title,
+    seller:
+      username ||
+      "Blowout Forums",
+    price: "",
+    currency: "",
+    endDate,
+    certNumber:
+      certNumbers.length === 1
+        ? certNumbers[0]
+        : "",
+    /*
+     * Blowout alteration posts commonly describe
+     * the older grade first and the later/current
+     * grade last. Preserve all grades in aspects,
+     * and expose the last detected grade as the
+     * primary/current grade for card forms.
+     */
+    grade:
+      grades.length
+        ? grades[
+            grades.length - 1
+          ]
+        : "",
+    serialNumber: "",
+    description:
+      postText,
+    frontImage:
+      images[0] || "",
+    additionalImages:
+      images.slice(1),
+    aspects: {
+      ...(postId
+        ? {
+            "Blowout Post ID": [
+              postId,
+            ],
+          }
+        : {}),
+      ...(postNumber
+        ? {
+            "Blowout Post Number": [
+              postNumber,
+            ],
+          }
+        : {}),
+      ...(certNumbers.length
+        ? {
+            "Detected Cert Numbers":
+              certNumbers,
+          }
+        : {}),
+      ...(grades.length
+        ? {
+            "Detected Grades":
+              grades,
+          }
+        : {}),
+    },
+  });
+}
+
 function parseGenericPageText(
   copiedText: string
 ): PageTextImportResult {
@@ -1114,21 +2042,50 @@ function parseGenericPageText(
 }
 
 export async function importPageText(
-  copiedText: string
+  copiedText: string,
+  originalUrl = "",
+  copiedHtml = ""
 ): Promise<PageTextImportResult> {
   const text =
     normalizeCopiedPageText(
       copiedText
     );
 
-  if (!text) {
+  if (
+    !text &&
+    !clean(copiedHtml)
+  ) {
     throw new Error(
       "Paste copied webpage text before importing."
     );
   }
 
   const normalized =
-    text.toLowerCase();
+    `${text}\n${copiedHtml}`
+      .toLowerCase();
+
+  const normalizedUrl =
+    clean(originalUrl)
+      .toLowerCase();
+
+  const looksLikeBlowout =
+    normalizedUrl.includes(
+      "blowoutforums.com"
+    ) ||
+    normalized.includes(
+      "blowoutforums.com"
+    ) ||
+    normalized.includes(
+      "post_message_"
+    );
+
+  if (looksLikeBlowout) {
+    return parseBlowoutPageText(
+      copiedText,
+      originalUrl,
+      copiedHtml
+    );
+  }
 
   const looksLikeHeritage =
     normalized.includes(

@@ -61,6 +61,7 @@ type AuctionImportResult = {
   grade?: string;
   serialNumber?: string;
   lotNumber?: string;
+  description?: string;
 
   frontImage?: string;
   additionalImages?: string[];
@@ -607,10 +608,17 @@ const [
 ] = useState("");
 
 const [
+  pageHtml,
+  setPageHtml,
+] = useState("");
+
+const [
   saleEventDate,
   setSaleEventDate,
-] = useState(
-  todayDateInputValue()
+] = useState(() =>
+  project === "rpa-tracker"
+    ? todayDateInputValue()
+    : ""
 );
 
 const [
@@ -787,9 +795,12 @@ const [
 
     setAuctionSourceUrl("");
 setPageText("");
+setPageHtml("");
 
 setSaleEventDate(
-  todayDateInputValue()
+  project === "rpa-tracker"
+    ? todayDateInputValue()
+    : ""
 );
 
 setSaleEventDateTouched(false);
@@ -886,12 +897,13 @@ setSaleEventDateTouched(false);
           },
 
           body: JSON.stringify({
-            url: copiedPageText
-              ? ""
-              : sourceUrl,
+            url: sourceUrl,
 
             pageText:
               copiedPageText,
+
+            pageHtml:
+              pageHtml,
           }),
         }
       );
@@ -1085,6 +1097,19 @@ setSaleEventDateTouched(false);
       );
     }
 
+    if (
+      (
+        project === "cards-alert" ||
+        project === "rpa-tracker"
+      ) &&
+      data.description &&
+      !notes.trim()
+    ) {
+      setNotes(
+        data.description
+      );
+    }
+
     setFrontImage("");
     setBackImage("");
     setOtherImages("");
@@ -1096,6 +1121,7 @@ setSaleEventDateTouched(false);
       data
     );
 
+setPageHtml("");
 setShowPageTextFallback(false);
 
   } catch (error: any) {
@@ -1113,13 +1139,8 @@ setShowPageTextFallback(false);
 
   setImportError(
     blockedSource
-      ? `DIRECT IMPORT ERROR: ${message}`
+      ? "The direct import failed. Copy the webpage text and paste it below."
       : message
-  );
-
-  console.error(
-    "TNCE auction import failed:",
-    error
   );
 } finally {
   
@@ -1357,10 +1378,12 @@ const submissionId =
   submittedCardHistory,
 
 Sale_Event_Date:
-  shouldAddRpaHistory
-    ? saleEventDate ||
-      todayDateInputValue()
-    : "",
+  project === "cards-alert"
+    ? saleEventDate || ""
+    : shouldAddRpaHistory
+      ? saleEventDate ||
+        todayDateInputValue()
+      : "",
 
             Year: cardYear.trim(),
 
@@ -1498,6 +1521,7 @@ Sale_Event_Date:
   );
 
   setPageText("");
+  setPageHtml("");
   setShowPageTextFallback(false);
   setImportError("");
   setImportedListing(null);
@@ -1561,6 +1585,19 @@ Sale_Event_Date:
           setImportError("");
           setImportedListing(null);
         }}
+        onPaste={(event) => {
+          const clipboardHtml =
+            event.clipboardData.getData(
+              "text/html"
+            );
+
+          setPageHtml(
+            clipboardHtml || ""
+          );
+
+          setImportError("");
+          setImportedListing(null);
+        }}
         className="min-h-40 rounded-lg border border-neutral-700 bg-black px-3 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-[#d4af37]"
         placeholder="Open the webpage, press Ctrl+A, then Ctrl+C, and paste the copied page text here."
       />
@@ -1574,7 +1611,7 @@ Sale_Event_Date:
 
 </div>
 
-{project === "rpa-tracker" && (
+{(project === "rpa-tracker" || project === "cards-alert") && (
   <label className="mt-4 grid gap-1.5">
     <span className="text-xs font-black uppercase tracking-wide text-[#f1d36b]">
       Sale / Event Date
@@ -1769,7 +1806,9 @@ Sale_Event_Date:
         />
 
         <label className="grid gap-1 text-sm">
-          Notes
+          {project === "rpa-tracker"
+            ? "Description / Opinion"
+            : "Notes"}
           <textarea
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
