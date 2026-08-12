@@ -228,6 +228,7 @@ export default function NewCardsAlertForm({
 
   const [status, setStatus] = useState("");
   const [description, setDescription] = useState("");
+  const [foundBy, setFoundBy] = useState("");
 
   const [previousGrade, setPreviousGrade] = useState("");
   const [previousCertNumber, setPreviousCertNumber] = useState("");
@@ -685,6 +686,15 @@ async function importAuctionListing() {
     ) {
       setDescription(
         result.description
+      );
+    }
+
+    if (
+      result.seller &&
+      !foundBy.trim()
+    ) {
+      setFoundBy(
+        clean(result.seller)
       );
     }
 
@@ -1264,17 +1274,13 @@ if (!isSimilarCard) {
           Status: status.trim(),
           Description: description.trim(),
           Sale_Event_Date: saleEventDate.trim(),
-          Previous_Grade: isSimilarCard
-  ? ""
-  : previousGrade.trim(),
+          Year_Added: saleEventDate.trim(),
+          Found_By: foundBy.trim(),
+          Previous_Grade: previousGrade.trim(),
 
-Previous_Cert_Number: isSimilarCard
-  ? ""
-  : previousCertNumber.trim(),
+          Previous_Cert_Number: previousCertNumber.trim(),
 
-Previous_Source_URL: isSimilarCard
-  ? ""
-  : previousSourceUrls.join("\n"),
+          Previous_Source_URL: previousSourceUrls.join("\n"),
           Auction_Source_URL: currentSourceUrls.join("\n"),
         },
         imageUrls: {

@@ -622,6 +622,11 @@ const [
 );
 
 const [
+  foundBy,
+  setFoundBy,
+] = useState("");
+
+const [
   saleEventDateTouched,
   setSaleEventDateTouched,
 ] = useState(false);
@@ -718,19 +723,36 @@ const [
       valueFromActiveObject(activeObject, ["Description", "description"]),
     );
 
-    setPreviousGrade(valueFromActiveObject(activeObject, ["Grade", "grade"]));
+    if (project === "cards-alert") {
+      setPreviousGrade("");
+      setPreviousCertNumber("");
+      setPreviousSourceUrl("");
+    } else {
+      setPreviousGrade(
+        valueFromActiveObject(
+          activeObject,
+          ["Grade", "grade"]
+        )
+      );
 
-    setPreviousCertNumber(
-      valueFromActiveObject(activeObject, [
-        "Cert_Number",
-        "certNumber",
-        "cert",
-      ]),
-    );
+      setPreviousCertNumber(
+        valueFromActiveObject(
+          activeObject,
+          [
+            "Cert_Number",
+            "certNumber",
+            "cert",
+          ]
+        )
+      );
 
-    setPreviousSourceUrl(
-      valueFromActiveObject(activeObject, ["Site_Link", "siteLink"]),
-    );
+      setPreviousSourceUrl(
+        valueFromActiveObject(
+          activeObject,
+          ["Site_Link", "siteLink"]
+        )
+      );
+    }
 
     if (action === "similar") {
       setSerialNumber("");
@@ -804,6 +826,7 @@ setSaleEventDate(
 );
 
 setSaleEventDateTouched(false);
+setFoundBy("");
 
     setImportedListing(null);
     setImportError("");
@@ -1072,10 +1095,35 @@ setSaleEventDateTouched(false);
   );
 }
 
+    const detectedGrades =
+      Array.isArray(
+        data.aspects?.["Detected Grades"]
+      )
+        ? data.aspects!["Detected Grades"]
+            .map((value) =>
+              String(value || "").trim()
+            )
+            .filter(Boolean)
+        : [];
+
+    const detectedCerts =
+      Array.isArray(
+        data.aspects?.["Detected Cert Numbers"]
+      )
+        ? data.aspects!["Detected Cert Numbers"]
+            .map((value) =>
+              String(value || "").trim()
+            )
+            .filter(Boolean)
+        : [];
+
     const importedGrade =
       String(
         data.grade ||
           parsedTitle.grade ||
+          detectedGrades[
+            detectedGrades.length - 1
+          ] ||
           ""
       ).trim();
 
@@ -1094,6 +1142,44 @@ setSaleEventDateTouched(false);
     ) {
       setCertNumber(
         data.certNumber
+      );
+    }
+
+    /*
+     * Cards Alert update evidence may document a prior
+     * holder/grade in the same source. Previous Card
+     * Condition starts blank and only fills when the
+     * import actually exposes a distinct prior state.
+     */
+    if (
+      project === "cards-alert" &&
+      detectedGrades.length > 1 &&
+      !previousGrade.trim()
+    ) {
+      setPreviousGrade(
+        detectedGrades[0]
+      );
+    }
+
+    if (
+      project === "cards-alert" &&
+      detectedCerts.length > 1 &&
+      !previousCertNumber.trim()
+    ) {
+      setPreviousCertNumber(
+        detectedCerts[0]
+      );
+    }
+
+    if (
+      project === "cards-alert" &&
+      data.seller &&
+      !foundBy.trim()
+    ) {
+      setFoundBy(
+        String(
+          data.seller
+        ).trim()
       );
     }
 
@@ -1384,6 +1470,16 @@ Sale_Event_Date:
       ? saleEventDate ||
         todayDateInputValue()
       : "",
+
+Year_Added:
+  project === "cards-alert"
+    ? saleEventDate || ""
+    : "",
+
+Found_By:
+  project === "cards-alert"
+    ? foundBy.trim()
+    : "",
 
             Year: cardYear.trim(),
 

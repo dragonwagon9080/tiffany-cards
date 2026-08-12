@@ -23,6 +23,7 @@ const ALLOWED_HOSTS = [
   "onlyalt-images.s3.us-east-2.amazonaws.com",
   "cdn.myslabs.com",
   "img.auctiva.com",
+  "i.imgur.com",
 ];
 
 function isAllowedHost(
@@ -140,6 +141,17 @@ function refererForHost(
     return "https://www.blowoutforums.com/";
   }
 
+  // Blowout Forums / Imgur images
+  if (
+    normalized ===
+      "i.imgur.com" ||
+    normalized.endsWith(
+      ".i.imgur.com"
+    )
+  ) {
+    return "https://www.blowoutforums.com/";
+  }
+
   // Default / Goldin
   return "https://goldin.co/";
 }
@@ -148,17 +160,20 @@ export async function POST(
   req: NextRequest
 ) {
   try {
-    const body = await req.json();
+    const body =
+      await req.json();
 
-    const imageUrl = String(
-      body?.url || ""
-    ).trim();
+    const imageUrl =
+      String(
+        body?.url || ""
+      ).trim();
 
     if (!imageUrl) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Missing image URL.",
+          error:
+            "Missing image URL.",
         },
         {
           status: 400,
@@ -169,12 +184,14 @@ export async function POST(
     let parsedUrl: URL;
 
     try {
-      parsedUrl = new URL(imageUrl);
+      parsedUrl =
+        new URL(imageUrl);
     } catch {
       return NextResponse.json(
         {
           ok: false,
-          error: "Invalid image URL.",
+          error:
+            "Invalid image URL.",
         },
         {
           status: 400,
@@ -183,7 +200,8 @@ export async function POST(
     }
 
     if (
-      parsedUrl.protocol !== "https:" ||
+      parsedUrl.protocol !==
+        "https:" ||
       !isAllowedHost(
         parsedUrl.hostname
       )
@@ -200,24 +218,26 @@ export async function POST(
       );
     }
 
-    const imageResponse = await fetch(
-      parsedUrl.toString(),
-      {
-        cache: "no-store",
+    const imageResponse =
+      await fetch(
+        parsedUrl.toString(),
+        {
+          cache: "no-store",
 
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36",
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36",
 
-          Accept:
-            "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            Accept:
+              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
 
-          Referer: refererForHost(
-            parsedUrl.hostname
-          ),
-        },
-      }
-    );
+            Referer:
+              refererForHost(
+                parsedUrl.hostname
+              ),
+          },
+        }
+      );
 
     if (!imageResponse.ok) {
       throw new Error(
@@ -229,7 +249,9 @@ export async function POST(
       await imageResponse.arrayBuffer();
 
     const buffer =
-      Buffer.from(arrayBuffer);
+      Buffer.from(
+        arrayBuffer
+      );
 
     let contentType =
       imageResponse.headers.get(
@@ -242,18 +264,28 @@ export async function POST(
       )
     ) {
       const firstBytes =
-        buffer.subarray(0, 12);
+        buffer.subarray(
+          0,
+          12
+        );
 
       const isJpeg =
-        firstBytes[0] === 0xff &&
-        firstBytes[1] === 0xd8 &&
-        firstBytes[2] === 0xff;
+        firstBytes[0] ===
+          0xff &&
+        firstBytes[1] ===
+          0xd8 &&
+        firstBytes[2] ===
+          0xff;
 
       const isPng =
-        firstBytes[0] === 0x89 &&
-        firstBytes[1] === 0x50 &&
-        firstBytes[2] === 0x4e &&
-        firstBytes[3] === 0x47;
+        firstBytes[0] ===
+          0x89 &&
+        firstBytes[1] ===
+          0x50 &&
+        firstBytes[2] ===
+          0x4e &&
+        firstBytes[3] ===
+          0x47;
 
       const isWebp =
         firstBytes.toString(
@@ -275,33 +307,47 @@ export async function POST(
         ) === "GIF";
 
       if (isJpeg) {
-        contentType = "image/jpeg";
+        contentType =
+          "image/jpeg";
       } else if (isPng) {
-        contentType = "image/png";
+        contentType =
+          "image/png";
       } else if (isWebp) {
-        contentType = "image/webp";
+        contentType =
+          "image/webp";
       } else if (isGif) {
-        contentType = "image/gif";
+        contentType =
+          "image/gif";
       } else {
         throw new Error(
           `The imported URL did not return a recognized image.
 
 Content-Type: ${
-            contentType || "unknown"
+            contentType ||
+            "unknown"
           }
 First bytes: ${buffer
-            .subarray(0, 16)
-            .toString("hex")}`
+            .subarray(
+              0,
+              16
+            )
+            .toString(
+              "hex"
+            )}`
         );
       }
     }
 
     const base64 =
-      buffer.toString("base64");
+      buffer.toString(
+        "base64"
+      );
 
     return NextResponse.json({
       ok: true,
+
       contentType,
+
       base64:
         `data:${contentType};base64,` +
         base64,
@@ -310,6 +356,7 @@ First bytes: ${buffer
     return NextResponse.json(
       {
         ok: false,
+
         error:
           error?.message ||
           "Unable to import the image.",
