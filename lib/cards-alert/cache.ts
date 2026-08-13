@@ -1,44 +1,32 @@
-import fs from "fs";
-import path from "path";
+import { unstable_cache } from "next/cache";
 
-let cachedData: any = null;
-let cachedAt = 0;
-let pendingRequest: Promise<any> | null = null;
+let lastGoodData: any = null;
+let pendingRefresh: Promise<any> | null = null;
 
-const CACHE_TIME = 1000 * 60 * 60; // 1 hour
+const API_URL =
+  process.env.CARDS_ALERT_API_URL || "";
 
-const CACHE_FILE = path.join(
-  process.cwd(),
-  ".next",
-  "cards-alert-cache.json"
-);
+const FETCH_TIMEOUT_MS = 12000;
+const MAX_ATTEMPTS = 3;
+const REVALIDATE_SECONDS = 300;
 
-const API_URL = process.env.CARDS_ALERT_API_URL!;
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function retryDelay(attempt: number) {
+  return attempt === 1 ? 500 : 1500;
+}
 
 function isRealCard(card: any) {
-  const first = String(
-    card.First || ""
-  ).trim();
-
-  const last = String(
-    card.Last || ""
-  ).trim();
-
-  const brand = String(
-    card.Brand || ""
-  ).trim();
-
-  const cert = String(
-    card.Cert_Number || ""
-  ).trim();
-
-  const front = String(
-    card.front_image || ""
-  ).trim();
-
-  const back = String(
-    card.back_image || ""
-  ).trim();
+  const first = String(card?.First || "").trim();
+  const last = String(card?.Last || "").trim();
+  const brand = String(card?.Brand || "").trim();
+  const cert = String(card?.Cert_Number || "").trim();
+  const front = String(card?.front_image || "").trim();
+  const back = String(card?.back_image || "").trim();
 
   const hasName =
     first !== "" ||
@@ -56,91 +44,204 @@ function isRealCard(card: any) {
 }
 
 function cleanData(data: any) {
+  const source =
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data)
+      ? data
+      : {};
+
   return {
-    ...data,
-    cards: (data.cards || []).filter(isRealCard),
+    ...source,
+    cards: Array.isArray(source.cards)
+      ? source.cards.filter(isRealCard)
+      : [],
   };
 }
 
-function readCacheFile() {
-  try {
-    if (fs.existsSync(CACHE_FILE)) {
-      return JSON.parse(fs.readFileSync(CACHE_FILE, "utf8"));
-    }
-  } catch (err) {
-    console.error("Could not read Cards Alert cache:", err);
+function validateCardsAlertPayload(rawData: any) {
+  if (
+    !rawData ||
+    typeof rawData !== "object" ||
+    Array.isArray(rawData)
+  ) {
+    throw new Error(
+      "Cards Alert API returned an invalid response."
+    );
   }
 
-  return null;
+  if (!Array.isArray(rawData.cards)) {
+    throw new Error(
+      "Cards Alert API response did not include a cards array."
+    );
+  }
+
+  const cleaned = cleanData(rawData);
+
+  if (
+    cleaned.cards.length === 0 &&
+    lastGoodData?.cards?.length
+  ) {
+    throw new Error(
+      "Cards Alert API returned an empty card database."
+    );
+  }
+
+  return cleaned;
 }
 
-function writeCacheFile(data: any) {
-  try {
-    const dir = path.dirname(CACHE_FILE);
+async function fetchCardsAlertOnce() {
+  if (!API_URL) {
+    throw new Error(
+      "Missing CARDS_ALERT_API_URL environment variable."
+    );
+  }
 
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(
+      API_URL,
+      {
+        method: "GET",
+        headers: {
+          Accept:
+            "application/json,text/plain;q=0.9,*/*;q=0.8",
+        },
+        cache: "no-store",
+        redirect: "follow",
+        signal: controller.signal,
+      }
+    );
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `Cards Alert API failed: ${response.status}.`
+      );
     }
 
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(data), "utf8");
-  } catch (err) {
-    console.error("Could not write Cards Alert cache:", err);
+    let rawData: any;
+
+    try {
+      rawData = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `Cards Alert API returned non-JSON. First response text: ${text.slice(
+          0,
+          200
+        )}`
+      );
+    }
+
+    return validateCardsAlertPayload(rawData);
+  } finally {
+    clearTimeout(timeout);
   }
 }
+
+async function fetchCardsAlertWithRetry() {
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= MAX_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      const data = await fetchCardsAlertOnce();
+
+      lastGoodData = data;
+
+      return data;
+    } catch (error) {
+      lastError = error;
+
+      console.error(
+        `Cards Alert refresh attempt ${attempt} failed:`,
+        error
+      );
+
+      if (attempt < MAX_ATTEMPTS) {
+        await wait(retryDelay(attempt));
+      }
+    }
+  }
+
+  if (lastGoodData) {
+    console.warn(
+      "Cards Alert refresh failed; serving last known-good in-memory data."
+    );
+
+    return lastGoodData;
+  }
+
+  throw (
+    lastError instanceof Error
+      ? lastError
+      : new Error(
+          "Unable to refresh Cards Alert data."
+        )
+  );
+}
+
+const getSharedCardsAlertData =
+  unstable_cache(
+    async () => {
+      return fetchCardsAlertWithRetry();
+    },
+    [
+      "cards-alert-public-database-v3",
+    ],
+    {
+      revalidate: REVALIDATE_SECONDS,
+      tags: [
+        "cards-alert-public-database",
+      ],
+    }
+  );
 
 export async function refreshCardsAlertData() {
-  const res = await fetch(API_URL, {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Cards Alert API failed: ${res.status}`);
+  if (pendingRefresh) {
+    return pendingRefresh;
   }
 
-  const rawData = await res.json();
-  const data = cleanData(rawData);
+  pendingRefresh =
+    fetchCardsAlertWithRetry()
+      .finally(() => {
+        pendingRefresh = null;
+      });
 
-  cachedData = data;
-  cachedAt = Date.now();
-
-  writeCacheFile(data);
-
-  return data;
+  return pendingRefresh;
 }
 
 export async function getCachedCardsAlertData() {
-  const now = Date.now();
-
-  if (cachedData && now - cachedAt < CACHE_TIME) {
-    return cachedData;
+  if (lastGoodData) {
+    return lastGoodData;
   }
 
-  const fileData = readCacheFile();
+  try {
+    const data =
+      await getSharedCardsAlertData();
 
-  if (fileData) {
-    cachedData = cleanData(fileData);
-    cachedAt = now;
+    lastGoodData = data;
 
-    if (!pendingRequest) {
-      pendingRequest = refreshCardsAlertData()
-        .catch((err) => {
-          console.error("Background Cards Alert refresh failed:", err);
-        })
-        .finally(() => {
-          pendingRequest = null;
-        });
+    return data;
+  } catch (error) {
+    console.error(
+      "Shared Cards Alert cache load failed:",
+      error
+    );
+
+    if (lastGoodData) {
+      return lastGoodData;
     }
 
-    return cachedData;
+    throw error;
   }
-
-  if (pendingRequest) {
-    return pendingRequest;
-  }
-
-  pendingRequest = refreshCardsAlertData().finally(() => {
-    pendingRequest = null;
-  });
-
-  return pendingRequest;
 }
