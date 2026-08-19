@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getCachedCardsAlertData } from "@/lib/cards-alert/cache";
+
+import {
+  getCachedCardsAlertData,
+  getCardsAlertOptionsSnapshot,
+  getCardsAlertRecentSnapshot,
+} from "@/lib/cards-alert/cache";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 50;
@@ -199,30 +204,35 @@ function buildFilterOptions(
         sport: "",
       })
     ),
+
     players: allCards.filter((card) =>
       matchesFilters(card, {
         ...filters,
         player: "",
       })
     ),
+
     years: allCards.filter((card) =>
       matchesFilters(card, {
         ...filters,
         year: "",
       })
     ),
+
     sets: allCards.filter((card) =>
       matchesFilters(card, {
         ...filters,
         set: "",
       })
     ),
+
     cardNumbers: allCards.filter((card) =>
       matchesFilters(card, {
         ...filters,
         cardNumber: "",
       })
     ),
+
     statuses: allCards.filter((card) =>
       matchesFilters(card, {
         ...filters,
@@ -365,111 +375,222 @@ function sortCards(cards: any[], sort: string) {
 }
 
 export async function GET(req: Request) {
-  const data = await getCachedCardsAlertData();
-  const { searchParams } = new URL(req.url);
+  const { searchParams } =
+    new URL(req.url);
 
   const mode = String(
     searchParams.get("mode") || "recent"
   ).slice(0, 40);
 
-  const q = safeQuery(searchParams.get("q"));
-  const limit = safeLimit(searchParams.get("limit"));
-  const offset = safeOffset(searchParams.get("offset"));
-  const sort = String(searchParams.get("sort") || "").slice(
-    0,
-    40
-  );
+  const q =
+    safeQuery(
+      searchParams.get("q")
+    );
+
+  const limit =
+    safeLimit(
+      searchParams.get("limit")
+    );
+
+  const offset =
+    safeOffset(
+      searchParams.get("offset")
+    );
+
+  const sort = String(
+    searchParams.get("sort") || ""
+  ).slice(0, 40);
 
   const filters = {
-    sport: String(searchParams.get("sport") || "").slice(
-      0,
-      80
-    ),
-    player: String(searchParams.get("player") || "").slice(
-      0,
-      120
-    ),
-    year: String(searchParams.get("year") || "").slice(
-      0,
-      10
-    ),
-    set: String(searchParams.get("set") || "").slice(
-      0,
-      140
-    ),
+    sport: String(
+      searchParams.get("sport") || ""
+    ).slice(0, 80),
+
+    player: String(
+      searchParams.get("player") || ""
+    ).slice(0, 120),
+
+    year: String(
+      searchParams.get("year") || ""
+    ).slice(0, 10),
+
+    set: String(
+      searchParams.get("set") || ""
+    ).slice(0, 140),
+
     cardNumber: String(
       searchParams.get("cardNumber") || ""
     ).slice(0, 80),
-    status: String(searchParams.get("status") || "").slice(
-      0,
-      80
-    ),
+
+    status: String(
+      searchParams.get("status") || ""
+    ).slice(0, 80),
   };
 
-  const allCards = (data.cards || []).map((card: any) => ({
-    ...card,
-    Card_id: String(card.Card_id || "").trim(),
-  }));
-
+  /*
+   * STARTUP:
+   * Do NOT load the 13+ MB database.
+   * Read only the tiny recent/options snapshots from GCS.
+   */
   if (mode === "startup") {
-    const recentCards = allCards.slice(
-      offset,
-      offset + limit
-    );
+    const [
+      recentSnapshot,
+      optionsSnapshot,
+    ] =
+      await Promise.all([
+        getCardsAlertRecentSnapshot(),
+        getCardsAlertOptionsSnapshot(),
+      ]);
+
+    const recentCards =
+      Array.isArray(
+        recentSnapshot?.cards
+      )
+        ? recentSnapshot.cards
+        : [];
+
+    const paged =
+      recentCards.slice(
+        offset,
+        offset + limit
+      );
 
     return json({
-      cards: recentCards.map(publicCard),
-      options: buildFilterOptions(allCards, {}),
+      cards:
+        paged.map(publicCard),
+
+      options: {
+        sports:
+          optionsSnapshot?.sports || [],
+
+        players:
+          optionsSnapshot?.players || [],
+
+        years:
+          optionsSnapshot?.years || [],
+
+        sets:
+          optionsSnapshot?.sets || [],
+
+        cardNumbers:
+          optionsSnapshot?.cardNumbers || [],
+
+        statuses:
+          optionsSnapshot?.statuses || [],
+      },
+
       meta: {
         mode,
         q,
         limit,
         offset,
-        count: recentCards.length,
-        total: allCards.length,
-        hasMore: offset + limit < allCards.length,
+        count:
+          paged.length,
+        total:
+          Number(
+            recentSnapshot?.meta?.total ||
+            recentCards.length
+          ),
+        hasMore:
+          offset + limit <
+          Number(
+            recentSnapshot?.meta?.total ||
+            recentCards.length
+          ),
       },
     });
   }
 
-  if (mode === "filter-options") {
+  /*
+   * Searches, advanced filter options, sorting, and
+   * pagination use the full GCS database snapshot.
+   */
+  const data =
+    await getCachedCardsAlertData();
+
+  const allCards =
+    (data.cards || []).map(
+      (card: any) => ({
+        ...card,
+
+        Card_id:
+          String(
+            card.Card_id || ""
+          ).trim(),
+      })
+    );
+
+  if (
+    mode ===
+    "filter-options"
+  ) {
     return json({
       cards: [],
-      options: buildFilterOptions(allCards, filters),
+
+      options:
+        buildFilterOptions(
+          allCards,
+          filters
+        ),
+
       meta: {
         mode,
         count: 0,
-        total: allCards.length,
+        total:
+          allCards.length,
         hasMore: false,
       },
     });
   }
 
-  let cards = allCards.filter((card: any) => {
-    return (
-      matchesSearch(card, q) &&
-      matchesFilters(card, filters)
+  let cards =
+    allCards.filter(
+      (card: any) => {
+        return (
+          matchesSearch(
+            card,
+            q
+          ) &&
+          matchesFilters(
+            card,
+            filters
+          )
+        );
+      }
     );
-  });
 
-  cards = sortCards(cards, sort);
+  cards =
+    sortCards(
+      cards,
+      sort
+    );
 
-  const total = cards.length;
-  const pagedCards = cards.slice(
-    offset,
-    offset + limit
-  );
+  const total =
+    cards.length;
+
+  const pagedCards =
+    cards.slice(
+      offset,
+      offset + limit
+    );
 
   return json({
-    cards: pagedCards.map(publicCard),
+    cards:
+      pagedCards.map(
+        publicCard
+      ),
+
     meta: {
       mode,
       q,
       limit,
       offset,
-      count: pagedCards.length,
+      count:
+        pagedCards.length,
       total,
-      hasMore: offset + limit < total,
+      hasMore:
+        offset + limit <
+        total,
     },
   });
 }

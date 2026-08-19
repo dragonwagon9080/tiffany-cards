@@ -884,355 +884,411 @@ setFoundBy("");
   ]);
 
   async function importAuctionListing() {
-  const sourceUrl =
-    auctionSourceUrl.trim();
+    const sourceUrl =
+      auctionSourceUrl.trim();
 
-  const copiedPageText =
-    pageText.trim();
+    const copiedPageText =
+      pageText.trim();
 
-  if (
-    !sourceUrl &&
-    !copiedPageText
-  ) {
-    setImportError(
-      "Paste an auction URL or copied webpage text first."
-    );
-
-    return;
-  }
-
-  if (importing) return;
-
-  setImporting(true);
-  setImportError("");
-  setImportedListing(null);
-
-  try {
-    const response =
-      await fetch(
-        "/api/tnce/import-auction",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            url: sourceUrl,
-
-            pageText:
-              copiedPageText,
-
-            pageHtml:
-              pageHtml,
-          }),
-        }
+    if (
+      !sourceUrl &&
+      !copiedPageText
+    ) {
+      setImportError(
+        "Paste an auction URL or copied webpage text first."
       );
 
-    const responseText =
-      await response.text();
+      return;
+    }
 
-    let data:
-      AuctionImportResult;
+    if (importing) return;
+
+    setImporting(true);
+    setImportError("");
+    setImportedListing(null);
 
     try {
-      data =
-        JSON.parse(
-          responseText
+      const response =
+        await fetch(
+          "/api/tnce/import-auction",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              url: sourceUrl,
+
+              pageText:
+                copiedPageText,
+
+              pageHtml:
+                pageHtml,
+            }),
+          }
         );
-    } catch {
-      throw new Error(
-        `Import returned invalid JSON. First response text: ${responseText.slice(
-          0,
-          300
-        )}`
-      );
-    }
 
-    if (
-      !response.ok ||
-      !data.ok
-    ) {
-      throw new Error(
-        data.error ||
-          "Unable to import this source."
-      );
-    }
+      const responseText =
+        await response.text();
 
-    const parsedTitle =
-      parseAuctionTitle(
-        data.title
-      );
+      let data:
+        AuctionImportResult;
 
-    const importedFront =
-      String(
-        data.frontImage || ""
-      ).trim();
+      try {
+        data =
+          JSON.parse(
+            responseText
+          );
+      } catch {
+        throw new Error(
+          `Import returned invalid JSON. First response text: ${responseText.slice(
+            0,
+            300
+          )}`
+        );
+      }
 
-    const importedAdditional =
-      Array.isArray(
-        data.additionalImages
-      )
-        ? data.additionalImages
-            .map((url) =>
-              String(
-                url || ""
-              ).trim()
-            )
-            .filter(Boolean)
-        : [];
+      if (
+        !response.ok ||
+        !data.ok
+      ) {
+        throw new Error(
+          data.error ||
+            "Unable to import this source."
+        );
+      }
 
-    const importedBack =
-      importedAdditional[0] ||
-      "";
+      const parsedTitle =
+        parseAuctionTitle(
+          data.title
+        );
 
-    const remainingImportedImages =
-      importedAdditional.slice(1);
-
-    const importedUploads:
-      PendingTNCEUpload[] = [];
-
-    if (importedFront) {
-      importedUploads.push(
-        await importImageAsUpload(
-          importedFront,
-          "front",
-          0
-        )
-      );
-    }
-
-    if (importedBack) {
-      importedUploads.push(
-        await importImageAsUpload(
-          importedBack,
-          "back",
-          1
-        )
-      );
-    }
-
-    for (
-      let i = 0;
-      i <
-      remainingImportedImages.length;
-      i++
-    ) {
-      importedUploads.push(
-        await importImageAsUpload(
-          remainingImportedImages[
-            i
-          ],
-          "other",
-          i + 2
-        )
-      );
-    }
-
-    /*
-     * Page-text imports may not contain a source URL.
-     * Preserve a URL already entered by the user.
-     */
-    const resolvedSourceUrl =
-      String(
-        data.sourceUrl ||
-          sourceUrl ||
-          auctionSourceUrl
-      ).trim();
-
-    if (resolvedSourceUrl) {
-      setAuctionSourceUrl(
-        resolvedSourceUrl
-      );
-    }
-
-    const importedSaleDate =
-      dateInputFromValue(
-        data.endDate
-      );
-
-    if (
-      importedSaleDate &&
-      !saleEventDateTouched
-    ) {
-      setSaleEventDate(
-        importedSaleDate
-      );
-    }
-
-    if (
-  mode === "new" &&
-  !cardTitle.trim()
-) {
-  setCardTitle(
-    cleanCardTitle(
-      String(
-        data.title || ""
-      )
-    )
-  );
-}
-
-    const importedSerial =
-      String(
-        parsedTitle.serialNumber ||
-          data.serialNumber ||
-          ""
-      ).trim();
-
-    /*
-     * The value already entered in the form always wins.
-     */
-    if (
-  mode === "new" &&
-  importedSerial &&
-  !serialNumber.trim()
-) {
-  setSerialNumber(
-    importedSerial
-  );
-}
-
-    const detectedGrades =
-      Array.isArray(
-        data.aspects?.["Detected Grades"]
-      )
-        ? data.aspects!["Detected Grades"]
-            .map((value) =>
-              String(value || "").trim()
-            )
-            .filter(Boolean)
-        : [];
-
-    const detectedCerts =
-      Array.isArray(
-        data.aspects?.["Detected Cert Numbers"]
-      )
-        ? data.aspects!["Detected Cert Numbers"]
-            .map((value) =>
-              String(value || "").trim()
-            )
-            .filter(Boolean)
-        : [];
-
-    const importedGrade =
-      String(
-        data.grade ||
-          parsedTitle.grade ||
-          detectedGrades[
-            detectedGrades.length - 1
-          ] ||
-          ""
-      ).trim();
-
-    if (
-      importedGrade &&
-      !grade.trim()
-    ) {
-      setGrade(
-        importedGrade
-      );
-    }
-
-    if (
-      data.certNumber &&
-      !certNumber.trim()
-    ) {
-      setCertNumber(
-        data.certNumber
-      );
-    }
-
-    /*
-     * Cards Alert update evidence may document a prior
-     * holder/grade in the same source. Previous Card
-     * Condition starts blank and only fills when the
-     * import actually exposes a distinct prior state.
-     */
-    if (
-      project === "cards-alert" &&
-      detectedGrades.length > 1 &&
-      !previousGrade.trim()
-    ) {
-      setPreviousGrade(
-        detectedGrades[0]
-      );
-    }
-
-    if (
-      project === "cards-alert" &&
-      detectedCerts.length > 1 &&
-      !previousCertNumber.trim()
-    ) {
-      setPreviousCertNumber(
-        detectedCerts[0]
-      );
-    }
-
-    if (
-      project === "cards-alert" &&
-      data.seller &&
-      !foundBy.trim()
-    ) {
-      setFoundBy(
+      /*
+       * Apply source/card information BEFORE images.
+       * A blocked or unsupported image must never prevent
+       * date, description, grade, cert, or URL from importing.
+       */
+      const resolvedSourceUrl =
         String(
-          data.seller
-        ).trim()
+          data.sourceUrl ||
+            sourceUrl ||
+            auctionSourceUrl
+        ).trim();
+
+      if (resolvedSourceUrl) {
+        setAuctionSourceUrl(
+          resolvedSourceUrl
+        );
+      }
+
+      const importedSaleDate =
+        dateInputFromValue(
+          data.endDate
+        );
+
+      if (
+        importedSaleDate &&
+        !saleEventDateTouched
+      ) {
+        setSaleEventDate(
+          importedSaleDate
+        );
+      }
+
+      if (
+        mode === "new" &&
+        !cardTitle.trim()
+      ) {
+        setCardTitle(
+          cleanCardTitle(
+            String(
+              data.title || ""
+            )
+          )
+        );
+      }
+
+      const importedSerial =
+        String(
+          parsedTitle.serialNumber ||
+            data.serialNumber ||
+            ""
+        ).trim();
+
+      if (
+        mode === "new" &&
+        importedSerial &&
+        !serialNumber.trim()
+      ) {
+        setSerialNumber(
+          importedSerial
+        );
+      }
+
+      const detectedGrades =
+        Array.isArray(
+          data.aspects?.["Detected Grades"]
+        )
+          ? data.aspects!["Detected Grades"]
+              .map((value) =>
+                String(value || "").trim()
+              )
+              .filter(Boolean)
+          : [];
+
+      const detectedCerts =
+        Array.isArray(
+          data.aspects?.["Detected Cert Numbers"]
+        )
+          ? data.aspects!["Detected Cert Numbers"]
+              .map((value) =>
+                String(value || "").trim()
+              )
+              .filter(Boolean)
+          : [];
+
+      const importedGrade =
+        String(
+          data.grade ||
+            parsedTitle.grade ||
+            detectedGrades[
+              detectedGrades.length - 1
+            ] ||
+            ""
+        ).trim();
+
+      if (
+        importedGrade &&
+        !grade.trim()
+      ) {
+        setGrade(
+          importedGrade
+        );
+      }
+
+      if (
+        data.certNumber &&
+        !certNumber.trim()
+      ) {
+        setCertNumber(
+          data.certNumber
+        );
+      }
+
+      if (
+        project === "cards-alert" &&
+        detectedGrades.length > 1 &&
+        !previousGrade.trim()
+      ) {
+        setPreviousGrade(
+          detectedGrades[0]
+        );
+      }
+
+      if (
+        project === "cards-alert" &&
+        detectedCerts.length > 1 &&
+        !previousCertNumber.trim()
+      ) {
+        setPreviousCertNumber(
+          detectedCerts[0]
+        );
+      }
+
+      if (
+        project === "cards-alert" &&
+        data.seller &&
+        !foundBy.trim()
+      ) {
+        setFoundBy(
+          String(
+            data.seller
+          ).trim()
+        );
+      }
+
+      if (
+        (
+          project === "cards-alert" ||
+          project === "rpa-tracker"
+        ) &&
+        data.description &&
+        !notes.trim()
+      ) {
+        setNotes(
+          data.description
+        );
+      }
+
+      /*
+       * Import images LAST and independently.
+       * A failed image does not cancel the successful
+       * source-data import.
+       */
+      const importedFront =
+        String(
+          data.frontImage || ""
+        ).trim();
+
+      const importedAdditional =
+        Array.isArray(
+          data.additionalImages
+        )
+          ? data.additionalImages
+              .map((url) =>
+                String(
+                  url || ""
+                ).trim()
+              )
+              .filter(Boolean)
+          : [];
+
+      const importedBack =
+        importedAdditional[0] ||
+        "";
+
+      const remainingImportedImages =
+        importedAdditional.slice(1);
+
+      const imageCandidates: Array<{
+        url: string;
+        slot: "front" | "back" | "other";
+        index: number;
+      }> = [];
+
+      if (importedFront) {
+        imageCandidates.push({
+          url: importedFront,
+          slot: "front",
+          index: 0,
+        });
+      }
+
+      if (importedBack) {
+        imageCandidates.push({
+          url: importedBack,
+          slot: "back",
+          index: 1,
+        });
+      }
+
+      for (
+        let i = 0;
+        i <
+        remainingImportedImages.length;
+        i++
+      ) {
+        imageCandidates.push({
+          url:
+            remainingImportedImages[i],
+          slot: "other",
+          index: i + 2,
+        });
+      }
+
+      const importedUploads:
+        PendingTNCEUpload[] = [];
+
+      const failedImageMessages:
+        string[] = [];
+
+      for (
+        const candidate
+        of imageCandidates
+      ) {
+        try {
+          importedUploads.push(
+            await importImageAsUpload(
+              candidate.url,
+              candidate.slot,
+              candidate.index
+            )
+          );
+        } catch (imageError: any) {
+          const message =
+            String(
+              imageError?.message ||
+                "Unable to import image."
+            ).trim();
+
+          console.warn(
+            "TNCE source image import failed:",
+            candidate.url,
+            message
+          );
+
+          failedImageMessages.push(
+            message
+          );
+        }
+      }
+
+      /*
+       * Do not clear manually-added images when the imported
+       * source contains no image candidates.
+       */
+      if (imageCandidates.length > 0) {
+        setFrontImage("");
+        setBackImage("");
+        setOtherImages("");
+        setUploadedImages(
+          importedUploads
+        );
+      }
+
+      setImportedListing(
+        data
       );
-    }
 
-    if (
-      (
-        project === "cards-alert" ||
-        project === "rpa-tracker"
-      ) &&
-      data.description &&
-      !notes.trim()
-    ) {
-      setNotes(
-        data.description
+      setPageHtml("");
+      setShowPageTextFallback(false);
+
+      if (
+        failedImageMessages.length > 0
+      ) {
+        const failedCount =
+          failedImageMessages.length;
+
+        const successfulCount =
+          importedUploads.length;
+
+        setImportError(
+          successfulCount > 0
+            ? `Source information imported successfully. ${successfulCount} image${
+                successfulCount === 1 ? "" : "s"
+              } imported; ${failedCount} image${
+                failedCount === 1 ? "" : "s"
+              } could not be imported automatically.`
+            : `Source information imported successfully, but ${failedCount} image${
+                failedCount === 1 ? "" : "s"
+              } could not be imported automatically.`
+        );
+      }
+    } catch (error: any) {
+      const message =
+        error?.message ||
+        "Unable to import this source.";
+
+      const blockedSource =
+        !copiedPageText &&
+        Boolean(sourceUrl);
+
+      setShowPageTextFallback(
+        blockedSource
       );
+
+      setImportError(
+        blockedSource
+          ? "The direct import failed. Copy the webpage text and paste it below."
+          : message
+      );
+    } finally {
+      setImporting(false);
     }
-
-    setFrontImage("");
-    setBackImage("");
-    setOtherImages("");
-    setUploadedImages(
-      importedUploads
-    );
-
-    setImportedListing(
-      data
-    );
-
-setPageHtml("");
-setShowPageTextFallback(false);
-
-  } catch (error: any) {
-  const message =
-    error?.message ||
-    "Unable to import this source.";
-
-  const blockedSource =
-    !copiedPageText &&
-    Boolean(sourceUrl);
-
-  setShowPageTextFallback(
-    blockedSource
-  );
-
-  setImportError(
-    blockedSource
-      ? "The direct import failed. Copy the webpage text and paste it below."
-      : message
-  );
-} finally {
-  
-    setImporting(false);
   }
-}
 
   async function uploadPendingImages(
     submissionId: string,

@@ -1,14 +1,46 @@
-import { unstable_cache } from "next/cache";
+import "server-only";
 
 let lastGoodData: any = null;
-let pendingRefresh: Promise<any> | null = null;
+let lastGoodDataAt = 0;
 
-const API_URL =
-  process.env.CARDS_ALERT_API_URL || "";
+let lastGoodRecent: any = null;
+let lastGoodRecentAt = 0;
 
-const FETCH_TIMEOUT_MS = 12000;
+let lastGoodOptions: any = null;
+let lastGoodOptionsAt = 0;
+
+let pendingDatabaseRequest: Promise<any> | null = null;
+let pendingRecentRequest: Promise<any> | null = null;
+let pendingOptionsRequest: Promise<any> | null = null;
+
+const BUCKET =
+  process.env.TNCE_UPLOAD_BUCKET || "tiffanycards";
+
+const SNAPSHOT_BASE_URL =
+  `https://storage.googleapis.com/${BUCKET}/cardsalert-data`;
+
+const DATABASE_URL =
+  `${SNAPSHOT_BASE_URL}/database.json`;
+
+const RECENT_URL =
+  `${SNAPSHOT_BASE_URL}/recent.json`;
+
+const OPTIONS_URL =
+  `${SNAPSHOT_BASE_URL}/options.json`;
+
+const DATABASE_MEMORY_TTL_MS =
+  5 * 60 * 1000;
+
+const RECENT_MEMORY_TTL_MS =
+  60 * 1000;
+
+const OPTIONS_MEMORY_TTL_MS =
+  5 * 60 * 1000;
+
+const FETCH_TIMEOUT_MS =
+  20000;
+
 const MAX_ATTEMPTS = 3;
-const REVALIDATE_SECONDS = 300;
 
 function wait(milliseconds: number) {
   return new Promise<void>((resolve) => {
@@ -17,23 +49,30 @@ function wait(milliseconds: number) {
 }
 
 function retryDelay(attempt: number) {
-  return attempt === 1 ? 500 : 1500;
+  return attempt === 1 ? 400 : 1200;
 }
 
 function isRealCard(card: any) {
-  const first = String(card?.First || "").trim();
-  const last = String(card?.Last || "").trim();
-  const brand = String(card?.Brand || "").trim();
-  const cert = String(card?.Cert_Number || "").trim();
-  const front = String(card?.front_image || "").trim();
-  const back = String(card?.back_image || "").trim();
+  const first =
+    String(card?.First || "").trim();
 
-  const hasName =
-    first !== "" ||
-    last !== "";
+  const last =
+    String(card?.Last || "").trim();
+
+  const brand =
+    String(card?.Brand || "").trim();
+
+  const cert =
+    String(card?.Cert_Number || "").trim();
+
+  const front =
+    String(card?.front_image || "").trim();
+
+  const back =
+    String(card?.back_image || "").trim();
 
   return (
-    hasName &&
+    (first !== "" || last !== "") &&
     brand !== "" &&
     (
       cert !== "" ||
@@ -43,205 +82,395 @@ function isRealCard(card: any) {
   );
 }
 
-function cleanData(data: any) {
-  const source =
-    data &&
-    typeof data === "object" &&
-    !Array.isArray(data)
-      ? data
-      : {};
+function validateDatabase(rawData: any) {
+  if (
+    !rawData ||
+    typeof rawData !== "object" ||
+    Array.isArray(rawData) ||
+    !Array.isArray(rawData.cards)
+  ) {
+    throw new Error(
+      "Cards Alert database snapshot is invalid."
+    );
+  }
+
+  const cards =
+    rawData.cards.filter(isRealCard);
+
+  if (cards.length === 0) {
+    throw new Error(
+      "Cards Alert database snapshot contains no cards."
+    );
+  }
 
   return {
-    ...source,
-    cards: Array.isArray(source.cards)
-      ? source.cards.filter(isRealCard)
-      : [],
+    ...rawData,
+    cards,
   };
 }
 
-function validateCardsAlertPayload(rawData: any) {
+function validateRecent(rawData: any) {
+  if (
+    !rawData ||
+    typeof rawData !== "object" ||
+    Array.isArray(rawData) ||
+    !Array.isArray(rawData.cards)
+  ) {
+    throw new Error(
+      "Cards Alert recent snapshot is invalid."
+    );
+  }
+
+  return {
+    ...rawData,
+    cards:
+      rawData.cards.filter(isRealCard),
+  };
+}
+
+function validateOptions(rawData: any) {
   if (
     !rawData ||
     typeof rawData !== "object" ||
     Array.isArray(rawData)
   ) {
     throw new Error(
-      "Cards Alert API returned an invalid response."
+      "Cards Alert options snapshot is invalid."
     );
   }
 
-  if (!Array.isArray(rawData.cards)) {
-    throw new Error(
-      "Cards Alert API response did not include a cards array."
-    );
-  }
-
-  const cleaned = cleanData(rawData);
-
-  if (
-    cleaned.cards.length === 0 &&
-    lastGoodData?.cards?.length
-  ) {
-    throw new Error(
-      "Cards Alert API returned an empty card database."
-    );
-  }
-
-  return cleaned;
+  return rawData;
 }
 
-async function fetchCardsAlertOnce() {
-  if (!API_URL) {
-    throw new Error(
-      "Missing CARDS_ALERT_API_URL environment variable."
-    );
-  }
+async function fetchJsonOnce(
+  url: string,
+  label: string
+) {
+  const controller =
+    new AbortController();
 
-  const controller = new AbortController();
-
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, FETCH_TIMEOUT_MS);
+  const timeout =
+    setTimeout(() => {
+      controller.abort();
+    }, FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(
-      API_URL,
-      {
-        method: "GET",
-        headers: {
-          Accept:
-            "application/json,text/plain;q=0.9,*/*;q=0.8",
-        },
-        cache: "no-store",
-        redirect: "follow",
-        signal: controller.signal,
-      }
-    );
+    const response =
+      await fetch(
+        url,
+        {
+          method: "GET",
 
-    const text = await response.text();
+          /*
+           * IMPORTANT:
+           * Do not put the 13+ MB database into Next.js'
+           * Data Cache. GCS is the persistent web cache.
+           */
+          cache: "no-store",
+
+          redirect: "follow",
+
+          headers: {
+            Accept:
+              "application/json,text/plain;q=0.9,*/*;q=0.8",
+          },
+
+          signal:
+            controller.signal,
+        }
+      );
+
+    const text =
+      await response.text();
 
     if (!response.ok) {
       throw new Error(
-        `Cards Alert API failed: ${response.status}.`
+        `${label} snapshot failed: ${response.status}`
       );
     }
 
-    let rawData: any;
-
     try {
-      rawData = JSON.parse(text);
+      return JSON.parse(text);
     } catch {
       throw new Error(
-        `Cards Alert API returned non-JSON. First response text: ${text.slice(
+        `${label} snapshot returned non-JSON. First response text: ${text.slice(
           0,
           200
         )}`
       );
     }
-
-    return validateCardsAlertPayload(rawData);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function fetchCardsAlertWithRetry() {
+async function fetchJsonWithRetry(
+  url: string,
+  label: string
+) {
   let lastError: unknown = null;
 
   for (
     let attempt = 1;
     attempt <= MAX_ATTEMPTS;
-    attempt += 1
+    attempt++
   ) {
     try {
-      const data = await fetchCardsAlertOnce();
-
-      lastGoodData = data;
-
-      return data;
+      return await fetchJsonOnce(
+        url,
+        label
+      );
     } catch (error) {
       lastError = error;
 
       console.error(
-        `Cards Alert refresh attempt ${attempt} failed:`,
+        `Cards Alert ${label} snapshot attempt ${attempt} failed:`,
         error
       );
 
       if (attempt < MAX_ATTEMPTS) {
-        await wait(retryDelay(attempt));
+        await wait(
+          retryDelay(attempt)
+        );
       }
     }
-  }
-
-  if (lastGoodData) {
-    console.warn(
-      "Cards Alert refresh failed; serving last known-good in-memory data."
-    );
-
-    return lastGoodData;
   }
 
   throw (
     lastError instanceof Error
       ? lastError
       : new Error(
-          "Unable to refresh Cards Alert data."
+          `Unable to load Cards Alert ${label} snapshot.`
         )
   );
 }
 
-const getSharedCardsAlertData =
-  unstable_cache(
-    async () => {
-      return fetchCardsAlertWithRetry();
-    },
-    [
-      "cards-alert-public-database-v3",
-    ],
-    {
-      revalidate: REVALIDATE_SECONDS,
-      tags: [
-        "cards-alert-public-database",
-      ],
-    }
-  );
+async function loadDatabaseSnapshot() {
+  const raw =
+    await fetchJsonWithRetry(
+      DATABASE_URL,
+      "database"
+    );
+
+  return validateDatabase(raw);
+}
+
+async function loadRecentSnapshot() {
+  const raw =
+    await fetchJsonWithRetry(
+      RECENT_URL,
+      "recent"
+    );
+
+  return validateRecent(raw);
+}
+
+async function loadOptionsSnapshot() {
+  const raw =
+    await fetchJsonWithRetry(
+      OPTIONS_URL,
+      "options"
+    );
+
+  return validateOptions(raw);
+}
 
 export async function refreshCardsAlertData() {
-  if (pendingRefresh) {
-    return pendingRefresh;
+  if (pendingDatabaseRequest) {
+    return pendingDatabaseRequest;
   }
 
-  pendingRefresh =
-    fetchCardsAlertWithRetry()
+  pendingDatabaseRequest =
+    loadDatabaseSnapshot()
+      .then((data) => {
+        lastGoodData = data;
+        lastGoodDataAt =
+          Date.now();
+
+        return data;
+      })
       .finally(() => {
-        pendingRefresh = null;
+        pendingDatabaseRequest =
+          null;
       });
 
-  return pendingRefresh;
+  return pendingDatabaseRequest;
 }
 
 export async function getCachedCardsAlertData() {
-  if (lastGoodData) {
+  const now =
+    Date.now();
+
+  if (
+    lastGoodData &&
+    now - lastGoodDataAt <
+      DATABASE_MEMORY_TTL_MS
+  ) {
     return lastGoodData;
   }
 
-  try {
-    const data =
-      await getSharedCardsAlertData();
+  /*
+   * If this warm server already has a good snapshot,
+   * serve it immediately and refresh from GCS in the
+   * background. Visitors never wait for the refresh.
+   */
+  if (lastGoodData) {
+    if (!pendingDatabaseRequest) {
+      pendingDatabaseRequest =
+        loadDatabaseSnapshot()
+          .then((data) => {
+            lastGoodData = data;
+            lastGoodDataAt =
+              Date.now();
 
-    lastGoodData = data;
+            return data;
+          })
+          .catch((error) => {
+            console.error(
+              "Background Cards Alert database refresh failed:",
+              error
+            );
 
-    return data;
-  } catch (error) {
-    console.error(
-      "Shared Cards Alert cache load failed:",
-      error
-    );
-
-    if (lastGoodData) {
-      return lastGoodData;
+            return lastGoodData;
+          })
+          .finally(() => {
+            pendingDatabaseRequest =
+              null;
+          });
     }
 
-    throw error;
+    return lastGoodData;
   }
+
+  /*
+   * Cold server instance: retrieve the already-built
+   * database snapshot from GCS instead of Apps Script.
+   */
+  return refreshCardsAlertData();
+}
+
+export async function getCardsAlertRecentSnapshot() {
+  const now =
+    Date.now();
+
+  if (
+    lastGoodRecent &&
+    now - lastGoodRecentAt <
+      RECENT_MEMORY_TTL_MS
+  ) {
+    return lastGoodRecent;
+  }
+
+  if (lastGoodRecent) {
+    if (!pendingRecentRequest) {
+      pendingRecentRequest =
+        loadRecentSnapshot()
+          .then((data) => {
+            lastGoodRecent =
+              data;
+
+            lastGoodRecentAt =
+              Date.now();
+
+            return data;
+          })
+          .catch((error) => {
+            console.error(
+              "Background Cards Alert recent refresh failed:",
+              error
+            );
+
+            return lastGoodRecent;
+          })
+          .finally(() => {
+            pendingRecentRequest =
+              null;
+          });
+    }
+
+    return lastGoodRecent;
+  }
+
+  if (pendingRecentRequest) {
+    return pendingRecentRequest;
+  }
+
+  pendingRecentRequest =
+    loadRecentSnapshot()
+      .then((data) => {
+        lastGoodRecent = data;
+        lastGoodRecentAt =
+          Date.now();
+
+        return data;
+      })
+      .finally(() => {
+        pendingRecentRequest =
+          null;
+      });
+
+  return pendingRecentRequest;
+}
+
+export async function getCardsAlertOptionsSnapshot() {
+  const now =
+    Date.now();
+
+  if (
+    lastGoodOptions &&
+    now - lastGoodOptionsAt <
+      OPTIONS_MEMORY_TTL_MS
+  ) {
+    return lastGoodOptions;
+  }
+
+  if (lastGoodOptions) {
+    if (!pendingOptionsRequest) {
+      pendingOptionsRequest =
+        loadOptionsSnapshot()
+          .then((data) => {
+            lastGoodOptions =
+              data;
+
+            lastGoodOptionsAt =
+              Date.now();
+
+            return data;
+          })
+          .catch((error) => {
+            console.error(
+              "Background Cards Alert options refresh failed:",
+              error
+            );
+
+            return lastGoodOptions;
+          })
+          .finally(() => {
+            pendingOptionsRequest =
+              null;
+          });
+    }
+
+    return lastGoodOptions;
+  }
+
+  if (pendingOptionsRequest) {
+    return pendingOptionsRequest;
+  }
+
+  pendingOptionsRequest =
+    loadOptionsSnapshot()
+      .then((data) => {
+        lastGoodOptions = data;
+        lastGoodOptionsAt =
+          Date.now();
+
+        return data;
+      })
+      .finally(() => {
+        pendingOptionsRequest =
+          null;
+      });
+
+  return pendingOptionsRequest;
 }
