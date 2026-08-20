@@ -1,4 +1,5 @@
 import {
+  after,
   NextRequest,
   NextResponse,
 } from "next/server";
@@ -20,18 +21,29 @@ import {
   submitCardsAlertContribution,
 } from "@/lib/tnce/server/submitCardsAlert";
 
+import {
+  buildCardsAlertSnapshots,
+} from "@/lib/cards-alert/snapshot";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
 
 function endpointForProject(
   project: TNCEProject
 ) {
-  if (project === "cards-alert") {
+  if (
+    project ===
+    "cards-alert"
+  ) {
     return process.env
       .CARDS_ALERT_TNCE_APPS_SCRIPT_URL;
   }
 
-  if (project === "rpa-tracker") {
+  if (
+    project ===
+    "rpa-tracker"
+  ) {
     return process.env
       .TNCE_APPS_SCRIPT_URL;
   }
@@ -39,24 +51,90 @@ function endpointForProject(
   return "";
 }
 
+
 function adminSecretForProject(
   project: TNCEProject
 ) {
-  if (project === "cards-alert") {
+  if (
+    project ===
+    "cards-alert"
+  ) {
     return (
       process.env
         .CARDS_ALERT_TNCE_ADMIN_SECRET ||
-      process.env.TNCE_ADMIN_SECRET
+      process.env
+        .TNCE_ADMIN_SECRET
     );
   }
 
-  if (project === "rpa-tracker") {
+  if (
+    project ===
+    "rpa-tracker"
+  ) {
     return process.env
       .TNCE_ADMIN_SECRET;
   }
 
   return "";
 }
+
+
+/*******************************************************
+ * CARDS ALERT SNAPSHOT REFRESH
+ *
+ * Runs after a successful Cards Alert publish.
+ *
+ * The publish response is returned first so owner-mode
+ * publishing does not wait for the full snapshot rebuild.
+ *******************************************************/
+
+function scheduleCardsAlertSnapshotRefresh(
+  project: TNCEProject,
+  submissionId: string
+) {
+  if (
+    project !==
+    "cards-alert"
+  ) {
+    return;
+  }
+
+  after(
+    async () => {
+      try {
+        console.log(
+          `Cards Alert snapshot refresh starting after auto-publish ${submissionId}.`
+        );
+
+        const result =
+          await buildCardsAlertSnapshots();
+
+        console.log(
+          `Cards Alert snapshot refresh completed after auto-publish ${submissionId}.`,
+          {
+            cardCount:
+              result.cardCount,
+
+            generatedAt:
+              result.generatedAt,
+          }
+        );
+      } catch (error) {
+        /*
+         * The card is already published.
+         *
+         * Snapshot failure must never turn a successful
+         * card publish into a failed submission.
+         */
+        console.error(
+          `Cards Alert snapshot refresh failed after auto-publish ${submissionId}:`,
+          error
+        );
+      }
+    }
+  );
+}
+
 
 async function quickPublishSubmission(
   submission: TNCESubmission,
@@ -84,29 +162,43 @@ async function quickPublishSubmission(
     );
   }
 
-  const response = await fetch(
-    url,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({
-        action: "publish",
-        adminSecret,
-        submissionId,
-        reviewNotes:
-          "Published automatically through TNCE Owner Mode.",
-        contributorNotes:
-          String(
-            submission.notes || ""
-          ).trim(),
-      }),
-      cache: "no-store",
-      redirect: "follow",
-    }
-  );
+  const response =
+    await fetch(
+      url,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "text/plain;charset=utf-8",
+        },
+
+        body:
+          JSON.stringify({
+            action:
+              "publish",
+
+            adminSecret,
+
+            submissionId,
+
+            reviewNotes:
+              "Published automatically through TNCE Owner Mode.",
+
+            contributorNotes:
+              String(
+                submission.notes ||
+                  ""
+              ).trim(),
+          }),
+
+        cache:
+          "no-store",
+
+        redirect:
+          "follow",
+      }
+    );
 
   const text =
     await response.text();
@@ -114,7 +206,10 @@ async function quickPublishSubmission(
   let data: any;
 
   try {
-    data = JSON.parse(text);
+    data =
+      JSON.parse(
+        text
+      );
   } catch {
     throw new Error(
       `TNCE quick publish returned invalid JSON. First response text: ${text.slice(
@@ -124,7 +219,10 @@ async function quickPublishSubmission(
     );
   }
 
-  if (!response.ok || !data.ok) {
+  if (
+    !response.ok ||
+    !data.ok
+  ) {
     throw new Error(
       data.error ||
         "TNCE quick publish failed."
@@ -134,6 +232,7 @@ async function quickPublishSubmission(
   return data;
 }
 
+
 export async function POST(
   req: NextRequest
 ) {
@@ -142,10 +241,13 @@ export async function POST(
       (await req.json()) as
         TNCESubmission;
 
-    if (!submission.project) {
+    if (
+      !submission.project
+    ) {
       return NextResponse.json(
         {
           ok: false,
+
           error:
             "Missing TNCE project.",
         },
@@ -156,8 +258,13 @@ export async function POST(
     }
 
     let result: any;
-    let submittedMessage = "";
 
+    let submittedMessage =
+      "";
+
+    /*
+     * Save the contribution first.
+     */
     if (
       submission.project ===
       "rpa-tracker"
@@ -184,6 +291,7 @@ export async function POST(
       return NextResponse.json(
         {
           ok: false,
+
           error:
             `TNCE project not implemented yet: ${submission.project}`,
         },
@@ -195,7 +303,8 @@ export async function POST(
 
     const submissionId =
       String(
-        result.submissionId || ""
+        result.submissionId ||
+          ""
       ).trim();
 
     const ownerMode =
@@ -204,9 +313,18 @@ export async function POST(
       );
 
     const isRemoval =
-      submission.submissionAction ===
+      submission
+        .submissionAction ===
       "removal";
 
+    /*
+     * OWNER MODE
+     *
+     * Automatically publish normal additions/updates
+     * when the authenticated owner submits them.
+     *
+     * Removal requests still go through review.
+     */
     if (
       ownerMode &&
       !isRemoval &&
@@ -219,51 +337,115 @@ export async function POST(
             submissionId
           );
 
-        return NextResponse.json({
-          ok: true,
-          submissionId,
-          published: true,
-          ownerMode: true,
-          message:
-            submission.project ===
-            "cards-alert"
-              ? "Cards Alert card published successfully."
-              : "RPA Tracker card published successfully.",
-          publishResult,
-        });
-      } catch (publishError: any) {
+        /*
+         * Only Cards Alert needs the GCS snapshot refresh.
+         *
+         * This is scheduled AFTER the HTTP response, so
+         * the owner does not wait for the ~50-second
+         * snapshot generation.
+         */
+        scheduleCardsAlertSnapshotRefresh(
+          submission.project,
+          submissionId
+        );
+
+        return NextResponse.json(
+          {
+            ok: true,
+
+            submissionId,
+
+            published: true,
+
+            ownerMode: true,
+
+            message:
+              submission.project ===
+              "cards-alert"
+                ? "Cards Alert card published successfully."
+                : "RPA Tracker card published successfully.",
+
+            publishResult,
+          },
+          {
+            headers: {
+              "Cache-Control":
+                "no-store",
+            },
+          }
+        );
+      } catch (
+        publishError: any
+      ) {
         console.error(
           "TNCE Owner Quick Publish failed:",
           publishError
         );
 
-        return NextResponse.json({
-          ok: true,
-          submissionId,
-          published: false,
-          ownerMode: true,
-          message:
-            "Submission was saved but Quick Publish failed. It remains in Pending Review.",
-          quickPublishError:
-            publishError?.message ||
-            "Quick Publish failed.",
-        });
+        return NextResponse.json(
+          {
+            ok: true,
+
+            submissionId,
+
+            published: false,
+
+            ownerMode: true,
+
+            message:
+              "Submission was saved but Quick Publish failed. It remains in Pending Review.",
+
+            quickPublishError:
+              publishError?.message ||
+              "Quick Publish failed.",
+          },
+          {
+            headers: {
+              "Cache-Control":
+                "no-store",
+            },
+          }
+        );
       }
     }
 
-    return NextResponse.json({
-      ok: true,
-      submissionId,
-      published: false,
-      ownerMode,
-      message: isRemoval
-        ? "Removal request submitted for review."
-        : submittedMessage,
-    });
-  } catch (error: any) {
+    /*
+     * Normal public submission.
+     */
+    return NextResponse.json(
+      {
+        ok: true,
+
+        submissionId,
+
+        published: false,
+
+        ownerMode,
+
+        message:
+          isRemoval
+            ? "Removal request submitted for review."
+            : submittedMessage,
+      },
+      {
+        headers: {
+          "Cache-Control":
+            "no-store",
+        },
+      }
+    );
+  } catch (
+    error: any
+  ) {
+    console.error(
+      "TNCE submission route error:",
+      error
+    );
+
     return NextResponse.json(
       {
         ok: false,
+
         error:
           error?.message ||
           "TNCE submission failed.",

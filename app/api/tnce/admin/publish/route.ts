@@ -1,7 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  after,
+  NextRequest,
+  NextResponse,
+} from "next/server";
+
 import sharp from "sharp";
 
-import type { TNCEProject } from "@/lib/tnce/types";
+import type {
+  TNCEProject,
+} from "@/lib/tnce/types";
+
+import {
+  buildCardsAlertSnapshots,
+} from "@/lib/cards-alert/snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +50,10 @@ const CARDS_ALERT_FIELDS = [
   "Found_By",
 ] as const;
 
-type ImageRole = "front" | "back" | "additional";
+type ImageRole =
+  | "front"
+  | "back"
+  | "additional";
 
 type CleanImage = {
   id: string;
@@ -48,111 +62,291 @@ type CleanImage = {
   rotation: number;
 };
 
-function endpointForProject(project: TNCEProject) {
-  return project === "cards-alert"
-    ? process.env.CARDS_ALERT_TNCE_APPS_SCRIPT_URL
-    : project === "rpa-tracker"
-      ? process.env.TNCE_APPS_SCRIPT_URL
+function endpointForProject(
+  project: TNCEProject
+) {
+  return project ===
+    "cards-alert"
+    ? process.env
+        .CARDS_ALERT_TNCE_APPS_SCRIPT_URL
+    : project ===
+        "rpa-tracker"
+      ? process.env
+          .TNCE_APPS_SCRIPT_URL
       : "";
 }
 
-function secretForProject(project: TNCEProject) {
-  return project === "cards-alert"
-    ? process.env.CARDS_ALERT_TNCE_ADMIN_SECRET || process.env.TNCE_ADMIN_SECRET
-    : process.env.TNCE_ADMIN_SECRET;
+function secretForProject(
+  project: TNCEProject
+) {
+  return project ===
+    "cards-alert"
+    ? process.env
+        .CARDS_ALERT_TNCE_ADMIN_SECRET ||
+        process.env
+          .TNCE_ADMIN_SECRET
+    : process.env
+        .TNCE_ADMIN_SECRET;
 }
 
-function cleanRecord(project: TNCEProject, value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+function cleanRecord(
+  project: TNCEProject,
+  value: unknown
+) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
     return {};
   }
 
-  const source = value as Record<string, unknown>;
+  const source =
+    value as Record<
+      string,
+      unknown
+    >;
 
-  const fields = project === "cards-alert" ? CARDS_ALERT_FIELDS : RPA_FIELDS;
+  const fields =
+    project ===
+    "cards-alert"
+      ? CARDS_ALERT_FIELDS
+      : RPA_FIELDS;
 
-  const result: Record<string, string> = {};
+  const result:
+    Record<string, string> =
+      {};
 
-  fields.forEach((field) => {
-    if (!Object.prototype.hasOwnProperty.call(source, field)) {
-      return;
+  fields.forEach(
+    (field) => {
+      if (
+        !Object.prototype
+          .hasOwnProperty.call(
+            source,
+            field
+          )
+      ) {
+        return;
+      }
+
+      const value =
+        source[field];
+
+      result[field] =
+        Array.isArray(value)
+          ? value
+              .map((item) =>
+                String(
+                  item ?? ""
+                ).trim()
+              )
+              .filter(Boolean)
+              .join("\n")
+          : String(
+              value ?? ""
+            ).trim();
     }
-
-    const value = source[field];
-
-    result[field] = Array.isArray(value)
-      ? value
-          .map((item) => String(item ?? "").trim())
-          .filter(Boolean)
-          .join("\n")
-      : String(value ?? "").trim();
-  });
+  );
 
   return result;
 }
 
-function cleanImages(value: unknown): CleanImage[] {
-  if (!Array.isArray(value)) return [];
+function cleanImages(
+  value: unknown
+): CleanImage[] {
+  if (
+    !Array.isArray(value)
+  ) {
+    return [];
+  }
 
   return value
     .map((item: any) => {
-      const role = String(item?.role || "").toLowerCase();
+      const role =
+        String(
+          item?.role || ""
+        ).toLowerCase();
 
-      const rotationValue = Number(item?.rotation || 0);
+      const rotationValue =
+        Number(
+          item?.rotation || 0
+        );
 
-      const rotation = [0, 90, 180, 270].includes(rotationValue)
-        ? rotationValue
-        : 0;
+      const rotation =
+        [
+          0,
+          90,
+          180,
+          270,
+        ].includes(
+          rotationValue
+        )
+          ? rotationValue
+          : 0;
 
       return {
-        id: String(item?.id || "").trim(),
-        url: String(item?.url || "").trim(),
+        id:
+          String(
+            item?.id || ""
+          ).trim(),
+
+        url:
+          String(
+            item?.url || ""
+          ).trim(),
+
         role:
-          role === "front" ? "front" : role === "back" ? "back" : "additional",
+          role === "front"
+            ? "front"
+            : role === "back"
+              ? "back"
+              : "additional",
+
         rotation,
       } as CleanImage;
     })
-    .filter((image) => image.url);
+    .filter(
+      (image) =>
+        image.url
+    );
 }
 
-async function prepareRotatedImages(images: CleanImage[]) {
+async function prepareRotatedImages(
+  images: CleanImage[]
+) {
   const prepared = [];
 
-  for (let index = 0; index < images.length; index++) {
-    const image = images[index];
+  for (
+    let index = 0;
+    index < images.length;
+    index++
+  ) {
+    const image =
+      images[index];
 
-    if (!image.rotation) continue;
+    if (!image.rotation) {
+      continue;
+    }
 
-    const response = await fetch(image.url, { cache: "no-store" });
+    const response =
+      await fetch(
+        image.url,
+        {
+          cache:
+            "no-store",
+        }
+      );
 
     if (!response.ok) {
       throw new Error(
-        `Unable to download image for rotation (${response.status}).`,
+        `Unable to download image for rotation (${response.status}).`
       );
     }
 
-    const source = Buffer.from(await response.arrayBuffer());
+    const source =
+      Buffer.from(
+        await response.arrayBuffer()
+      );
 
-    const rotated = await sharp(source)
-      .rotate(image.rotation)
-      .jpeg({
-        quality: 90,
-        mozjpeg: true,
-      })
-      .toBuffer();
+    const rotated =
+      await sharp(source)
+        .rotate(
+          image.rotation
+        )
+        .jpeg({
+          quality: 90,
+          mozjpeg: true,
+        })
+        .toBuffer();
 
     prepared.push({
-      originalUrl: image.url,
-      role: image.role,
-      rotation: image.rotation,
-      fileName: `${image.role}-rotated-${index + 1}.jpg`,
-      contentType: "image/jpeg",
-      base64: `data:image/jpeg;base64,${rotated.toString("base64")}`,
+      originalUrl:
+        image.url,
+
+      role:
+        image.role,
+
+      rotation:
+        image.rotation,
+
+      fileName:
+        `${image.role}-rotated-${index + 1}.jpg`,
+
+      contentType:
+        "image/jpeg",
+
+      base64:
+        `data:image/jpeg;base64,${rotated.toString(
+          "base64"
+        )}`,
     });
   }
 
   return prepared;
 }
+
+
+/*******************************************************
+ * CARDS ALERT AUTOMATIC SNAPSHOT REFRESH
+ *
+ * Runs AFTER the publish response has been returned.
+ *
+ * The user does not need to wait for the full Cards
+ * Alert snapshot rebuild before TNCE reports that the
+ * card was successfully published.
+ *******************************************************/
+
+function scheduleCardsAlertSnapshotRefresh(
+  project: TNCEProject,
+  submissionId: string
+) {
+  if (
+    project !==
+    "cards-alert"
+  ) {
+    return;
+  }
+
+  after(
+    async () => {
+      try {
+        console.log(
+          `Cards Alert snapshot refresh starting after publish ${submissionId}.`
+        );
+
+        const result =
+          await buildCardsAlertSnapshots();
+
+        console.log(
+          `Cards Alert snapshot refresh completed after publish ${submissionId}.`,
+          {
+            cardCount:
+              result.cardCount,
+
+            generatedAt:
+              result.generatedAt,
+          }
+        );
+      } catch (error) {
+        /*
+         * IMPORTANT:
+         *
+         * The card has already been successfully
+         * published at this point.
+         *
+         * A snapshot failure should therefore be
+         * logged, but it must NOT change the publish
+         * result into a failure.
+         */
+        console.error(
+          `Cards Alert snapshot refresh failed after publish ${submissionId}:`,
+          error
+        );
+      }
+    }
+  );
+}
+
 
 export async function POST(
   req: NextRequest
@@ -168,7 +362,8 @@ export async function POST(
 
     const submissionId =
       String(
-        body?.submissionId || ""
+        body?.submissionId ||
+          ""
       ).trim();
 
     const url =
@@ -189,6 +384,7 @@ export async function POST(
       return NextResponse.json(
         {
           ok: false,
+
           error:
             "Missing TNCE publish configuration or submission ID.",
         },
@@ -209,13 +405,17 @@ export async function POST(
       );
 
     const publishPayload = {
-      action: "publish",
+      action:
+        "publish",
+
       adminSecret,
+
       submissionId,
 
       reviewNotes:
         String(
-          body?.reviewNotes || ""
+          body?.reviewNotes ||
+            ""
         ).trim(),
 
       contributorNotes:
@@ -231,6 +431,7 @@ export async function POST(
         ),
 
       organizedImages,
+
       rotatedImages,
     };
 
@@ -241,7 +442,8 @@ export async function POST(
         await fetch(
           url,
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -253,19 +455,25 @@ export async function POST(
                 publishPayload
               ),
 
-            cache: "no-store",
-            redirect: "follow",
+            cache:
+              "no-store",
+
+            redirect:
+              "follow",
           }
         );
 
       const text =
         await response.text();
 
-      let data: any = null;
+      let data: any =
+        null;
 
       try {
         data =
-          JSON.parse(text);
+          JSON.parse(
+            text
+          );
       } catch {
         publishError =
           `TNCE publish returned invalid JSON: ${text.slice(
@@ -274,11 +482,19 @@ export async function POST(
           )}`;
       }
 
+      /*
+       * NORMAL SUCCESSFUL PUBLISH
+       */
       if (
         data &&
         response.ok &&
         data.ok
       ) {
+        scheduleCardsAlertSnapshotRefresh(
+          project,
+          submissionId
+        );
+
         return NextResponse.json(
           data,
           {
@@ -297,11 +513,15 @@ export async function POST(
               data.message ||
               "Publishing failed."
           );
-      } else if (!publishError) {
+      } else if (
+        !publishError
+      ) {
         publishError =
           `Publishing failed with status ${response.status}.`;
       }
-    } catch (error: any) {
+    } catch (
+      error: any
+    ) {
       publishError =
         error?.message ||
         "The publish request did not return a result.";
@@ -317,28 +537,38 @@ export async function POST(
       await fetch(
         url,
         {
-          method: "POST",
+          method:
+            "POST",
 
           headers: {
             "Content-Type":
               "text/plain;charset=utf-8",
           },
 
-          body: JSON.stringify({
-            action: "adminQueue",
-            adminSecret,
-            project,
-          }),
+          body:
+            JSON.stringify({
+              action:
+                "adminQueue",
 
-          cache: "no-store",
-          redirect: "follow",
+              adminSecret,
+
+              project,
+            }),
+
+          cache:
+            "no-store",
+
+          redirect:
+            "follow",
         }
       );
 
     const verifyText =
-      await verifyResponse.text();
+      await verifyResponse
+        .text();
 
-    let verifyData: any = null;
+    let verifyData: any =
+      null;
 
     try {
       verifyData =
@@ -346,20 +576,24 @@ export async function POST(
           verifyText
         );
     } catch {
-      verifyData = null;
+      verifyData =
+        null;
     }
 
     const queueItems =
       Array.isArray(
-        verifyData?.submissions
+        verifyData
+          ?.submissions
       )
-        ? verifyData.submissions
+        ? verifyData
+            .submissions
         : Array.isArray(
               verifyData?.items
             )
           ? verifyData.items
           : Array.isArray(
-                verifyData?.queue
+                verifyData
+                  ?.queue
               )
             ? verifyData.queue
             : [];
@@ -368,8 +602,10 @@ export async function POST(
       queueItems.find(
         (item: any) =>
           String(
-            item?.Submission_ID ||
-              item?.submissionId ||
+            item
+              ?.Submission_ID ||
+              item
+                ?.submissionId ||
               item?.id ||
               ""
           ).trim() ===
@@ -387,16 +623,33 @@ export async function POST(
         .trim()
         .toLowerCase();
 
+    /*
+     * RECOVERED SUCCESSFUL PUBLISH
+     *
+     * Apps Script completed the publish even though
+     * the original HTTP response was interrupted.
+     */
     if (
       verifiedStatus ===
       "published"
     ) {
+      scheduleCardsAlertSnapshotRefresh(
+        project,
+        submissionId
+      );
+
       return NextResponse.json(
         {
           ok: true,
+
           submissionId,
-          status: "Published",
-          recovered: true,
+
+          status:
+            "Published",
+
+          recovered:
+            true,
+
           message:
             "The card was published successfully, but the original publish response was interrupted.",
         },
@@ -413,7 +666,9 @@ export async function POST(
       publishError ||
         "Publishing failed."
     );
-  } catch (error: any) {
+  } catch (
+    error: any
+  ) {
     console.error(
       "TNCE publish route error:",
       error
@@ -422,6 +677,7 @@ export async function POST(
     return NextResponse.json(
       {
         ok: false,
+
         error:
           error?.message ||
           "Publishing failed.",
