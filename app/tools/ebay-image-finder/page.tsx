@@ -155,8 +155,40 @@ export default function EbayImageFinderPage() {
           }
         );
 
-      const data =
-        await response.json();
+      const responseText =
+  await response.text();
+
+let data: ApiResponse;
+
+try {
+  data =
+    JSON.parse(
+      responseText
+    );
+} catch {
+  console.error(
+    "eBay Image Finder returned non-JSON:",
+    {
+      status:
+        response.status,
+
+      contentType:
+        response.headers.get(
+          "content-type"
+        ),
+
+      response:
+        responseText.slice(
+          0,
+          500
+        ),
+    }
+  );
+
+  throw new Error(
+    `Image Finder API failed with HTTP ${response.status}.`
+  );
+}
 
       if (!response.ok) {
         throw new Error(

@@ -7,6 +7,7 @@ import sharp from "sharp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 type CandidateResult = {
   url: string;
@@ -43,26 +44,45 @@ function extractEbayImageId(
 async function testCandidate(
   url: string
 ): Promise<CandidateResult> {
-  try {
-    const response = await fetch(
-      url,
-      {
-        method: "GET",
-        redirect: "follow",
-        cache: "no-store",
+  const controller =
+    new AbortController();
 
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
-
-          Accept:
-            "image/avif,image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8",
-
-          Referer:
-            "https://www.ebay.com/",
-        },
-      }
+  const timeout =
+    setTimeout(
+      () => {
+        controller.abort();
+      },
+      8000
     );
+
+  try {
+    const response =
+      await fetch(
+        url,
+        {
+          method: "GET",
+
+          redirect:
+            "follow",
+
+          cache:
+            "no-store",
+
+          signal:
+            controller.signal,
+
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
+
+            Accept:
+              "image/avif,image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8",
+
+            Referer:
+              "https://www.ebay.com/",
+          },
+        }
+      );
 
     const contentType =
       String(
@@ -80,16 +100,28 @@ async function testCandidate(
         "image/"
       )
     ) {
+      /*
+       * Cancel the body because we
+       * don't need to download it.
+       */
+      try {
+        await response.body?.cancel();
+      } catch {
+        // Ignore cleanup errors.
+      }
+
       return {
         url,
         ok: false,
-        status: response.status,
+        status:
+          response.status,
         contentType,
         bytes: null,
         width: null,
         height: null,
         format: null,
-        fingerprint: null,
+        fingerprint:
+          null,
       };
     }
 
@@ -97,16 +129,18 @@ async function testCandidate(
       await response.arrayBuffer();
 
     const buffer =
-      Buffer.from(arrayBuffer);
+      Buffer.from(
+        arrayBuffer
+      );
 
-    let width: number | null =
-      null;
+    let width:
+      number | null = null;
 
-    let height: number | null =
-      null;
+    let height:
+      number | null = null;
 
-    let format: string | null =
-      null;
+    let format:
+      string | null = null;
 
     try {
       const metadata =
@@ -115,20 +149,23 @@ async function testCandidate(
         ).metadata();
 
       width =
-        metadata.width || null;
+        metadata.width ||
+        null;
 
       height =
-        metadata.height || null;
+        metadata.height ||
+        null;
 
       format =
-        metadata.format || null;
+        metadata.format ||
+        null;
     } catch {
-      // Keep dimensions null if
-      // Sharp cannot inspect it.
+      /*
+       * The image may still be usable
+       * even if Sharp cannot inspect it.
+       */
     }
 
-    // Simple fingerprint to identify
-    // duplicate responses.
     const fingerprint =
       `${buffer.length}:` +
       buffer
@@ -139,20 +176,34 @@ async function testCandidate(
             64
           )
         )
-        .toString("base64");
+        .toString(
+          "base64"
+        );
 
     return {
       url,
       ok: true,
-      status: response.status,
+      status:
+        response.status,
       contentType,
-      bytes: buffer.length,
+      bytes:
+        buffer.length,
       width,
       height,
       format,
       fingerprint,
     };
-  } catch {
+  } catch (
+    error: any
+  ) {
+    console.warn(
+      "eBay image candidate failed:",
+      url,
+      error?.name ||
+        error?.message ||
+        error
+    );
+
     return {
       url,
       ok: false,
@@ -162,8 +213,13 @@ async function testCandidate(
       width: null,
       height: null,
       format: null,
-      fingerprint: null,
+      fingerprint:
+        null,
     };
+  } finally {
+    clearTimeout(
+      timeout
+    );
   }
 }
 
@@ -189,7 +245,8 @@ function scoreCandidate(
       : 0;
 
   return (
-    pixels * 1000000000 +
+    pixels *
+      1000000000 +
     bytes * 10 +
     formatBonus
   );
@@ -203,7 +260,9 @@ export async function POST(
       await request.json();
 
     const inputUrl =
-      cleanUrl(body?.url);
+      cleanUrl(
+        body?.url
+      );
 
     if (!inputUrl) {
       return NextResponse.json(
@@ -221,7 +280,9 @@ export async function POST(
 
     try {
       parsedUrl =
-        new URL(inputUrl);
+        new URL(
+          inputUrl
+        );
     } catch {
       return NextResponse.json(
         {
@@ -235,7 +296,8 @@ export async function POST(
     }
 
     const hostname =
-      parsedUrl.hostname.toLowerCase();
+      parsedUrl.hostname
+        .toLowerCase();
 
     if (
       hostname !==
@@ -284,12 +346,15 @@ export async function POST(
       "jpg",
     ];
 
-    const candidateUrls: string[] =
-      [];
+    const candidateUrls:
+      string[] = [];
 
-    for (const size of sizes) {
+    for (
+      const size of sizes
+    ) {
       for (
-        const extension of extensions
+        const extension
+        of extensions
       ) {
         candidateUrls.push(
           `https://i.ebayimg.com/images/g/${imageId}/s-l${size}.${extension}`
@@ -297,19 +362,42 @@ export async function POST(
       }
     }
 
-    const tested =
-      await Promise.all(
-        candidateUrls.map(
-          testCandidate
-        )
+    /*
+     * IMPORTANT:
+     *
+     * Test sequentially instead of
+     * downloading all candidates at once.
+     *
+     * This substantially reduces peak
+     * memory usage on Vercel.
+     */
+    const tested:
+      CandidateResult[] = [];
+
+    for (
+      const candidateUrl
+      of candidateUrls
+    ) {
+      const result =
+        await testCandidate(
+          candidateUrl
+        );
+
+      tested.push(
+        result
       );
+    }
 
     const available =
       tested.filter(
-        (item) => item.ok
+        (item) =>
+          item.ok
       );
 
-    // Group identical returned files.
+    /*
+     * Group URLs that actually returned
+     * the same image.
+     */
     const duplicateGroups =
       new Map<
         string,
@@ -317,7 +405,8 @@ export async function POST(
       >();
 
     for (
-      const item of available
+      const item
+      of available
     ) {
       const key =
         item.fingerprint ||
@@ -336,7 +425,9 @@ export async function POST(
 
       duplicateGroups
         .get(key)!
-        .push(item);
+        .push(
+          item
+        );
     }
 
     const uniqueImages =
@@ -346,9 +437,16 @@ export async function POST(
         (group) => {
           const sorted =
             [...group].sort(
-              (a, b) =>
-                scoreCandidate(b) -
-                scoreCandidate(a)
+              (
+                a,
+                b
+              ) =>
+                scoreCandidate(
+                  b
+                ) -
+                scoreCandidate(
+                  a
+                )
             );
 
           const representative =
@@ -367,24 +465,46 @@ export async function POST(
       );
 
     uniqueImages.sort(
-      (a, b) =>
-        scoreCandidate(b) -
-        scoreCandidate(a)
+      (
+        a,
+        b
+      ) =>
+        scoreCandidate(
+          b
+        ) -
+        scoreCandidate(
+          a
+        )
     );
 
     const best =
       uniqueImages[0] ||
       null;
 
-    return NextResponse.json({
-      inputUrl,
-      imageId,
-      best,
-      uniqueImages,
-      available,
-      tested,
-    });
-  } catch (error: any) {
+    return NextResponse.json(
+      {
+        inputUrl,
+        imageId,
+        best,
+        uniqueImages,
+        available,
+        tested,
+      },
+      {
+        headers: {
+          "Cache-Control":
+            "no-store",
+        },
+      }
+    );
+  } catch (
+    error: any
+  ) {
+    console.error(
+      "eBay Image Finder API error:",
+      error
+    );
+
     return NextResponse.json(
       {
         error:
@@ -393,6 +513,11 @@ export async function POST(
       },
       {
         status: 500,
+
+        headers: {
+          "Cache-Control":
+            "no-store",
+        },
       }
     );
   }
