@@ -87,9 +87,6 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#f7f3ea]">
-      <p className="px-4 py-2 text-center text-xs text-neutral-500">
-  Impact-Site-Verification: 5dd48272-03b0-4d7f-9e02-34eb1eb614b3
-</p>
       {hero && (
         <HeroSection
           hero={hero}
