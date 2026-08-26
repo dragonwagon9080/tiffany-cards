@@ -3,8 +3,6 @@ import {
   NextResponse,
 } from "next/server";
 
-import sharp from "sharp";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,7 +19,9 @@ type CandidateResult = {
   fingerprint: string | null;
 };
 
-function cleanUrl(value: unknown) {
+function cleanUrl(
+  value: unknown
+) {
   return String(value || "")
     .replace(
       /[\u200B-\u200D\uFEFF]/g,
@@ -40,6 +40,348 @@ function extractEbayImageId(
 
   return match?.[1] || "";
 }
+
+
+/*******************************************************
+ * IMAGE DIMENSION READER
+ *
+ * No Sharp / libvips dependency.
+ *******************************************************/
+
+function readImageMetadata(
+  buffer: Buffer,
+  contentType: string
+): {
+  width: number | null;
+  height: number | null;
+  format: string | null;
+} {
+  try {
+    /*
+     * PNG
+     *
+     * Width and height are stored in the IHDR chunk.
+     */
+    if (
+      buffer.length >= 24 &&
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47
+    ) {
+      return {
+        width:
+          buffer.readUInt32BE(16),
+
+        height:
+          buffer.readUInt32BE(20),
+
+        format:
+          "png",
+      };
+    }
+
+    /*
+     * GIF
+     */
+    if (
+      buffer.length >= 10 &&
+      buffer
+        .subarray(
+          0,
+          3
+        )
+        .toString("ascii") ===
+        "GIF"
+    ) {
+      return {
+        width:
+          buffer.readUInt16LE(6),
+
+        height:
+          buffer.readUInt16LE(8),
+
+        format:
+          "gif",
+      };
+    }
+
+    /*
+     * WEBP
+     */
+    if (
+      buffer.length >= 30 &&
+      buffer
+        .subarray(
+          0,
+          4
+        )
+        .toString("ascii") ===
+        "RIFF" &&
+      buffer
+        .subarray(
+          8,
+          12
+        )
+        .toString("ascii") ===
+        "WEBP"
+    ) {
+      const type =
+        buffer
+          .subarray(
+            12,
+            16
+          )
+          .toString("ascii");
+
+      /*
+       * Lossy WebP
+       */
+      if (
+        type === "VP8 " &&
+        buffer.length >= 30
+      ) {
+        const width =
+          buffer.readUInt16LE(
+            26
+          ) &
+          0x3fff;
+
+        const height =
+          buffer.readUInt16LE(
+            28
+          ) &
+          0x3fff;
+
+        return {
+          width,
+          height,
+          format:
+            "webp",
+        };
+      }
+
+      /*
+       * Lossless WebP
+       */
+      if (
+        type === "VP8L" &&
+        buffer.length >= 25
+      ) {
+        const b0 =
+          buffer[21];
+
+        const b1 =
+          buffer[22];
+
+        const b2 =
+          buffer[23];
+
+        const b3 =
+          buffer[24];
+
+        const width =
+          1 +
+          (((b2 & 0x3f) << 8) |
+            b1);
+
+        const height =
+          1 +
+          ((b3 << 6) |
+            (b2 >> 6));
+
+        return {
+          width,
+          height,
+          format:
+            "webp",
+        };
+      }
+
+      /*
+       * Extended WebP
+       */
+      if (
+        type === "VP8X" &&
+        buffer.length >= 30
+      ) {
+        const width =
+          1 +
+          buffer[24] +
+          (buffer[25] << 8) +
+          (buffer[26] << 16);
+
+        const height =
+          1 +
+          buffer[27] +
+          (buffer[28] << 8) +
+          (buffer[29] << 16);
+
+        return {
+          width,
+          height,
+          format:
+            "webp",
+        };
+      }
+
+      return {
+        width: null,
+        height: null,
+        format:
+          "webp",
+      };
+    }
+
+    /*
+     * JPEG
+     *
+     * Scan markers until we reach a Start Of Frame block.
+     */
+    if (
+      buffer.length >= 4 &&
+      buffer[0] === 0xff &&
+      buffer[1] === 0xd8
+    ) {
+      let offset = 2;
+
+      while (
+        offset <
+        buffer.length - 9
+      ) {
+        if (
+          buffer[offset] !==
+          0xff
+        ) {
+          offset++;
+          continue;
+        }
+
+        const marker =
+          buffer[
+            offset + 1
+          ];
+
+        offset += 2;
+
+        /*
+         * Standalone markers.
+         */
+        if (
+          marker === 0xd8 ||
+          marker === 0xd9 ||
+          marker === 0x01
+        ) {
+          continue;
+        }
+
+        if (
+          offset + 2 >
+          buffer.length
+        ) {
+          break;
+        }
+
+        const blockLength =
+          buffer.readUInt16BE(
+            offset
+          );
+
+        if (
+          blockLength < 2
+        ) {
+          break;
+        }
+
+        const isStartOfFrame =
+          [
+            0xc0,
+            0xc1,
+            0xc2,
+            0xc3,
+            0xc5,
+            0xc6,
+            0xc7,
+            0xc9,
+            0xca,
+            0xcb,
+            0xcd,
+            0xce,
+            0xcf,
+          ].includes(
+            marker
+          );
+
+        if (
+          isStartOfFrame &&
+          offset + 7 <
+            buffer.length
+        ) {
+          return {
+            height:
+              buffer.readUInt16BE(
+                offset + 3
+              ),
+
+            width:
+              buffer.readUInt16BE(
+                offset + 5
+              ),
+
+            format:
+              "jpeg",
+          };
+        }
+
+        offset +=
+          blockLength;
+      }
+
+      return {
+        width: null,
+        height: null,
+        format:
+          "jpeg",
+      };
+    }
+
+    /*
+     * Fallback based on response Content-Type.
+     */
+    const fallbackFormat =
+      contentType.includes(
+        "jpeg"
+      )
+        ? "jpeg"
+        : contentType.includes(
+              "webp"
+            )
+          ? "webp"
+          : contentType.includes(
+                "png"
+              )
+            ? "png"
+            : contentType.includes(
+                  "gif"
+                )
+              ? "gif"
+              : null;
+
+    return {
+      width: null,
+      height: null,
+      format:
+        fallbackFormat,
+    };
+  } catch {
+    return {
+      width: null,
+      height: null,
+      format: null,
+    };
+  }
+}
+
 
 async function testCandidate(
   url: string
@@ -60,7 +402,8 @@ async function testCandidate(
       await fetch(
         url,
         {
-          method: "GET",
+          method:
+            "GET",
 
           redirect:
             "follow",
@@ -100,12 +443,10 @@ async function testCandidate(
         "image/"
       )
     ) {
-      /*
-       * Cancel the body because we
-       * don't need to download it.
-       */
       try {
-        await response.body?.cancel();
+        await response
+          .body
+          ?.cancel();
       } catch {
         // Ignore cleanup errors.
       }
@@ -126,46 +467,24 @@ async function testCandidate(
     }
 
     const arrayBuffer =
-      await response.arrayBuffer();
+      await response
+        .arrayBuffer();
 
     const buffer =
       Buffer.from(
         arrayBuffer
       );
 
-    let width:
-      number | null = null;
+    const metadata =
+      readImageMetadata(
+        buffer,
+        contentType
+      );
 
-    let height:
-      number | null = null;
-
-    let format:
-      string | null = null;
-
-    try {
-      const metadata =
-        await sharp(
-          buffer
-        ).metadata();
-
-      width =
-        metadata.width ||
-        null;
-
-      height =
-        metadata.height ||
-        null;
-
-      format =
-        metadata.format ||
-        null;
-    } catch {
-      /*
-       * The image may still be usable
-       * even if Sharp cannot inspect it.
-       */
-    }
-
+    /*
+     * Fingerprint allows us to identify cases where
+     * different eBay URLs return the exact same image.
+     */
     const fingerprint =
       `${buffer.length}:` +
       buffer
@@ -173,7 +492,7 @@ async function testCandidate(
           0,
           Math.min(
             buffer.length,
-            64
+            96
           )
         )
         .toString(
@@ -188,9 +507,12 @@ async function testCandidate(
       contentType,
       bytes:
         buffer.length,
-      width,
-      height,
-      format,
+      width:
+        metadata.width,
+      height:
+        metadata.height,
+      format:
+        metadata.format,
       fingerprint,
     };
   } catch (
@@ -223,6 +545,7 @@ async function testCandidate(
   }
 }
 
+
 function scoreCandidate(
   item: CandidateResult
 ) {
@@ -238,19 +561,18 @@ function scoreCandidate(
   const bytes =
     item.bytes || 0;
 
-  const formatBonus =
-    item.contentType ===
-    "image/jpeg"
-      ? 1
-      : 0;
-
+  /*
+   * Actual dimensions are the primary ranking factor.
+   *
+   * File size breaks ties when dimensions are the same.
+   */
   return (
     pixels *
       1000000000 +
-    bytes * 10 +
-    formatBonus
+    bytes
   );
 }
+
 
 export async function POST(
   request: NextRequest
@@ -350,7 +672,8 @@ export async function POST(
       string[] = [];
 
     for (
-      const size of sizes
+      const size
+      of sizes
     ) {
       for (
         const extension
@@ -363,13 +686,8 @@ export async function POST(
     }
 
     /*
-     * IMPORTANT:
-     *
-     * Test sequentially instead of
-     * downloading all candidates at once.
-     *
-     * This substantially reduces peak
-     * memory usage on Vercel.
+     * Test sequentially to keep peak memory low
+     * on Vercel.
      */
     const tested:
       CandidateResult[] = [];
@@ -395,8 +713,7 @@ export async function POST(
       );
 
     /*
-     * Group URLs that actually returned
-     * the same image.
+     * Group different URLs that returned identical files.
      */
     const duplicateGroups =
       new Map<
@@ -413,9 +730,8 @@ export async function POST(
         item.url;
 
       if (
-        !duplicateGroups.has(
-          key
-        )
+        !duplicateGroups
+          .has(key)
       ) {
         duplicateGroups.set(
           key,
@@ -432,22 +748,24 @@ export async function POST(
 
     const uniqueImages =
       Array.from(
-        duplicateGroups.values()
+        duplicateGroups
+          .values()
       ).map(
         (group) => {
           const sorted =
-            [...group].sort(
-              (
-                a,
-                b
-              ) =>
-                scoreCandidate(
+            [...group]
+              .sort(
+                (
+                  a,
                   b
-                ) -
-                scoreCandidate(
-                  a
-                )
-            );
+                ) =>
+                  scoreCandidate(
+                    b
+                  ) -
+                  scoreCandidate(
+                    a
+                  )
+              );
 
           const representative =
             sorted[0];
