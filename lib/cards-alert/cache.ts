@@ -4,7 +4,6 @@ let lastGoodData: any = null;
 let lastGoodDataAt = 0;
 
 let lastGoodRecent: any = null;
-let lastGoodRecentAt = 0;
 
 let lastGoodOptions: any = null;
 let lastGoodOptionsAt = 0;
@@ -31,16 +30,15 @@ const OPTIONS_URL =
 const DATABASE_MEMORY_TTL_MS =
   5 * 60 * 1000;
 
-const RECENT_MEMORY_TTL_MS =
-  60 * 1000;
-
 const OPTIONS_MEMORY_TTL_MS =
   5 * 60 * 1000;
 
 const FETCH_TIMEOUT_MS =
   20000;
 
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS =
+  3;
+
 
 function wait(milliseconds: number) {
   return new Promise<void>((resolve) => {
@@ -48,9 +46,13 @@ function wait(milliseconds: number) {
   });
 }
 
+
 function retryDelay(attempt: number) {
-  return attempt === 1 ? 400 : 1200;
+  return attempt === 1
+    ? 400
+    : 1200;
 }
+
 
 function isRealCard(card: any) {
   const first =
@@ -82,6 +84,7 @@ function isRealCard(card: any) {
   );
 }
 
+
 function validateDatabase(rawData: any) {
   if (
     !rawData ||
@@ -109,6 +112,7 @@ function validateDatabase(rawData: any) {
   };
 }
 
+
 function validateRecent(rawData: any) {
   if (
     !rawData ||
@@ -128,6 +132,7 @@ function validateRecent(rawData: any) {
   };
 }
 
+
 function validateOptions(rawData: any) {
   if (
     !rawData ||
@@ -141,6 +146,7 @@ function validateOptions(rawData: any) {
 
   return rawData;
 }
+
 
 async function fetchJsonOnce(
   url: string,
@@ -162,9 +168,9 @@ async function fetchJsonOnce(
           method: "GET",
 
           /*
-           * IMPORTANT:
-           * Do not put the 13+ MB database into Next.js'
-           * Data Cache. GCS is the persistent web cache.
+           * GCS is our persistent snapshot cache.
+           * Do not put these files in the Next.js
+           * Data Cache.
            */
           cache: "no-store",
 
@@ -173,6 +179,9 @@ async function fetchJsonOnce(
           headers: {
             Accept:
               "application/json,text/plain;q=0.9,*/*;q=0.8",
+
+            "Cache-Control":
+              "no-cache",
           },
 
           signal:
@@ -204,11 +213,13 @@ async function fetchJsonOnce(
   }
 }
 
+
 async function fetchJsonWithRetry(
   url: string,
   label: string
 ) {
-  let lastError: unknown = null;
+  let lastError: unknown =
+    null;
 
   for (
     let attempt = 1;
@@ -221,14 +232,17 @@ async function fetchJsonWithRetry(
         label
       );
     } catch (error) {
-      lastError = error;
+      lastError =
+        error;
 
       console.error(
         `Cards Alert ${label} snapshot attempt ${attempt} failed:`,
         error
       );
 
-      if (attempt < MAX_ATTEMPTS) {
+      if (
+        attempt < MAX_ATTEMPTS
+      ) {
         await wait(
           retryDelay(attempt)
         );
@@ -245,6 +259,7 @@ async function fetchJsonWithRetry(
   );
 }
 
+
 async function loadDatabaseSnapshot() {
   const raw =
     await fetchJsonWithRetry(
@@ -255,15 +270,27 @@ async function loadDatabaseSnapshot() {
   return validateDatabase(raw);
 }
 
+
 async function loadRecentSnapshot() {
+  /*
+   * recent.json is small and changes whenever new
+   * Cards Alert cards are published.
+   *
+   * Add a unique query parameter so an upstream cache
+   * cannot hand the production server an older copy.
+   */
+  const url =
+    `${RECENT_URL}?v=${Date.now()}`;
+
   const raw =
     await fetchJsonWithRetry(
-      RECENT_URL,
+      url,
       "recent"
     );
 
   return validateRecent(raw);
 }
+
 
 async function loadOptionsSnapshot() {
   const raw =
@@ -275,6 +302,14 @@ async function loadOptionsSnapshot() {
   return validateOptions(raw);
 }
 
+
+/*******************************************************
+ * FULL DATABASE
+ *
+ * database.json is large, so retain the existing
+ * five-minute in-memory caching behavior.
+ *******************************************************/
+
 export async function refreshCardsAlertData() {
   if (pendingDatabaseRequest) {
     return pendingDatabaseRequest;
@@ -283,7 +318,9 @@ export async function refreshCardsAlertData() {
   pendingDatabaseRequest =
     loadDatabaseSnapshot()
       .then((data) => {
-        lastGoodData = data;
+        lastGoodData =
+          data;
+
         lastGoodDataAt =
           Date.now();
 
@@ -296,6 +333,7 @@ export async function refreshCardsAlertData() {
 
   return pendingDatabaseRequest;
 }
+
 
 export async function getCachedCardsAlertData() {
   const now =
@@ -310,16 +348,19 @@ export async function getCachedCardsAlertData() {
   }
 
   /*
-   * If this warm server already has a good snapshot,
-   * serve it immediately and refresh from GCS in the
-   * background. Visitors never wait for the refresh.
+   * Warm server:
+   *
+   * Serve the large database immediately and update
+   * it in the background.
    */
   if (lastGoodData) {
     if (!pendingDatabaseRequest) {
       pendingDatabaseRequest =
         loadDatabaseSnapshot()
           .then((data) => {
-            lastGoodData = data;
+            lastGoodData =
+              data;
+
             lastGoodDataAt =
               Date.now();
 
@@ -343,54 +384,36 @@ export async function getCachedCardsAlertData() {
   }
 
   /*
-   * Cold server instance: retrieve the already-built
-   * database snapshot from GCS instead of Apps Script.
+   * Cold server:
+   *
+   * Retrieve the already-built database snapshot
+   * directly from GCS.
    */
   return refreshCardsAlertData();
 }
 
+
+/*******************************************************
+ * RECENT CARDS
+ *
+ * recent.json is only the newest Cards Alert cards.
+ *
+ * Unlike database.json, we intentionally DO NOT keep
+ * recent.json behind a time-based memory cache.
+ *
+ * Every startup request retrieves the current GCS
+ * snapshot.
+ *
+ * This prevents a warm Vercel instance from continuing
+ * to serve an older Cards Alert homepage after new
+ * cards have been published.
+ *******************************************************/
+
 export async function getCardsAlertRecentSnapshot() {
-  const now =
-    Date.now();
-
-  if (
-    lastGoodRecent &&
-    now - lastGoodRecentAt <
-      RECENT_MEMORY_TTL_MS
-  ) {
-    return lastGoodRecent;
-  }
-
-  if (lastGoodRecent) {
-    if (!pendingRecentRequest) {
-      pendingRecentRequest =
-        loadRecentSnapshot()
-          .then((data) => {
-            lastGoodRecent =
-              data;
-
-            lastGoodRecentAt =
-              Date.now();
-
-            return data;
-          })
-          .catch((error) => {
-            console.error(
-              "Background Cards Alert recent refresh failed:",
-              error
-            );
-
-            return lastGoodRecent;
-          })
-          .finally(() => {
-            pendingRecentRequest =
-              null;
-          });
-    }
-
-    return lastGoodRecent;
-  }
-
+  /*
+   * If simultaneous requests arrive, they can share
+   * the same in-progress GCS request.
+   */
   if (pendingRecentRequest) {
     return pendingRecentRequest;
   }
@@ -398,11 +421,26 @@ export async function getCardsAlertRecentSnapshot() {
   pendingRecentRequest =
     loadRecentSnapshot()
       .then((data) => {
-        lastGoodRecent = data;
-        lastGoodRecentAt =
-          Date.now();
+        lastGoodRecent =
+          data;
 
         return data;
+      })
+      .catch((error) => {
+        console.error(
+          "Cards Alert recent snapshot refresh failed:",
+          error
+        );
+
+        /*
+         * Only use the old in-memory copy as an
+         * emergency fallback if GCS is unavailable.
+         */
+        if (lastGoodRecent) {
+          return lastGoodRecent;
+        }
+
+        throw error;
       })
       .finally(() => {
         pendingRecentRequest =
@@ -411,6 +449,14 @@ export async function getCardsAlertRecentSnapshot() {
 
   return pendingRecentRequest;
 }
+
+
+/*******************************************************
+ * FILTER OPTIONS
+ *
+ * These do not need immediate freshness, so retain
+ * the existing five-minute memory cache.
+ *******************************************************/
 
 export async function getCardsAlertOptionsSnapshot() {
   const now =
@@ -461,7 +507,9 @@ export async function getCardsAlertOptionsSnapshot() {
   pendingOptionsRequest =
     loadOptionsSnapshot()
       .then((data) => {
-        lastGoodOptions = data;
+        lastGoodOptions =
+          data;
+
         lastGoodOptionsAt =
           Date.now();
 
