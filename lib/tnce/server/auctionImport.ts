@@ -5857,6 +5857,344 @@ async function importBlowoutPost(
   };
 }
 
+/* =========================================================
+FACEBOOK
+========================================================= */
+
+function extractFacebookId(
+  sourceUrl: string
+) {
+  try {
+    const parsed =
+      new URL(sourceUrl);
+
+    /*
+     * Direct photo URL:
+     *
+     * facebook.com/photo/?fbid=1554708609685622
+     */
+    const fbid =
+      clean(
+        parsed.searchParams.get(
+          "fbid"
+        )
+      );
+
+    if (fbid) {
+      return fbid;
+    }
+
+    /*
+     * Share URL:
+     *
+     * facebook.com/share/p/17icaySF51/
+     */
+    const shareMatch =
+      parsed.pathname.match(
+        /\/share\/(?:p|r|v)\/([^/?#]+)/i
+      );
+
+    if (shareMatch?.[1]) {
+      return clean(
+        shareMatch[1]
+      );
+    }
+
+    /*
+     * Normal posts:
+     *
+     * facebook.com/.../posts/123456
+     */
+    const postMatch =
+      parsed.pathname.match(
+        /\/posts\/([^/?#]+)/i
+      );
+
+    if (postMatch?.[1]) {
+      return clean(
+        postMatch[1]
+      );
+    }
+
+    /*
+     * Videos / reels.
+     */
+    const mediaMatch =
+      parsed.pathname.match(
+        /\/(?:videos|reel)\/([^/?#]+)/i
+      );
+
+    if (mediaMatch?.[1]) {
+      return clean(
+        mediaMatch[1]
+      );
+    }
+  } catch {
+    // Preserve the source URL even when no ID can be extracted.
+  }
+
+  return "";
+}
+
+
+function extractFacebookImages(
+  html: string,
+  sourceUrl: string
+) {
+  const candidates: string[] =
+    [];
+
+  /*
+   * OpenGraph image is normally the best public
+   * representation of a Facebook photo/post.
+   */
+  candidates.push(
+    getMetaContent(
+      html,
+      "og:image"
+    )
+  );
+
+  candidates.push(
+    getMetaContent(
+      html,
+      "og:image:url"
+    )
+  );
+
+  candidates.push(
+    getMetaContent(
+      html,
+      "og:image:secure_url"
+    )
+  );
+
+  candidates.push(
+    getMetaContent(
+      html,
+      "twitter:image"
+    )
+  );
+
+  /*
+   * Facebook frequently embeds CDN image URLs in
+   * page JSON rather than ordinary <img> elements.
+   */
+  const escapedImageRegex =
+    /https?:\\?\/\\?\/[^"'<>\\\s]+?(?:fbcdn\.net|fbsbx\.com)[^"'<>\\\s]*/gi;
+
+  for (
+    const match of html.matchAll(
+      escapedImageRegex
+    )
+  ) {
+    candidates.push(
+      match[0]
+        .replace(
+          /\\u0026/g,
+          "&"
+        )
+        .replace(
+          /\\\//g,
+          "/"
+        )
+        .replace(
+          /&amp;/gi,
+          "&"
+        )
+    );
+  }
+
+  const normalImageRegex =
+    /https?:\/\/[^"'<>\\\s]+?(?:fbcdn\.net|fbsbx\.com)[^"'<>\\\s]*/gi;
+
+  for (
+    const match of html.matchAll(
+      normalImageRegex
+    )
+  ) {
+    candidates.push(
+      match[0]
+    );
+  }
+
+  return uniqueUrls(
+    candidates,
+    sourceUrl
+  ).filter((url) => {
+    return (
+      !/emoji/i.test(url) &&
+      !/profile/i.test(url) &&
+      !/avatar/i.test(url)
+    );
+  });
+}
+
+
+async function importFacebookPost(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const response =
+    await fetch(
+      sourceUrl,
+      {
+        method: "GET",
+
+        redirect:
+          "follow",
+
+        cache:
+          "no-store",
+
+        headers: {
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+
+          "Accept-Language":
+            "en-US,en;q=0.9",
+
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151.0.0.0 Safari/537.36",
+        },
+      }
+    );
+
+  const html =
+    await response.text();
+
+  if (
+    !response.ok ||
+    !html ||
+    html.length < 500
+  ) {
+    throw new Error(
+      "Facebook blocked the direct import. Copy the Facebook post/page and paste the copied page text instead."
+    );
+  }
+
+  const finalUrl =
+    response.url ||
+    sourceUrl;
+
+  /*
+   * Facebook may redirect an unauthenticated request
+   * to login/checkpoint pages.
+   */
+  const blocked =
+    /login|checkpoint/i.test(
+      finalUrl
+    ) ||
+    /Log into Facebook|Log in to Facebook|You must log in/i.test(
+      html
+    );
+
+  if (blocked) {
+    throw new Error(
+      "Facebook requires a login for this post. Copy the Facebook post/page and paste the copied page text instead."
+    );
+  }
+
+  const title =
+    getMetaContent(
+      html,
+      "og:title"
+    ) ||
+    getMetaContent(
+      html,
+      "twitter:title"
+    ) ||
+    decodeHtml(
+      html.match(
+        /<title[^>]*>([\s\S]*?)<\/title>/i
+      )?.[1] || ""
+    );
+
+  const description =
+    getMetaContent(
+      html,
+      "og:description"
+    ) ||
+    getMetaContent(
+      html,
+      "description"
+    ) ||
+    getMetaContent(
+      html,
+      "twitter:description"
+    );
+
+  const images =
+    extractFacebookImages(
+      html,
+      finalUrl
+    );
+
+  /*
+   * Don't require an image here.
+   *
+   * Some public Facebook posts expose text metadata
+   * but protect the actual image from server requests.
+   */
+  if (
+    !title &&
+    !description &&
+    images.length === 0
+  ) {
+    throw new Error(
+      "Facebook did not expose this post publicly. Copy the Facebook post/page and paste the copied page text instead."
+    );
+  }
+
+  return {
+    ok: true,
+
+    marketplace:
+      "facebook",
+
+    /*
+     * Preserve the URL the contributor supplied.
+     * This is preferable for Facebook share URLs
+     * because redirects can produce login/tracking URLs.
+     */
+    sourceUrl,
+
+    listingId:
+      extractFacebookId(
+        sourceUrl
+      ),
+
+    title:
+      title
+        .replace(
+          /\s*\|\s*Facebook\s*$/i,
+          ""
+        )
+        .trim(),
+
+    seller:
+      "Facebook",
+
+    price:
+      "",
+
+    currency:
+      "",
+
+    endDate:
+      "",
+
+    description,
+
+    frontImage:
+      images[0] || "",
+
+    additionalImages:
+      images.slice(1),
+
+    aspects: {},
+  };
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -5937,6 +6275,18 @@ export async function importAuction(
       )
     );
   }
+
+if (
+  isFacebookHostname(
+    hostname
+  )
+) {
+  return addNormalizedCardFields(
+    await importFacebookPost(
+      cleanedUrl
+    )
+  );
+}
 
 if (
   isHeritageHostname(
@@ -6021,6 +6371,17 @@ function isXHostname(hostname: string) {
   );
 }
 
+function isFacebookHostname(
+  hostname: string
+) {
+  return (
+    hostname === "facebook.com" ||
+    hostname.endsWith(".facebook.com") ||
+    hostname === "fb.com" ||
+    hostname.endsWith(".fb.com")
+  );
+}
+
 function isInstagramHostname(
   hostname: string
 ) {
@@ -6051,6 +6412,6 @@ function isAltHostname(
 }
 
 throw new Error(
-  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, PSA, Goldin, Fanatics Collect, MySlabs, and Blowout Forums are currently available."
+  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, Facebook, PSA, Goldin, Fanatics Collect, MySlabs, and Blowout Forums are currently available."
 );
 }
