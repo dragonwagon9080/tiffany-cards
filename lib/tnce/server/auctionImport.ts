@@ -6195,6 +6195,204 @@ async function importFacebookPost(
   };
 }
 
+/* =========================================================
+BUY NICE CARDS
+========================================================= */
+
+async function importBuyNiceCardsListing(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const parsedUrl = new URL(sourceUrl);
+  const pathParts = parsedUrl.pathname
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const productIndex = pathParts.findIndex(
+    (part) => part.toLowerCase() === "product"
+  );
+
+  const handle =
+    productIndex >= 0
+      ? clean(pathParts[productIndex + 1])
+      : "";
+
+  if (!handle) {
+    throw new Error(
+      "Unable to determine the Buy Nice Cards product handle from this URL."
+    );
+  }
+
+  const endpoint =
+    "https://buy-nice-cards.myshopify.com/api/2025-01/graphql.json";
+
+  /*
+   * Buy Nice Cards exposes this Shopify Storefront token in its
+   * public browser application. Storefront tokens are intended for
+   * client-side storefront access; this is not an Admin API token.
+   */
+  const storefrontToken =
+    "cd534675008f8bd8c38ff050c1561e4c";
+
+  const query = `
+    query BuyNiceCardsProduct($handle: String!) {
+      productByHandle(handle: $handle) {
+        id
+        title
+        handle
+        productType
+        tags
+        description
+        vendor
+        availableForSale
+        variants(first: 10) {
+          edges {
+            node {
+              id
+              title
+              availableForSale
+              price {
+                amount
+                currencyCode
+              }
+            }
+          }
+        }
+        images(first: 20) {
+          edges {
+            node {
+              url
+              altText
+              width
+              height
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-Shopify-Storefront-Access-Token": storefrontToken,
+      Origin: "https://buynicecards.com",
+      Referer: sourceUrl,
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
+    },
+    body: JSON.stringify({
+      query,
+      variables: { handle },
+    }),
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Buy Nice Cards import failed with status ${response.status}.`
+    );
+  }
+
+  let json: any;
+
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(
+      "Buy Nice Cards returned an invalid Shopify response."
+    );
+  }
+
+  if (Array.isArray(json?.errors) && json.errors.length > 0) {
+    const message = clean(json.errors[0]?.message);
+
+    throw new Error(
+      message
+        ? `Buy Nice Cards Shopify API error: ${message}`
+        : "Buy Nice Cards Shopify API returned an error."
+    );
+  }
+
+  const product = json?.data?.productByHandle;
+
+  if (!product) {
+    throw new Error(
+      "Buy Nice Cards did not return a product for this URL."
+    );
+  }
+
+  const variants = Array.isArray(product?.variants?.edges)
+    ? product.variants.edges
+        .map((edge: any) => edge?.node)
+        .filter(Boolean)
+    : [];
+
+  const firstVariant = variants[0] || null;
+
+  const images = uniqueUrls(
+    Array.isArray(product?.images?.edges)
+      ? product.images.edges.map(
+          (edge: any) => edge?.node?.url
+        )
+      : []
+  );
+
+  const tags = Array.isArray(product?.tags)
+    ? product.tags
+        .map((tag: unknown) => clean(tag))
+        .filter(Boolean)
+    : [];
+
+  const aspects: Record<string, string[]> = {};
+
+  if (clean(product?.productType)) {
+    aspects["Product Type"] = [
+      clean(product.productType),
+    ];
+  }
+
+  if (tags.length > 0) {
+    aspects.Tags = tags;
+  }
+
+  if (clean(product?.vendor)) {
+    aspects.Vendor = [clean(product.vendor)];
+  }
+
+  aspects.Availability = [
+    product?.availableForSale ? "Available" : "Unavailable",
+  ];
+
+  return {
+    ok: true,
+    marketplace: "buynicecards",
+    sourceUrl,
+    listingId: clean(product?.handle) || handle,
+    title: clean(product?.title),
+    seller: clean(product?.vendor) || "Buy Nice Cards",
+    price: clean(firstVariant?.price?.amount),
+    currency:
+      clean(firstVariant?.price?.currencyCode) || "USD",
+
+    /*
+     * Shopify Storefront product data does not provide a reliable
+     * sold date. Do not substitute createdAt/updatedAt for the sale
+     * date because those timestamps describe the product record.
+     */
+    endDate: "",
+
+    description: clean(product?.description),
+    frontImage: images[0] || "",
+    additionalImages: images.slice(1),
+    aspects,
+  };
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -6315,6 +6513,17 @@ if (
 }
 
 if (
+  hostname === "buynicecards.com" ||
+  hostname.endsWith(".buynicecards.com")
+) {
+  return addNormalizedCardFields(
+    await importBuyNiceCardsListing(
+      cleanedUrl
+    )
+  );
+}
+
+if (
   isMySlabsHostname(
     hostname
   )
@@ -6412,6 +6621,6 @@ function isAltHostname(
 }
 
 throw new Error(
-  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, Facebook, PSA, Goldin, Fanatics Collect, MySlabs, and Blowout Forums are currently available."
+  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, Facebook, PSA, Goldin, Fanatics Collect, Buy Nice Cards, MySlabs, and Blowout Forums are currently available."
 );
 }

@@ -24,6 +24,10 @@ const ALLOWED_HOSTS = [
   "cdn.myslabs.com",
   "img.auctiva.com",
   "i.imgur.com",
+
+  // Shopify / Buy Nice Cards
+  "cdn.shopify.com",
+  "shopify.com",
 ];
 
 function isAllowedHost(
@@ -150,6 +154,22 @@ function refererForHost(
     )
   ) {
     return "https://www.blowoutforums.com/";
+  }
+
+  // Shopify / Buy Nice Cards
+  if (
+    normalized ===
+      "cdn.shopify.com" ||
+    normalized.endsWith(
+      ".cdn.shopify.com"
+    ) ||
+    normalized ===
+      "shopify.com" ||
+    normalized.endsWith(
+      ".shopify.com"
+    )
+  ) {
+    return "https://buynicecards.com/";
   }
 
   // Default / Goldin
