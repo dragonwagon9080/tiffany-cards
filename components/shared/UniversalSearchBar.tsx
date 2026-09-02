@@ -8,15 +8,15 @@ import {
 } from "react";
 
 import {
-  usePathname,
-  useRouter,
   useSearchParams,
 } from "next/navigation";
+
 
 type SearchTarget =
   | "tiffany"
   | "rpa"
   | "cardsalert";
+
 
 const TARGETS = {
   tiffany: {
@@ -32,7 +32,8 @@ const TARGETS = {
     label: "Cards Alert",
     placeholder:
       "Search Cards Alert...",
-    destination: "/cards-alert",
+    destination:
+      "/cards-alert",
     color: "#dc2626",
     hover: "#b91c1c",
   },
@@ -41,11 +42,13 @@ const TARGETS = {
     label: "RPA Tracker",
     placeholder:
       "Search RPA Tracker...",
-    destination: "/rpa-tracker",
+    destination:
+      "/rpa-tracker",
     color: "#2563eb",
     hover: "#1d4ed8",
   },
 };
+
 
 function isLikelyExactRpaLookup(
   value: string
@@ -61,22 +64,20 @@ function isLikelyExactRpaLookup(
   );
 }
 
+
 export default function UniversalSearchBar({
   defaultTarget = "rpa",
 }: {
   defaultTarget?: SearchTarget;
 }) {
-  const router =
-    useRouter();
-
-  const pathname =
-    usePathname();
 
   const searchParams =
     useSearchParams();
 
+
   const urlQuery =
     searchParams.get("q") || "";
+
 
   const [
     target,
@@ -86,11 +87,15 @@ export default function UniversalSearchBar({
       defaultTarget
     );
 
+
   const [
     query,
     setQuery,
   ] =
-    useState(urlQuery);
+    useState(
+      urlQuery
+    );
+
 
   const [
     submitting,
@@ -98,159 +103,185 @@ export default function UniversalSearchBar({
   ] =
     useState(false);
 
+
   const exactLookupRef =
     useRef<AbortController | null>(
       null
     );
 
-  /*
-   * Tracks whether the user is actively editing
-   * the search box.
-   *
-   * This prevents an older URL query from writing
-   * itself back into the input while a new search
-   * is being entered/submitted.
-   */
-  const editingRef =
-    useRef(false);
 
   const active =
     TARGETS[target];
 
-  /*
-   * Sync the input with browser navigation,
-   * back/forward, or an externally changed URL.
+
+  /*****************************************************
+   * SYNC INPUT WITH CURRENT URL
    *
-   * Do not overwrite the text while the user is
-   * actively editing a new search.
-   */
+   * Browser navigation is authoritative.
+   *****************************************************/
+
   useEffect(() => {
-    if (
-      !editingRef.current
-    ) {
-      setQuery(
-        urlQuery
-      );
-    }
+    setQuery(
+      urlQuery
+    );
+
+    setSubmitting(
+      false
+    );
   }, [
-    pathname,
     urlQuery,
   ]);
 
-  /*
-   * Once the URL catches up to the search we
-   * submitted, URL synchronization can resume.
-   */
-  useEffect(() => {
-    if (
-      editingRef.current &&
-      urlQuery === query.trim()
-    ) {
-      editingRef.current =
-        false;
 
-      setSubmitting(false);
-    }
-  }, [
-    urlQuery,
-    query,
-  ]);
+  /*****************************************************
+   * CLEAN UP EXACT LOOKUP
+   *****************************************************/
 
   useEffect(() => {
     return () => {
-      exactLookupRef.current?.abort();
+      exactLookupRef.current
+        ?.abort();
     };
   }, []);
+
+
+  /*****************************************************
+   * NORMAL SEARCH NAVIGATION
+   *
+   * Use real browser navigation instead of
+   * router.push().
+   *
+   * This removes the race between:
+   *
+   * - local input state
+   * - Next router state
+   * - useSearchParams()
+   * - server navigation completion
+   *****************************************************/
 
   function navigateToSearch(
     searchTarget: SearchTarget,
     value: string
   ) {
+
     const destination =
-      TARGETS[searchTarget]
-        .destination;
+      TARGETS[
+        searchTarget
+      ].destination;
+
 
     const nextUrl =
       `${destination}?q=${encodeURIComponent(
         value
       )}`;
 
-    /*
-     * Mark this as an active search so the old URL
-     * cannot restore its query into the input.
-     */
-    editingRef.current =
-      true;
 
-    setSubmitting(
-      true
-    );
-
-    router.push(
+    window.location.assign(
       nextUrl
     );
   }
 
+
+  /*****************************************************
+   * SUBMIT SEARCH
+   *****************************************************/
+
   async function submitSearch(
-    e: FormEvent
+    event: FormEvent
   ) {
-    e.preventDefault();
+
+    event.preventDefault();
+
 
     const q =
       query.trim();
 
+
     if (!q) {
+      setSubmitting(
+        false
+      );
+
       return;
     }
 
-    /*
-     * Cancel any previous exact-card lookup.
-     */
-    exactLookupRef.current?.abort();
 
-    /*
-     * Normal text searches such as:
+    exactLookupRef.current
+      ?.abort();
+
+
+    /***************************************************
+     * NORMAL TEXT SEARCH
      *
+     * Examples:
+     *
+     * bird
+     * kevin
      * kobe
      * tracy
      * lebron
      *
-     * should immediately navigate to the new
-     * ?q= URL.
-     */
+     * Navigate immediately.
+     ***************************************************/
+
     if (
       target !== "rpa" ||
       !isLikelyExactRpaLookup(
         q
       )
     ) {
+
+      setSubmitting(
+        true
+      );
+
+
       navigateToSearch(
         target,
         q
       );
 
+
       return;
     }
 
-    /*
-     * RPA cert numbers / Card IDs get an exact
-     * lookup first.
-     */
+
+    /***************************************************
+     * EXACT RPA LOOKUP
+     *
+     * Cert numbers and Card IDs get one quick exact
+     * lookup before falling back to normal search.
+     ***************************************************/
+
     const controller =
       new AbortController();
+
 
     exactLookupRef.current =
       controller;
 
-    editingRef.current =
-      true;
 
     setSubmitting(
       true
     );
 
+
+    /*
+     * Never allow an exact lookup request to hang
+     * indefinitely.
+     */
+    const timeout =
+      window.setTimeout(
+        function () {
+          controller.abort();
+        },
+        8000
+      );
+
+
     try {
-      const res =
+
+      const response =
         await fetch(
           `/api/rpa-tracker?mode=exact&q=${encodeURIComponent(
             q
@@ -264,42 +295,66 @@ export default function UniversalSearchBar({
           }
         );
 
-      if (res.ok) {
+
+      if (
+        response.ok
+      ) {
+
         const card =
-          await res.json();
+          await response.json();
+
 
         if (
           card?.Card_id
         ) {
-          router.push(
+
+          window.clearTimeout(
+            timeout
+          );
+
+
+          window.location.assign(
             `/rpa-tracker/card/${encodeURIComponent(
               card.Card_id
             )}`
           );
 
+
           return;
         }
       }
 
-      navigateToSearch(
-        "rpa",
-        q
+
+      window.clearTimeout(
+        timeout
       );
-    } catch (
-      error: any
-    ) {
-      if (
-        error?.name ===
-        "AbortError"
-      ) {
-        return;
-      }
+
 
       navigateToSearch(
         "rpa",
         q
       );
+
+    } catch (
+      error: unknown
+    ) {
+
+      window.clearTimeout(
+        timeout
+      );
+
+
+      /*
+       * Even if the exact lookup times out or fails,
+       * do the normal database search.
+       */
+      navigateToSearch(
+        "rpa",
+        q
+      );
+
     } finally {
+
       if (
         exactLookupRef.current ===
         controller
@@ -310,85 +365,104 @@ export default function UniversalSearchBar({
     }
   }
 
+
+  /*****************************************************
+   * INPUT CHANGE
+   *****************************************************/
+
   function handleQueryChange(
     value: string
   ) {
-    /*
-     * The instant the user starts typing another
-     * search, stop treating the old URL query as
-     * authoritative.
-     */
-    editingRef.current =
-      true;
+
+    exactLookupRef.current
+      ?.abort();
+
+
+    exactLookupRef.current =
+      null;
+
+
+    setSubmitting(
+      false
+    );
+
 
     setQuery(
       value
     );
-
-    /*
-     * If an exact lookup from the previous search
-     * is still running, cancel it.
-     */
-    exactLookupRef.current?.abort();
-
-    exactLookupRef.current =
-      null;
-
-    setSubmitting(
-      false
-    );
   }
+
+
+  /*****************************************************
+   * TARGET CHANGE
+   *****************************************************/
 
   function handleTargetChange(
     nextTarget: SearchTarget
   ) {
-    exactLookupRef.current?.abort();
+
+    exactLookupRef.current
+      ?.abort();
+
 
     exactLookupRef.current =
       null;
 
-    editingRef.current =
-      true;
 
     setSubmitting(
       false
     );
+
 
     setTarget(
       nextTarget
     );
   }
 
+
+  /*****************************************************
+   * RENDER
+   *****************************************************/
+
   return (
     <section>
+
       <div className="mb-4 text-center text-sm font-black uppercase tracking-widest text-zinc-400">
         Search Database
       </div>
 
+
       <div className="mb-4 flex flex-wrap justify-center gap-2">
+
         {(
           Object.keys(
             TARGETS
           ) as SearchTarget[]
         ).map(
           (key) => {
+
             const item =
               TARGETS[key];
+
 
             const selected =
               key ===
               target;
 
+
             return (
               <button
                 key={key}
                 type="button"
+
                 onClick={() =>
                   handleTargetChange(
                     key
                   )
                 }
+
                 className="rounded border px-4 py-2 text-sm font-bold uppercase transition"
+
                 style={{
                   borderColor:
                     selected
@@ -413,66 +487,95 @@ export default function UniversalSearchBar({
             );
           }
         )}
+
       </div>
+
 
       <form
         onSubmit={
           submitSearch
         }
+
         className="mx-auto flex max-w-3xl gap-2"
       >
+
         <input
-          value={query}
+          value={
+            query
+          }
+
           onChange={(
             event
           ) =>
             handleQueryChange(
-              event.target
-                .value
+              event.target.value
             )
           }
+
           placeholder={
             active.placeholder
           }
+
+          autoComplete="off"
+
           className="h-11 flex-1 rounded border bg-black px-4 text-sm font-bold text-white outline-none"
+
           style={{
             borderColor:
               active.color,
           }}
         />
 
+
         <button
           type="submit"
+
           disabled={
             submitting
           }
+
           className="h-11 rounded px-5 text-sm font-black uppercase text-white transition disabled:cursor-wait disabled:opacity-60"
+
           style={{
             backgroundColor:
               active.color,
           }}
+
           onMouseEnter={(
             event
           ) => {
+
             if (
               !submitting
             ) {
-              event.currentTarget.style.backgroundColor =
+              event.currentTarget
+                .style
+                .backgroundColor =
                 active.hover;
             }
           }}
+
           onMouseLeave={(
             event
           ) => {
-            event.currentTarget.style.backgroundColor =
+
+            event.currentTarget
+              .style
+              .backgroundColor =
               active.color;
           }}
         >
-          {submitting
-            ? "Searching..."
-            : "Search"}
+
+          {
+            submitting
+              ? "Searching..."
+              : "Search"
+          }
+
         </button>
+
       </form>
+
     </section>
   );
 }
