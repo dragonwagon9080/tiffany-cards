@@ -4,7 +4,7 @@ import {
   NextResponse,
 } from "next/server";
 
-import sharp from "sharp";
+import { Jimp } from "jimp";
 
 import type {
   TNCEProject,
@@ -248,16 +248,22 @@ async function prepareRotatedImages(
         await response.arrayBuffer()
       );
 
+    const editedImage =
+      await Jimp.read(
+        source
+      );
+
+    editedImage.rotate(
+      image.rotation
+    );
+
     const rotated =
-      await sharp(source)
-        .rotate(
-          image.rotation
-        )
-        .jpeg({
+      await editedImage.getBuffer(
+        "image/jpeg",
+        {
           quality: 90,
-          mozjpeg: true,
-        })
-        .toBuffer();
+        }
+      );
 
     prepared.push({
       originalUrl:
@@ -276,7 +282,9 @@ async function prepareRotatedImages(
         "image/jpeg",
 
       base64:
-        `data:image/jpeg;base64,${rotated.toString(
+        `data:image/jpeg;base64,${Buffer.from(
+          rotated
+        ).toString(
           "base64"
         )}`,
     });
