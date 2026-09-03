@@ -6393,6 +6393,169 @@ async function importBuyNiceCardsListing(
   };
 }
 
+/* =========================================================
+MR. B'S COLLECTION
+========================================================= */
+
+async function importMrBsCollectionListing(
+  sourceUrl: string
+): Promise<AuctionImportResult> {
+  const parsedUrl = new URL(sourceUrl);
+  const pathParts = parsedUrl.pathname
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const productIndex = pathParts.findIndex(
+    (part) => part.toLowerCase() === "products"
+  );
+
+  const handle =
+    productIndex >= 0
+      ? clean(pathParts[productIndex + 1])
+      : "";
+
+  if (!handle) {
+    throw new Error(
+      "Unable to determine the Mr. B's Collection product handle from this URL."
+    );
+  }
+
+  const productJsonUrl =
+    `https://mrbscollection.com/products/${encodeURIComponent(handle)}.js`;
+
+  const response = await fetch(productJsonUrl, {
+    method: "GET",
+    redirect: "follow",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json,text/javascript,*/*;q=0.8",
+      Referer: sourceUrl,
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36",
+    },
+  });
+
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Mr. B's Collection import failed with status ${response.status}.`
+    );
+  }
+
+  let product: any;
+  try { product = JSON.parse(responseText); } catch {
+    throw new Error(
+      "Mr. B's Collection returned an invalid Shopify product response."
+    );
+  }
+
+  if (!product || !clean(product?.title)) {
+    throw new Error(
+      "Mr. B's Collection did not return a product for this URL."
+    );
+  }
+
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const firstVariant = variants[0] || null;
+  const rawImages: unknown[] = [];
+  if (Array.isArray(product?.images)) rawImages.push(...product.images);
+  if (product?.featured_image) rawImages.unshift(product.featured_image);
+
+  const images = uniqueUrls(
+    rawImages.map((image: any) =>
+      typeof image === "string" ? image : (image?.src || image?.url || "")
+    ),
+    sourceUrl
+  );
+
+  const tags = Array.isArray(product?.tags)
+    ? product.tags.map((tag: unknown) => clean(tag)).filter(Boolean)
+    : typeof product?.tags === "string"
+      ? product.tags.split(",").map((tag: string) => clean(tag)).filter(Boolean)
+      : [];
+
+  const aspects: Record<string, string[]> = {};
+  if (clean(product?.type)) aspects["Product Type"] = [clean(product.type)];
+  if (tags.length > 0) aspects.Tags = tags;
+  if (clean(product?.vendor)) aspects.Vendor = [clean(product.vendor)];
+
+  const available =
+    typeof firstVariant?.available === "boolean"
+      ? firstVariant.available
+      : typeof product?.available === "boolean"
+        ? product.available
+        : undefined;
+  if (available !== undefined) {
+    aspects.Availability = [available ? "Available" : "Unavailable"];
+  }
+
+  let price = "";
+  const rawPrice = firstVariant?.price ?? product?.price;
+  if (typeof rawPrice === "number" && Number.isFinite(rawPrice)) {
+    price = (rawPrice / 100).toFixed(2);
+  } else {
+    const priceText = clean(rawPrice);
+    if (priceText) {
+      const numericPrice = Number(priceText);
+      price = Number.isFinite(numericPrice)
+        ? (numericPrice / 100).toFixed(2)
+        : priceText;
+    }
+  }
+
+  const description = decodeHtml(
+    clean(product?.description)
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/[ \t]{2,}/g, " ")
+  );
+
+  const title = clean(product?.title);
+
+  /*
+   * Mr. B's Collection includes the card grade in the title, e.g.
+   * "... / BGS Grade 9 / Auto Grade 10".
+   * Extract the slab/card grade without treating Auto Grade as the card grade.
+   */
+  const bgsGradeMatch = title.match(
+    /\bBGS\s+Grade\s+([0-9]+(?:\.[0-9]+)?|Authentic)\b/i
+  );
+  const psaGradeMatch = title.match(
+    /\bPSA\s+Grade\s+([0-9]+(?:\.[0-9]+)?|Authentic)\b/i
+  );
+  const sgcGradeMatch = title.match(
+    /\bSGC\s+Grade\s+([0-9]+(?:\.[0-9]+)?|Authentic)\b/i
+  );
+
+  const grade = bgsGradeMatch
+    ? `BGS ${bgsGradeMatch[1]}`
+    : psaGradeMatch
+      ? `PSA ${psaGradeMatch[1]}`
+      : sgcGradeMatch
+        ? `SGC ${sgcGradeMatch[1]}`
+        : "";
+
+  return {
+    ok: true,
+    marketplace: "mrbscollection",
+    sourceUrl,
+    listingId: clean(product?.handle) || clean(product?.id) || handle,
+    title,
+    seller: "Mr. B's Collection",
+    price,
+    currency: "USD",
+    grade,
+    endDate: "",
+    description: "",
+    frontImage: images[0] || "",
+    additionalImages: images.slice(1),
+    aspects,
+  };
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -6524,6 +6687,17 @@ if (
 }
 
 if (
+  hostname === "mrbscollection.com" ||
+  hostname.endsWith(".mrbscollection.com")
+) {
+  return addNormalizedCardFields(
+    await importMrBsCollectionListing(
+      cleanedUrl
+    )
+  );
+}
+
+if (
   isMySlabsHostname(
     hostname
   )
@@ -6621,6 +6795,6 @@ function isAltHostname(
 }
 
 throw new Error(
-  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, Facebook, PSA, Goldin, Fanatics Collect, Buy Nice Cards, MySlabs, and Blowout Forums are currently available."
+  "This source is not supported yet. eBay, Heritage Auctions, Alt, X, Instagram, Facebook, PSA, Goldin, Fanatics Collect, Buy Nice Cards, Mr. B's Collection, MySlabs, and Blowout Forums are currently available."
 );
 }
