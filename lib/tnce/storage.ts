@@ -16,6 +16,10 @@ const credentials = JSON.parse(requiredEnv("GCS_KEY"));
 
 export const tnceUploadBucket = requiredEnv("TNCE_UPLOAD_BUCKET");
 
+export const cardsAlertPrivateBucket = requiredEnv(
+  "CARDS_ALERT_PRIVATE_BUCKET"
+);
+
 export const storage = new Storage({
   projectId: credentials.project_id,
   credentials: {

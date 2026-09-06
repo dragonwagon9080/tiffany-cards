@@ -66,7 +66,7 @@ function publicCard(card: any) {
     front_image: card.front_image ?? "",
     back_image: card.back_image ?? "",
     additional_images: card.additional_images ?? "",
-      };
+    };
 }
 
 function json(data: any) {

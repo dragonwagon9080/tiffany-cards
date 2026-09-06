@@ -2,7 +2,7 @@ import "server-only";
 
 import {
   storage,
-  tnceUploadBucket,
+  cardsAlertPrivateBucket,
 } from "@/lib/tnce/storage";
 
 let lastGoodData: any = null;
@@ -156,7 +156,7 @@ async function readJsonObjectOnce(
 ) {
   const bucket =
     storage.bucket(
-      tnceUploadBucket
+      cardsAlertPrivateBucket
     );
 
   const file =
@@ -264,8 +264,8 @@ async function loadDatabaseSnapshot() {
 
 async function loadRecentSnapshot() {
   /*
-   * recent.json is read directly from GCS using the
-   * authenticated Storage client, so there is no
+   * recent.json is read directly from the private GCS bucket
+   * using the authenticated Storage client, so there is no
    * public/CDN cache to bust.
    */
   const raw =
@@ -373,7 +373,7 @@ export async function getCachedCardsAlertData() {
    * Cold server:
    *
    * Retrieve the already-built database snapshot
-   * directly from GCS.
+   * directly from the private GCS bucket.
    */
   return refreshCardsAlertData();
 }
@@ -387,8 +387,8 @@ export async function getCachedCardsAlertData() {
  * Unlike database.json, we intentionally DO NOT keep
  * recent.json behind a time-based memory cache.
  *
- * Every startup request retrieves the current GCS
- * snapshot.
+ * Every startup request retrieves the current private
+ * GCS snapshot.
  *
  * This prevents a warm Vercel instance from continuing
  * to serve an older Cards Alert homepage after new

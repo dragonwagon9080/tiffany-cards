@@ -2,7 +2,7 @@ import "server-only";
 
 import {
   storage,
-  tnceUploadBucket,
+  cardsAlertPrivateBucket,
 } from "@/lib/tnce/storage";
 
 const CARDS_ALERT_API_URL =
@@ -19,6 +19,7 @@ const FETCH_TIMEOUT_MS =
 
 const MAX_ATTEMPTS = 3;
 
+
 function wait(milliseconds: number) {
   return new Promise<void>(
     (resolve) => {
@@ -27,11 +28,13 @@ function wait(milliseconds: number) {
   );
 }
 
+
 function retryDelay(attempt: number) {
   return attempt === 1
     ? 750
     : 2000;
 }
+
 
 function uniqueSorted(values: unknown[]) {
   return Array.from(
@@ -46,6 +49,7 @@ function uniqueSorted(values: unknown[]) {
     a.localeCompare(b)
   );
 }
+
 
 function isRealCard(card: any) {
   const first =
@@ -76,6 +80,7 @@ function isRealCard(card: any) {
       )
   );
 }
+
 
 function buildOptions(cards: any[]) {
   const players =
@@ -142,6 +147,7 @@ function buildOptions(cards: any[]) {
   };
 }
 
+
 async function fetchJsonOnce(
   url: string
 ) {
@@ -199,6 +205,7 @@ async function fetchJsonOnce(
   }
 }
 
+
 async function fetchJsonWithRetry(
   url: string,
   label: string
@@ -236,6 +243,7 @@ async function fetchJsonWithRetry(
         )
   );
 }
+
 
 async function fetchSnapshotChunk(
   offset: number
@@ -336,6 +344,7 @@ async function fetchSnapshotChunk(
   };
 }
 
+
 async function fetchAllCards() {
   const collected: any[] = [];
 
@@ -416,6 +425,7 @@ async function fetchAllCards() {
   return collected;
 }
 
+
 async function fetchSmallMetadata() {
   /*
    * Recent mode with limit=1 returns the small site metadata
@@ -441,6 +451,7 @@ async function fetchSmallMetadata() {
     "metadata"
   );
 }
+
 
 async function fetchLists() {
   const url =
@@ -473,6 +484,7 @@ async function fetchLists() {
   return result;
 }
 
+
 async function writeJsonObject(
   objectPath: string,
   value: unknown,
@@ -480,7 +492,7 @@ async function writeJsonObject(
 ) {
   const bucket =
     storage.bucket(
-      tnceUploadBucket
+      cardsAlertPrivateBucket
     );
 
   const file =
@@ -506,6 +518,9 @@ async function writeJsonObject(
   );
 
   return {
+    bucket:
+      cardsAlertPrivateBucket,
+
     objectPath,
 
     bytes:
@@ -513,11 +528,9 @@ async function writeJsonObject(
         body,
         "utf8"
       ),
-
-    publicUrl:
-      `https://storage.googleapis.com/${tnceUploadBucket}/${objectPath}`,
   };
 }
+
 
 export async function buildCardsAlertSnapshots() {
   if (!CARDS_ALERT_API_URL) {
@@ -621,7 +634,7 @@ export async function buildCardsAlertSnapshots() {
   };
 
   console.log(
-    "Cards Alert snapshot: writing GCS files."
+    "Cards Alert snapshot: writing private GCS files."
   );
 
   const files =
@@ -629,19 +642,19 @@ export async function buildCardsAlertSnapshots() {
       writeJsonObject(
         `${SNAPSHOT_PREFIX}/recent.json`,
         recent,
-        "public, max-age=60"
+        "private, max-age=60"
       ),
 
       writeJsonObject(
         `${SNAPSHOT_PREFIX}/options.json`,
         options,
-        "public, max-age=300"
+        "private, max-age=300"
       ),
 
       writeJsonObject(
         `${SNAPSHOT_PREFIX}/database.json`,
         database,
-        "public, max-age=300"
+        "private, max-age=300"
       ),
     ]);
 
