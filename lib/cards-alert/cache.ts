@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  storage,
+  tnceUploadBucket,
+} from "@/lib/tnce/storage";
+
 let lastGoodData: any = null;
 let lastGoodDataAt = 0;
 
@@ -12,20 +17,17 @@ let pendingDatabaseRequest: Promise<any> | null = null;
 let pendingRecentRequest: Promise<any> | null = null;
 let pendingOptionsRequest: Promise<any> | null = null;
 
-const BUCKET =
-  process.env.TNCE_UPLOAD_BUCKET || "tiffanycards";
+const SNAPSHOT_PREFIX =
+  "cardsalert-data";
 
-const SNAPSHOT_BASE_URL =
-  `https://storage.googleapis.com/${BUCKET}/cardsalert-data`;
+const DATABASE_OBJECT =
+  `${SNAPSHOT_PREFIX}/database.json`;
 
-const DATABASE_URL =
-  `${SNAPSHOT_BASE_URL}/database.json`;
+const RECENT_OBJECT =
+  `${SNAPSHOT_PREFIX}/recent.json`;
 
-const RECENT_URL =
-  `${SNAPSHOT_BASE_URL}/recent.json`;
-
-const OPTIONS_URL =
-  `${SNAPSHOT_BASE_URL}/options.json`;
+const OPTIONS_OBJECT =
+  `${SNAPSHOT_PREFIX}/options.json`;
 
 const DATABASE_MEMORY_TTL_MS =
   5 * 60 * 1000;
@@ -148,74 +150,63 @@ function validateOptions(rawData: any) {
 }
 
 
-async function fetchJsonOnce(
-  url: string,
+async function readJsonObjectOnce(
+  objectPath: string,
   label: string
 ) {
-  const controller =
-    new AbortController();
+  const bucket =
+    storage.bucket(
+      tnceUploadBucket
+    );
 
-  const timeout =
-    setTimeout(() => {
-      controller.abort();
-    }, FETCH_TIMEOUT_MS);
+  const file =
+    bucket.file(
+      objectPath
+    );
+
+  const downloadPromise =
+    file.download();
+
+  const timeoutPromise =
+    new Promise<never>(
+      (_, reject) => {
+        setTimeout(
+          () => {
+            reject(
+              new Error(
+                `${label} snapshot timed out.`
+              )
+            );
+          },
+          FETCH_TIMEOUT_MS
+        );
+      }
+    );
+
+  const [buffer] =
+    await Promise.race([
+      downloadPromise,
+      timeoutPromise,
+    ]);
+
+  const text =
+    buffer.toString("utf8");
 
   try {
-    const response =
-      await fetch(
-        url,
-        {
-          method: "GET",
-
-          /*
-           * GCS is our persistent snapshot cache.
-           * Do not put these files in the Next.js
-           * Data Cache.
-           */
-          cache: "no-store",
-
-          redirect: "follow",
-
-          headers: {
-            Accept:
-              "application/json,text/plain;q=0.9,*/*;q=0.8",
-
-            "Cache-Control":
-              "no-cache",
-          },
-
-          signal:
-            controller.signal,
-        }
-      );
-
-    const text =
-      await response.text();
-
-    if (!response.ok) {
-      throw new Error(
-        `${label} snapshot failed: ${response.status}`
-      );
-    }
-
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error(
-        `${label} snapshot returned non-JSON. First response text: ${text.slice(
-          0,
-          200
-        )}`
-      );
-    }
-  } finally {
-    clearTimeout(timeout);
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      `${label} snapshot returned non-JSON. First response text: ${text.slice(
+        0,
+        200
+      )}`
+    );
   }
 }
 
 
-async function fetchJsonWithRetry(
-  url: string,
+async function readJsonObjectWithRetry(
+  objectPath: string,
   label: string
 ) {
   let lastError: unknown =
@@ -227,8 +218,8 @@ async function fetchJsonWithRetry(
     attempt++
   ) {
     try {
-      return await fetchJsonOnce(
-        url,
+      return await readJsonObjectOnce(
+        objectPath,
         label
       );
     } catch (error) {
@@ -262,8 +253,8 @@ async function fetchJsonWithRetry(
 
 async function loadDatabaseSnapshot() {
   const raw =
-    await fetchJsonWithRetry(
-      DATABASE_URL,
+    await readJsonObjectWithRetry(
+      DATABASE_OBJECT,
       "database"
     );
 
@@ -273,18 +264,13 @@ async function loadDatabaseSnapshot() {
 
 async function loadRecentSnapshot() {
   /*
-   * recent.json is small and changes whenever new
-   * Cards Alert cards are published.
-   *
-   * Add a unique query parameter so an upstream cache
-   * cannot hand the production server an older copy.
+   * recent.json is read directly from GCS using the
+   * authenticated Storage client, so there is no
+   * public/CDN cache to bust.
    */
-  const url =
-    `${RECENT_URL}?v=${Date.now()}`;
-
   const raw =
-    await fetchJsonWithRetry(
-      url,
+    await readJsonObjectWithRetry(
+      RECENT_OBJECT,
       "recent"
     );
 
@@ -294,8 +280,8 @@ async function loadRecentSnapshot() {
 
 async function loadOptionsSnapshot() {
   const raw =
-    await fetchJsonWithRetry(
-      OPTIONS_URL,
+    await readJsonObjectWithRetry(
+      OPTIONS_OBJECT,
       "options"
     );
 
