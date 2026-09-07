@@ -230,10 +230,29 @@ async function fetchAction(
       ? "&"
       : "?";
 
-  const res = await fetch(
-    `${API_URL}${separator}action=${encodeURIComponent(
-      action
-    )}`,
+  const sourceSecret =
+  process.env.RPA_TRACKER_SOURCE_SECRET;
+
+const params =
+  new URLSearchParams({
+    action,
+  });
+
+if (action === "all") {
+  if (!sourceSecret) {
+    throw new Error(
+      "Missing RPA_TRACKER_SOURCE_SECRET environment variable."
+    );
+  }
+
+  params.set(
+    "snapshotSecret",
+    sourceSecret
+  );
+}
+
+const res = await fetch(
+  `${API_URL}${separator}${params.toString()}`,
     {
       cache: "no-store",
     }
@@ -268,15 +287,38 @@ export async function buildRPATrackerSnapshot() {
         homepageRaw?.groups ||
         [];
 
-  const rawDbCards =
-    Array.isArray(dbRaw)
-      ? dbRaw
-      : dbRaw?.cards || [];
+  if (
+  dbRaw?.ok === false ||
+  dbRaw?.error
+) {
+  throw new Error(
+    "RPA Tracker source API rejected the database request."
+  );
+}
 
-  const cards =
-    rawDbCards
-      .filter(isRealDbCard)
-      .map(cleanDbCard);
+const rawDbCards =
+  Array.isArray(dbRaw)
+    ? dbRaw
+    : Array.isArray(dbRaw?.cards)
+      ? dbRaw.cards
+      : null;
+
+if (!rawDbCards) {
+  throw new Error(
+    "RPA Tracker source API returned an invalid database response."
+  );
+}
+
+const cards =
+  rawDbCards
+    .filter(isRealDbCard)
+    .map(cleanDbCard);
+
+if (cards.length === 0) {
+  throw new Error(
+    "RPA Tracker snapshot contains zero valid cards. Existing snapshot will not be overwritten."
+  );
+}
 
   const groups =
     buildGroups(
