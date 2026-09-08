@@ -25,6 +25,10 @@ import {
   buildCardsAlertSnapshots,
 } from "@/lib/cards-alert/snapshot";
 
+import {
+  buildRPATrackerSnapshot,
+} from "@/lib/rpa-tracker/snapshot";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -80,21 +84,21 @@ function adminSecretForProject(
 
 
 /*******************************************************
- * CARDS ALERT SNAPSHOT REFRESH
+ * AUTOMATIC SNAPSHOT REFRESH
  *
- * Runs after a successful Cards Alert publish.
+ * Runs after a successful owner-mode publish.
  *
  * The publish response is returned first so owner-mode
- * publishing does not wait for the full snapshot rebuild.
+ * publishing does not wait for the snapshot rebuild.
  *******************************************************/
 
-function scheduleCardsAlertSnapshotRefresh(
+function scheduleProjectSnapshotRefresh(
   project: TNCEProject,
   submissionId: string
 ) {
   if (
-    project !==
-    "cards-alert"
+    project !== "cards-alert" &&
+    project !== "rpa-tracker"
   ) {
     return;
   }
@@ -102,32 +106,56 @@ function scheduleCardsAlertSnapshotRefresh(
   after(
     async () => {
       try {
+        if (project === "cards-alert") {
+          console.log(
+            `Cards Alert snapshot refresh starting after auto-publish ${submissionId}.`
+          );
+
+          const result =
+            await buildCardsAlertSnapshots();
+
+          console.log(
+            `Cards Alert snapshot refresh completed after auto-publish ${submissionId}.`,
+            {
+              cardCount:
+                result.cardCount,
+
+              generatedAt:
+                result.generatedAt,
+            }
+          );
+
+          return;
+        }
+
         console.log(
-          `Cards Alert snapshot refresh starting after auto-publish ${submissionId}.`
+          `RPA Tracker snapshot refresh starting after auto-publish ${submissionId}.`
         );
 
         const result =
-          await buildCardsAlertSnapshots();
+          await buildRPATrackerSnapshot();
 
         console.log(
-          `Cards Alert snapshot refresh completed after auto-publish ${submissionId}.`,
+          `RPA Tracker snapshot refresh completed after auto-publish ${submissionId}.`,
           {
             cardCount:
               result.cardCount,
 
-            generatedAt:
-              result.generatedAt,
+            groupCount:
+              result.groupCount,
+
+            refreshedAt:
+              result.refreshedAt,
           }
         );
       } catch (error) {
         /*
          * The card is already published.
-         *
          * Snapshot failure must never turn a successful
          * card publish into a failed submission.
          */
         console.error(
-          `Cards Alert snapshot refresh failed after auto-publish ${submissionId}:`,
+          `${project} snapshot refresh failed after auto-publish ${submissionId}:`,
           error
         );
       }
@@ -337,14 +365,7 @@ export async function POST(
             submissionId
           );
 
-        /*
-         * Only Cards Alert needs the GCS snapshot refresh.
-         *
-         * This is scheduled AFTER the HTTP response, so
-         * the owner does not wait for the ~50-second
-         * snapshot generation.
-         */
-        scheduleCardsAlertSnapshotRefresh(
+        scheduleProjectSnapshotRefresh(
           submission.project,
           submissionId
         );

@@ -14,6 +14,10 @@ import {
   buildCardsAlertSnapshots,
 } from "@/lib/cards-alert/snapshot";
 
+import {
+  buildRPATrackerSnapshot,
+} from "@/lib/rpa-tracker/snapshot";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -295,22 +299,21 @@ async function prepareRotatedImages(
 
 
 /*******************************************************
- * CARDS ALERT AUTOMATIC SNAPSHOT REFRESH
+ * AUTOMATIC SNAPSHOT REFRESH
  *
- * Runs AFTER the publish response has been returned.
+ * Runs AFTER a successful publish response is returned.
  *
- * The user does not need to wait for the full Cards
- * Alert snapshot rebuild before TNCE reports that the
- * card was successfully published.
+ * Snapshot failures are logged but never turn an already
+ * successful TNCE publish into a failed publish.
  *******************************************************/
 
-function scheduleCardsAlertSnapshotRefresh(
+function scheduleProjectSnapshotRefresh(
   project: TNCEProject,
   submissionId: string
 ) {
   if (
-    project !==
-    "cards-alert"
+    project !== "cards-alert" &&
+    project !== "rpa-tracker"
   ) {
     return;
   }
@@ -318,36 +321,43 @@ function scheduleCardsAlertSnapshotRefresh(
   after(
     async () => {
       try {
+        if (project === "cards-alert") {
+          console.log(
+            `Cards Alert snapshot refresh starting after publish ${submissionId}.`
+          );
+
+          const result =
+            await buildCardsAlertSnapshots();
+
+          console.log(
+            `Cards Alert snapshot refresh completed after publish ${submissionId}.`,
+            {
+              cardCount: result.cardCount,
+              generatedAt: result.generatedAt,
+            }
+          );
+
+          return;
+        }
+
         console.log(
-          `Cards Alert snapshot refresh starting after publish ${submissionId}.`
+          `RPA Tracker snapshot refresh starting after publish ${submissionId}.`
         );
 
         const result =
-          await buildCardsAlertSnapshots();
+          await buildRPATrackerSnapshot();
 
         console.log(
-          `Cards Alert snapshot refresh completed after publish ${submissionId}.`,
+          `RPA Tracker snapshot refresh completed after publish ${submissionId}.`,
           {
-            cardCount:
-              result.cardCount,
-
-            generatedAt:
-              result.generatedAt,
+            cardCount: result.cardCount,
+            groupCount: result.groupCount,
+            refreshedAt: result.refreshedAt,
           }
         );
       } catch (error) {
-        /*
-         * IMPORTANT:
-         *
-         * The card has already been successfully
-         * published at this point.
-         *
-         * A snapshot failure should therefore be
-         * logged, but it must NOT change the publish
-         * result into a failure.
-         */
         console.error(
-          `Cards Alert snapshot refresh failed after publish ${submissionId}:`,
+          `${project} snapshot refresh failed after publish ${submissionId}:`,
           error
         );
       }
@@ -498,7 +508,7 @@ export async function POST(
         response.ok &&
         data.ok
       ) {
-        scheduleCardsAlertSnapshotRefresh(
+        scheduleProjectSnapshotRefresh(
           project,
           submissionId
         );
@@ -641,7 +651,7 @@ export async function POST(
       verifiedStatus ===
       "published"
     ) {
-      scheduleCardsAlertSnapshotRefresh(
+      scheduleProjectSnapshotRefresh(
         project,
         submissionId
       );

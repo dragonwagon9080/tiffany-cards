@@ -6,10 +6,17 @@ import {
 } from "@/lib/tnce/storage";
 
 let cachedData: any = null;
-let cachedAt = 0;
+let cachedGeneration: string | null = null;
+let lastMetadataCheckAt = 0;
 let pendingRequest: Promise<any> | null = null;
 
-const CACHE_TIME = 1000 * 60 * 60;
+/*
+ * We only check the small GCS object metadata every 15 seconds.
+ * The full ~14.5 MB snapshot is downloaded only when the object
+ * generation changes (or when this server instance has no cache).
+ */
+const METADATA_CHECK_TIME =
+  15_000;
 
 const SNAPSHOT_OBJECT =
   "rpa-tracker-data/database.json";
@@ -17,16 +24,36 @@ const SNAPSHOT_OBJECT =
 const DOWNLOAD_TIMEOUT_MS =
   20_000;
 
-async function readSnapshot() {
-  const bucket =
-    storage.bucket(
+function snapshotFile() {
+  return storage
+    .bucket(
       cardsAlertPrivateBucket
-    );
-
-  const file =
-    bucket.file(
+    )
+    .file(
       SNAPSHOT_OBJECT
     );
+}
+
+async function getSnapshotGeneration() {
+  const file =
+    snapshotFile();
+
+  const [metadata] =
+    await file.getMetadata();
+
+  return String(
+    metadata.generation ||
+      metadata.updated ||
+      ""
+  );
+}
+
+async function readSnapshot() {
+  const file =
+    snapshotFile();
+
+  const generation =
+    await getSnapshotGeneration();
 
   let timeoutHandle:
     ReturnType<typeof setTimeout>
@@ -75,7 +102,10 @@ async function readSnapshot() {
       );
     }
 
-    return parsed;
+    return {
+      data: parsed,
+      generation,
+    };
   } finally {
     if (timeoutHandle) {
       clearTimeout(
@@ -86,23 +116,48 @@ async function readSnapshot() {
 }
 
 export async function refreshRPATrackerData() {
-  const data =
+  const result =
     await readSnapshot();
 
-  cachedData = data;
-  cachedAt = Date.now();
+  cachedData =
+    result.data;
 
-  return data;
+  cachedGeneration =
+    result.generation;
+
+  lastMetadataCheckAt =
+    Date.now();
+
+  return cachedData;
 }
 
 export async function getCachedRPATrackerData() {
   const now =
     Date.now();
 
+  /*
+   * No cache on this server instance yet.
+   */
+  if (!cachedData) {
+    if (pendingRequest) {
+      return pendingRequest;
+    }
+
+    pendingRequest =
+      refreshRPATrackerData()
+        .finally(() => {
+          pendingRequest = null;
+        });
+
+    return pendingRequest;
+  }
+
+  /*
+   * Avoid a metadata request on every API hit.
+   */
   if (
-    cachedData &&
-    now - cachedAt <
-      CACHE_TIME
+    now - lastMetadataCheckAt <
+      METADATA_CHECK_TIME
   ) {
     return cachedData;
   }
@@ -112,19 +167,43 @@ export async function getCachedRPATrackerData() {
   }
 
   pendingRequest =
-    refreshRPATrackerData()
-      .catch((error) => {
-        console.error(
-          "RPA Tracker private snapshot load failed:",
-          error
-        );
+    (async () => {
+      try {
+        const generation =
+          await getSnapshotGeneration();
 
-        if (cachedData) {
+        lastMetadataCheckAt =
+          Date.now();
+
+        /*
+         * Same GCS object generation = same snapshot.
+         * Keep the large snapshot in memory.
+         */
+        if (
+          generation &&
+          cachedGeneration &&
+          generation ===
+            cachedGeneration
+        ) {
           return cachedData;
         }
 
-        throw error;
-      })
+        /*
+         * Snapshot changed. Download the new version.
+         */
+        return await refreshRPATrackerData();
+      } catch (error) {
+        console.error(
+          "RPA Tracker private snapshot version check failed:",
+          error
+        );
+
+        /*
+         * Preserve availability if GCS has a temporary issue.
+         */
+        return cachedData;
+      }
+    })()
       .finally(() => {
         pendingRequest = null;
       });
