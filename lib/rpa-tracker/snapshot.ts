@@ -5,11 +5,17 @@ import {
   cardsAlertPrivateBucket,
 } from "@/lib/tnce/storage";
 
+import {
+  getRpaRecentActivity,
+} from "@/lib/rpa-tracker/recent-activity";
+
 const API_URL =
   process.env.RPA_TRACKER_API_URL!;
 
 const SNAPSHOT_OBJECT =
   "rpa-tracker-data/database.json";
+
+const MAX_PUBLIC_RECENT_CARDS = 50;
 
 function cleanString(value: any) {
   return String(value || "").trim();
@@ -39,13 +45,17 @@ function normalizeOtherImages(value: any) {
 
 function getFirstName(row: any) {
   return cleanString(
-    row.First || row.First_Name || ""
+    row.First ||
+      row.First_Name ||
+      ""
   );
 }
 
 function getLastName(row: any) {
   return cleanString(
-    row.Last || row.Last_Name || ""
+    row.Last ||
+      row.Last_Name ||
+      ""
   );
 }
 
@@ -58,19 +68,28 @@ function getPlayer(row: any) {
 
 function isRealDbCard(card: any) {
   return (
-    cleanString(card.Card_Title) !== "" &&
-    cleanString(card.Card_id) !== ""
+    cleanString(
+      card.Card_Title
+    ) !== "" &&
+    cleanString(
+      card.Card_id
+    ) !== ""
   );
 }
 
 function cleanDbCard(card: any) {
   const slug =
     card.Slug ||
-    slugify(card.Card_Title);
+    slugify(
+      card.Card_Title
+    );
 
   return {
     ...card,
-    Slug: slug,
+
+    Slug:
+      slug,
+
     Other_Images:
       normalizeOtherImages(
         card.Other_Images
@@ -83,50 +102,94 @@ function buildGroups(
   dbCards: any[]
 ) {
   const countByTitle =
-    new Map<string, number>();
+    new Map<
+      string,
+      number
+    >();
 
-  for (const card of dbCards) {
+  for (
+    const card of dbCards
+  ) {
     const title =
-      cleanString(card.Card_Title);
+      cleanString(
+        card.Card_Title
+      );
 
-    if (!title) continue;
+    if (!title) {
+      continue;
+    }
 
     countByTitle.set(
       title,
-      (countByTitle.get(title) || 0) + 1
+      (
+        countByTitle.get(
+          title
+        ) || 0
+      ) + 1
     );
   }
 
   return homepageRows
     .filter(
       (row) =>
-        cleanString(row.Card_Title) !== ""
+        cleanString(
+          row.Card_Title
+        ) !== ""
     )
     .map((row) => {
       const title =
-        cleanString(row.Card_Title);
+        cleanString(
+          row.Card_Title
+        );
 
       return {
         Slug:
           row.Slug ||
-          slugify(title),
+          slugify(
+            title
+          ),
 
-        Card_Title: title,
+        Card_Title:
+          title,
 
         Card_Title_Display:
           row.Card_Title_Display ||
           title,
 
-        First: getFirstName(row),
-        Last: getLastName(row),
-        Player: getPlayer(row),
+        First:
+          getFirstName(
+            row
+          ),
 
-        Year: row.Year || "",
-        Brand: row.Brand || "",
-        Set: row.Set || "",
+        Last:
+          getLastName(
+            row
+          ),
+
+        Player:
+          getPlayer(
+            row
+          ),
+
+        Year:
+          row.Year ||
+          "",
+
+        Brand:
+          row.Brand ||
+          "",
+
+        Set:
+          row.Set ||
+          "",
+
         Variation:
-          row.Variation || "",
-        Sport: row.Sport || "",
+          row.Variation ||
+          "",
+
+        Sport:
+          row.Sport ||
+          "",
 
         Material:
           row.Type ||
@@ -139,47 +202,80 @@ function buildGroups(
           "",
 
         Description:
-          row.Description || "",
+          row.Description ||
+          "",
 
         Main_Page_Image:
-          row.Main_Page_Image || "",
+          row.Main_Page_Image ||
+          "",
 
         Count:
-          countByTitle.get(title) || 0,
+          countByTitle.get(
+            title
+          ) || 0,
 
-        HighestGrade: "",
-        LastUpdated: "",
+        HighestGrade:
+          "",
+
+        LastUpdated:
+          "",
       };
     })
-    .sort((a, b) => {
-      const last =
-        String(a.Last || "")
-          .localeCompare(
-            String(b.Last || "")
+    .sort(
+      (a, b) => {
+        const last =
+          String(
+            a.Last || ""
+          ).localeCompare(
+            String(
+              b.Last || ""
+            )
           );
 
-      if (last !== 0) return last;
+        if (
+          last !== 0
+        ) {
+          return last;
+        }
 
-      const first =
-        String(a.First || "")
-          .localeCompare(
-            String(b.First || "")
+        const first =
+          String(
+            a.First || ""
+          ).localeCompare(
+            String(
+              b.First || ""
+            )
           );
 
-      if (first !== 0) return first;
+        if (
+          first !== 0
+        ) {
+          return first;
+        }
 
-      const year =
-        Number(a.Year || 0) -
-        Number(b.Year || 0);
+        const year =
+          Number(
+            a.Year || 0
+          ) -
+          Number(
+            b.Year || 0
+          );
 
-      if (year !== 0) return year;
+        if (
+          year !== 0
+        ) {
+          return year;
+        }
 
-      return String(
-        a.Brand || ""
-      ).localeCompare(
-        String(b.Brand || "")
-      );
-    });
+        return String(
+          a.Brand || ""
+        ).localeCompare(
+          String(
+            b.Brand || ""
+          )
+        );
+      }
+    );
 }
 
 function buildIndexes(
@@ -187,26 +283,43 @@ function buildIndexes(
   groups: any[]
 ) {
   const cardsById:
-    Record<string, any> = {};
+    Record<
+      string,
+      any
+    > = {};
 
   const groupsBySlug:
-    Record<string, any> = {};
+    Record<
+      string,
+      any
+    > = {};
 
-  for (const card of cards) {
+  for (
+    const card of cards
+  ) {
     const id =
-      cleanString(card.Card_id);
+      cleanString(
+        card.Card_id
+      );
 
     if (id) {
-      cardsById[id] = card;
+      cardsById[id] =
+        card;
     }
   }
 
-  for (const group of groups) {
+  for (
+    const group of groups
+  ) {
     const slug =
-      cleanString(group.Slug);
+      cleanString(
+        group.Slug
+      );
 
     if (slug) {
-      groupsBySlug[slug] = group;
+      groupsBySlug[
+        slug
+      ] = group;
     }
   }
 
@@ -214,6 +327,146 @@ function buildIndexes(
     cardsById,
     groupsBySlug,
   };
+}
+
+/*
+ * Converts the private TNCE activity list
+ * into safe public display data.
+ *
+ * TNCE tells us WHICH cards were recently
+ * published. The production RPA database
+ * remains the source of truth for the
+ * current image, title, serial, etc.
+ */
+function buildRecentCards(
+  activity: any[],
+  cardsById:
+    Record<
+      string,
+      any
+    >
+) {
+  return activity
+    .map(
+      (item) => {
+        const cardId =
+          cleanString(
+            item?.cardId
+          );
+
+        if (!cardId) {
+          return null;
+        }
+
+        const card =
+          cardsById[
+            cardId
+          ];
+
+        /*
+         * If the activity points to a card
+         * that no longer exists in production,
+         * do not expose it in the slider.
+         */
+        if (!card) {
+          return null;
+        }
+
+        const image =
+          cleanString(
+            card.Display_Image
+          ) ||
+          cleanString(
+            card.Front_Image
+          );
+
+        /*
+         * The slider is image-based, so cards
+         * without an image are skipped.
+         */
+        if (!image) {
+          return null;
+        }
+
+        const title =
+          cleanString(
+            card.Card_Title_Display
+          ) ||
+          cleanString(
+            card.Card_Title
+          );
+
+        const activityType =
+          cleanString(
+            item?.activity
+          ).toLowerCase() ===
+          "updated"
+            ? "updated"
+            : "new";
+
+        return {
+          cardId,
+
+          activity:
+            activityType,
+
+          publishedAt:
+            cleanString(
+              item?.publishedAt
+            ),
+
+          title,
+
+          cardTitle:
+            cleanString(
+              card.Card_Title
+            ),
+
+          serialNumber:
+            cleanString(
+              card.Serial_Number
+            ),
+
+          variation:
+            cleanString(
+              card.Variation_Input ||
+                card.Variation
+            ),
+
+          grade:
+            cleanString(
+              card.Grade
+            ),
+
+          player:
+            cleanString(
+              card.Player
+            ),
+
+          year:
+            cleanString(
+              card.Year
+            ),
+
+          sport:
+            cleanString(
+              card.Sport
+            ),
+
+          image,
+
+          href:
+            `/rpa-tracker/card/${encodeURIComponent(
+              cardId
+            )}`,
+        };
+      }
+    )
+    .filter(Boolean)
+    .slice(
+      0,
+      MAX_PUBLIC_RECENT_CARDS
+    );
 }
 
 async function fetchAction(
@@ -231,32 +484,39 @@ async function fetchAction(
       : "?";
 
   const sourceSecret =
-  process.env.RPA_TRACKER_SOURCE_SECRET;
+    process.env
+      .RPA_TRACKER_SOURCE_SECRET;
 
-const params =
-  new URLSearchParams({
-    action,
-  });
+  const params =
+    new URLSearchParams({
+      action,
+    });
 
-if (action === "all") {
-  if (!sourceSecret) {
-    throw new Error(
-      "Missing RPA_TRACKER_SOURCE_SECRET environment variable."
+  if (
+    action === "all"
+  ) {
+    if (
+      !sourceSecret
+    ) {
+      throw new Error(
+        "Missing RPA_TRACKER_SOURCE_SECRET environment variable."
+      );
+    }
+
+    params.set(
+      "snapshotSecret",
+      sourceSecret
     );
   }
 
-  params.set(
-    "snapshotSecret",
-    sourceSecret
-  );
-}
-
-const res = await fetch(
-  `${API_URL}${separator}${params.toString()}`,
-    {
-      cache: "no-store",
-    }
-  );
+  const res =
+    await fetch(
+      `${API_URL}${separator}${params.toString()}`,
+      {
+        cache:
+          "no-store",
+      }
+    );
 
   if (!res.ok) {
     throw new Error(
@@ -272,53 +532,82 @@ export async function buildRPATrackerSnapshot() {
     "RPA Tracker snapshot: starting."
   );
 
+  /*
+   * Recent activity can be loaded in parallel
+   * with the two production data sources.
+   */
   const [
     homepageRaw,
     dbRaw,
-  ] = await Promise.all([
-    fetchAction("homepage"),
-    fetchAction("all"),
-  ]);
+    recentActivity,
+  ] =
+    await Promise.all([
+      fetchAction(
+        "homepage"
+      ),
+
+      fetchAction(
+        "all"
+      ),
+
+      getRpaRecentActivity(),
+    ]);
 
   const homepageRows =
-    Array.isArray(homepageRaw)
+    Array.isArray(
+      homepageRaw
+    )
       ? homepageRaw
-      : homepageRaw?.cards ||
-        homepageRaw?.groups ||
+      : homepageRaw
+          ?.cards ||
+        homepageRaw
+          ?.groups ||
         [];
 
   if (
-  dbRaw?.ok === false ||
-  dbRaw?.error
-) {
-  throw new Error(
-    "RPA Tracker source API rejected the database request."
-  );
-}
+    dbRaw?.ok ===
+      false ||
+    dbRaw?.error
+  ) {
+    throw new Error(
+      "RPA Tracker source API rejected the database request."
+    );
+  }
 
-const rawDbCards =
-  Array.isArray(dbRaw)
-    ? dbRaw
-    : Array.isArray(dbRaw?.cards)
-      ? dbRaw.cards
-      : null;
+  const rawDbCards =
+    Array.isArray(
+      dbRaw
+    )
+      ? dbRaw
+      : Array.isArray(
+            dbRaw
+              ?.cards
+          )
+        ? dbRaw.cards
+        : null;
 
-if (!rawDbCards) {
-  throw new Error(
-    "RPA Tracker source API returned an invalid database response."
-  );
-}
+  if (!rawDbCards) {
+    throw new Error(
+      "RPA Tracker source API returned an invalid database response."
+    );
+  }
 
-const cards =
-  rawDbCards
-    .filter(isRealDbCard)
-    .map(cleanDbCard);
+  const cards =
+    rawDbCards
+      .filter(
+        isRealDbCard
+      )
+      .map(
+        cleanDbCard
+      );
 
-if (cards.length === 0) {
-  throw new Error(
-    "RPA Tracker snapshot contains zero valid cards. Existing snapshot will not be overwritten."
-  );
-}
+  if (
+    cards.length === 0
+  ) {
+    throw new Error(
+      "RPA Tracker snapshot contains zero valid cards. Existing snapshot will not be overwritten."
+    );
+  }
 
   const groups =
     buildGroups(
@@ -332,8 +621,19 @@ if (cards.length === 0) {
       groups
     );
 
+  const recentCards =
+    buildRecentCards(
+      recentActivity,
+      indexes.cardsById
+    );
+
+  const refreshedAt =
+    new Date()
+      .toISOString();
+
   const data = {
     cards,
+
     groups,
 
     cardsById:
@@ -342,6 +642,12 @@ if (cards.length === 0) {
     groupsBySlug:
       indexes.groupsBySlug,
 
+    /*
+     * Safe recent activity data used by
+     * the Recently Added & Updated slider.
+     */
+    recentCards,
+
     meta: {
       cardCount:
         cards.length,
@@ -349,13 +655,17 @@ if (cards.length === 0) {
       groupCount:
         groups.length,
 
-      refreshedAt:
-        new Date().toISOString(),
+      recentCardCount:
+        recentCards.length,
+
+      refreshedAt,
     },
   };
 
   const body =
-    JSON.stringify(data);
+    JSON.stringify(
+      data
+    );
 
   const bucket =
     storage.bucket(
@@ -367,17 +677,21 @@ if (cards.length === 0) {
       SNAPSHOT_OBJECT
     );
 
-  await file.save(body, {
-    resumable: false,
+  await file.save(
+    body,
+    {
+      resumable:
+        false,
 
-    contentType:
-      "application/json",
+      contentType:
+        "application/json",
 
-    metadata: {
-      cacheControl:
-        "private, max-age=300",
-    },
-  });
+      metadata: {
+        cacheControl:
+          "private, max-age=300",
+      },
+    }
+  );
 
   const bytes =
     Buffer.byteLength(
@@ -400,6 +714,9 @@ if (cards.length === 0) {
       groups:
         groups.length,
 
+      recentCards:
+        recentCards.length,
+
       bytes,
     }
   );
@@ -419,9 +736,11 @@ if (cards.length === 0) {
     groupCount:
       groups.length,
 
+    recentCardCount:
+      recentCards.length,
+
     bytes,
 
-    refreshedAt:
-      data.meta.refreshedAt,
+    refreshedAt,
   };
 }

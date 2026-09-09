@@ -18,6 +18,10 @@ import {
   buildRPATrackerSnapshot,
 } from "@/lib/rpa-tracker/snapshot";
 
+import {
+  recordRpaRecentActivity,
+} from "@/lib/rpa-tracker/recent-activity";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -297,7 +301,6 @@ async function prepareRotatedImages(
   return prepared;
 }
 
-
 /*******************************************************
  * AUTOMATIC SNAPSHOT REFRESH
  *
@@ -309,7 +312,12 @@ async function prepareRotatedImages(
 
 function scheduleProjectSnapshotRefresh(
   project: TNCEProject,
-  submissionId: string
+  submissionId: string,
+  rpaActivity?: {
+    cardId?: string;
+    activity?: string;
+    publishedAt?: string;
+  }
 ) {
   if (
     project !== "cards-alert" &&
@@ -321,7 +329,10 @@ function scheduleProjectSnapshotRefresh(
   after(
     async () => {
       try {
-        if (project === "cards-alert") {
+        if (
+          project ===
+          "cards-alert"
+        ) {
           console.log(
             `Cards Alert snapshot refresh starting after publish ${submissionId}.`
           );
@@ -332,12 +343,48 @@ function scheduleProjectSnapshotRefresh(
           console.log(
             `Cards Alert snapshot refresh completed after publish ${submissionId}.`,
             {
-              cardCount: result.cardCount,
-              generatedAt: result.generatedAt,
+              cardCount:
+                result.cardCount,
+              generatedAt:
+                result.generatedAt,
             }
           );
 
           return;
+        }
+
+        if (
+          rpaActivity?.cardId
+        ) {
+          try {
+            await recordRpaRecentActivity(
+              {
+                cardId:
+                  rpaActivity.cardId,
+
+                activity:
+                  rpaActivity.activity ||
+                  "new",
+
+                publishedAt:
+                  rpaActivity.publishedAt,
+              }
+            );
+
+            console.log(
+              `RPA recent activity recorded for ${rpaActivity.cardId}.`
+            );
+          } catch (error) {
+            /*
+             * Recent activity is helpful, but it
+             * should never prevent the production
+             * RPA snapshot from refreshing.
+             */
+            console.error(
+              `Unable to record RPA recent activity for ${rpaActivity.cardId}:`,
+              error
+            );
+          }
         }
 
         console.log(
@@ -350,9 +397,14 @@ function scheduleProjectSnapshotRefresh(
         console.log(
           `RPA Tracker snapshot refresh completed after publish ${submissionId}.`,
           {
-            cardCount: result.cardCount,
-            groupCount: result.groupCount,
-            refreshedAt: result.refreshedAt,
+            cardCount:
+              result.cardCount,
+
+            groupCount:
+              result.groupCount,
+
+            refreshedAt:
+              result.refreshedAt,
           }
         );
       } catch (error) {
@@ -364,7 +416,6 @@ function scheduleProjectSnapshotRefresh(
     }
   );
 }
-
 
 export async function POST(
   req: NextRequest
@@ -510,7 +561,29 @@ export async function POST(
       ) {
         scheduleProjectSnapshotRefresh(
           project,
-          submissionId
+          submissionId,
+          project ===
+          "rpa-tracker"
+            ? {
+                cardId:
+                  String(
+                    data.cardId ||
+                      ""
+                  ).trim(),
+
+                activity:
+                  String(
+                    data.action ||
+                      ""
+                  ).trim(),
+
+                publishedAt:
+                  String(
+                    data.publishedAt ||
+                      ""
+                  ).trim(),
+              }
+            : undefined
         );
 
         return NextResponse.json(
@@ -646,6 +719,11 @@ export async function POST(
      *
      * Apps Script completed the publish even though
      * the original HTTP response was interrupted.
+     *
+     * We still refresh the production snapshot, but
+     * we do not write Recent Activity here because
+     * the interrupted response did not reliably give
+     * us the final cardId/action.
      */
     if (
       verifiedStatus ===

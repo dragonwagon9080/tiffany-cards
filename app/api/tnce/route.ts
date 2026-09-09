@@ -29,8 +29,15 @@ import {
   buildRPATrackerSnapshot,
 } from "@/lib/rpa-tracker/snapshot";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import {
+  recordRpaRecentActivity,
+} from "@/lib/rpa-tracker/recent-activity";
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
 
 
 function endpointForProject(
@@ -90,15 +97,26 @@ function adminSecretForProject(
  *
  * The publish response is returned first so owner-mode
  * publishing does not wait for the snapshot rebuild.
+ *
+ * For RPA Tracker, recent activity is recorded BEFORE
+ * the snapshot rebuild so the new/updated card can be
+ * included in recentCards immediately.
  *******************************************************/
 
 function scheduleProjectSnapshotRefresh(
   project: TNCEProject,
-  submissionId: string
+  submissionId: string,
+  rpaActivity?: {
+    cardId?: string;
+    activity?: string;
+    publishedAt?: string;
+  }
 ) {
   if (
-    project !== "cards-alert" &&
-    project !== "rpa-tracker"
+    project !==
+      "cards-alert" &&
+    project !==
+      "rpa-tracker"
   ) {
     return;
   }
@@ -106,7 +124,10 @@ function scheduleProjectSnapshotRefresh(
   after(
     async () => {
       try {
-        if (project === "cards-alert") {
+        if (
+          project ===
+          "cards-alert"
+        ) {
           console.log(
             `Cards Alert snapshot refresh starting after auto-publish ${submissionId}.`
           );
@@ -128,6 +149,53 @@ function scheduleProjectSnapshotRefresh(
           return;
         }
 
+        /*
+         * Record the RPA activity BEFORE rebuilding
+         * the public snapshot.
+         *
+         * The production database remains the source
+         * of truth for the actual card image/details.
+         */
+        if (
+          rpaActivity?.cardId
+        ) {
+          try {
+            await recordRpaRecentActivity(
+              {
+                cardId:
+                  rpaActivity.cardId,
+
+                activity:
+                  rpaActivity.activity ||
+                  "new",
+
+                publishedAt:
+                  rpaActivity.publishedAt,
+              }
+            );
+
+            console.log(
+              `RPA recent activity recorded for ${rpaActivity.cardId}.`
+            );
+          } catch (
+            error
+          ) {
+            /*
+             * Recent activity is supplemental.
+             * Never allow it to make a successful
+             * card publish fail.
+             */
+            console.error(
+              `Unable to record RPA recent activity for ${rpaActivity.cardId}:`,
+              error
+            );
+          }
+        } else {
+          console.warn(
+            `RPA recent activity was not recorded after auto-publish ${submissionId} because no cardId was returned.`
+          );
+        }
+
         console.log(
           `RPA Tracker snapshot refresh starting after auto-publish ${submissionId}.`
         );
@@ -144,11 +212,16 @@ function scheduleProjectSnapshotRefresh(
             groupCount:
               result.groupCount,
 
+            recentCardCount:
+              result.recentCardCount,
+
             refreshedAt:
               result.refreshedAt,
           }
         );
-      } catch (error) {
+      } catch (
+        error
+      ) {
         /*
          * The card is already published.
          * Snapshot failure must never turn a successful
@@ -194,7 +267,8 @@ async function quickPublishSubmission(
     await fetch(
       url,
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -202,23 +276,25 @@ async function quickPublishSubmission(
         },
 
         body:
-          JSON.stringify({
-            action:
-              "publish",
+          JSON.stringify(
+            {
+              action:
+                "publish",
 
-            adminSecret,
+              adminSecret,
 
-            submissionId,
+              submissionId,
 
-            reviewNotes:
-              "Published automatically through TNCE Owner Mode.",
+              reviewNotes:
+                "Published automatically through TNCE Owner Mode.",
 
-            contributorNotes:
-              String(
-                submission.notes ||
-                  ""
-              ).trim(),
-          }),
+              contributorNotes:
+                String(
+                  submission.notes ||
+                    ""
+                ).trim(),
+            }
+          ),
 
         cache:
           "no-store",
@@ -280,7 +356,8 @@ export async function POST(
             "Missing TNCE project.",
         },
         {
-          status: 400,
+          status:
+            400,
         }
       );
     }
@@ -324,7 +401,8 @@ export async function POST(
             `TNCE project not implemented yet: ${submission.project}`,
         },
         {
-          status: 400,
+          status:
+            400,
         }
       );
     }
@@ -367,7 +445,32 @@ export async function POST(
 
         scheduleProjectSnapshotRefresh(
           submission.project,
-          submissionId
+          submissionId,
+          submission.project ===
+          "rpa-tracker"
+            ? {
+                cardId:
+                  String(
+                    publishResult
+                      ?.cardId ||
+                      ""
+                  ).trim(),
+
+                activity:
+                  String(
+                    publishResult
+                      ?.action ||
+                      ""
+                  ).trim(),
+
+                publishedAt:
+                  String(
+                    publishResult
+                      ?.publishedAt ||
+                      ""
+                  ).trim(),
+              }
+            : undefined
         );
 
         return NextResponse.json(
@@ -376,9 +479,11 @@ export async function POST(
 
             submissionId,
 
-            published: true,
+            published:
+              true,
 
-            ownerMode: true,
+            ownerMode:
+              true,
 
             message:
               submission.project ===
@@ -409,15 +514,18 @@ export async function POST(
 
             submissionId,
 
-            published: false,
+            published:
+              false,
 
-            ownerMode: true,
+            ownerMode:
+              true,
 
             message:
               "Submission was saved but Quick Publish failed. It remains in Pending Review.",
 
             quickPublishError:
-              publishError?.message ||
+              publishError
+                ?.message ||
               "Quick Publish failed.",
           },
           {
@@ -439,7 +547,8 @@ export async function POST(
 
         submissionId,
 
-        published: false,
+        published:
+          false,
 
         ownerMode,
 
@@ -472,7 +581,8 @@ export async function POST(
           "TNCE submission failed.",
       },
       {
-        status: 500,
+        status:
+          500,
       }
     );
   }
