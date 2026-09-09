@@ -144,7 +144,7 @@ export default function RecentRpaSlider() {
   }
 
   return (
-    <section className="mt-10 overflow-hidden border-y border-blue-900/60 bg-gradient-to-b from-blue-950/20 to-black py-6">
+    <section className="relative mt-10 mb-12 overflow-hidden border-y-2 border-blue-700/90 bg-gradient-to-b from-blue-950/20 to-black py-6 shadow-[inset_0_12px_20px_-12px_rgba(59,130,246,0.65),inset_0_-12px_20px_-12px_rgba(59,130,246,0.65)]">
       <div className="mb-5 flex items-center justify-between px-4 sm:px-6">
         <div>
           <h2 className="text-lg font-bold uppercase tracking-[0.16em] text-white sm:text-xl">
@@ -229,9 +229,11 @@ export default function RecentRpaSlider() {
 
       <style jsx>{`
         .recent-rpa-window {
-          width: 100%;
-          overflow: hidden;
-        }
+  width: 100%;
+  overflow: hidden;
+  padding-top: 4px;
+  padding-bottom: 1px;
+}
 
         .recent-rpa-track {
           display: flex;
@@ -240,7 +242,7 @@ export default function RecentRpaSlider() {
           padding-left: 18px;
           padding-right: 18px;
           animation: recentRpaScroll
-            55s linear infinite;
+            90s linear infinite;
         }
 
         .recent-rpa-window:hover
