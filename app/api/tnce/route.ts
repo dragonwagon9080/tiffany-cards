@@ -125,29 +125,46 @@ function scheduleProjectSnapshotRefresh(
     async () => {
       try {
         if (
-          project ===
-          "cards-alert"
-        ) {
-          console.log(
-            `Cards Alert snapshot refresh starting after auto-publish ${submissionId}.`
-          );
+  project ===
+  "cards-alert"
+) {
+  console.log(
+    `Cards Alert snapshot refresh scheduled after auto-publish ${submissionId}.`
+  );
 
-          const result =
-            await buildCardsAlertSnapshots();
+  /*
+   * Give the production sheet / Apps Script API
+   * a moment to reflect the newly published row
+   * before rebuilding the public snapshot.
+   */
+  await new Promise(
+    (resolve) =>
+      setTimeout(
+        resolve,
+        3000
+      )
+  );
 
-          console.log(
-            `Cards Alert snapshot refresh completed after auto-publish ${submissionId}.`,
-            {
-              cardCount:
-                result.cardCount,
+  console.log(
+    `Cards Alert snapshot refresh starting after auto-publish ${submissionId}.`
+  );
 
-              generatedAt:
-                result.generatedAt,
-            }
-          );
+  const result =
+    await buildCardsAlertSnapshots();
 
-          return;
-        }
+  console.log(
+    `Cards Alert snapshot refresh completed after auto-publish ${submissionId}.`,
+    {
+      cardCount:
+        result.cardCount,
+
+      generatedAt:
+        result.generatedAt,
+    }
+  );
+
+  return;
+}
 
         /*
          * Record the RPA activity BEFORE rebuilding
