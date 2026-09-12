@@ -97,6 +97,133 @@ function retryDelay(
     : 2500;
 }
 
+/*
+ * Cards Alert new-card protection.
+ *
+ * A new card must never carry the identity of an
+ * existing production card into Apps Script.
+ *
+ * "Similar Card" is only a UI shortcut for creating
+ * a new card and must never behave like an update.
+ */
+function normalizeCardsAlertSubmission(
+  submission: TNCESubmission
+): TNCESubmission {
+  const submissionAction =
+    String(
+      (submission as any)
+        ?.submissionAction ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const submissionType =
+    String(
+      (submission as any)
+        ?.submissionType ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const isNewCard =
+    submissionAction === "new" ||
+    submissionAction === "similar" ||
+    submissionType ===
+      "new-cards-alert-card" ||
+    submissionType ===
+      "similar-cards-alert-card";
+
+  if (!isNewCard) {
+    return {
+      ...submission,
+      project:
+        "cards-alert",
+    } as TNCESubmission;
+  }
+
+  const originalActiveObject =
+    (
+      submission as any
+    )?.activeObject &&
+    typeof (
+      submission as any
+    ).activeObject ===
+      "object"
+      ? (
+          submission as any
+        ).activeObject
+      : {};
+
+  return {
+    ...submission,
+
+    project:
+      "cards-alert",
+
+    /*
+     * Normalize both normal Add New Card
+     * and Similar Card into the exact same
+     * production action.
+     */
+    submissionType:
+      "new-cards-alert-card",
+
+    submissionMode:
+      "new",
+
+    submissionAction:
+      "new",
+
+    /*
+     * Preserve harmless descriptive data,
+     * but remove every production identity
+     * that could cause an existing card to
+     * be located or updated.
+     */
+    activeObject: {
+      ...originalActiveObject,
+
+      id:
+        "cards-alert-main-page",
+
+      ID:
+        "",
+
+      Card_id:
+        "",
+
+      card_id:
+        "",
+
+      Existing_Card_ID:
+        "",
+
+      existingCardId:
+        "",
+
+      existing_card_id:
+        "",
+
+      Grade:
+        "",
+
+      Cert_Number:
+        "",
+
+      Front_Image:
+        "",
+
+      Back_Image:
+        "",
+
+      Other_Images:
+        "",
+    },
+  } as TNCESubmission;
+}
+
 export async function submitCardsAlertContribution(
   submission: TNCESubmission
 ) {
@@ -111,13 +238,22 @@ export async function submitCardsAlertContribution(
   }
 
   /*
+   * Normalize the submission before it can
+   * ever reach Apps Script.
+   */
+  const normalizedSubmission =
+    normalizeCardsAlertSubmission(
+      submission
+    );
+
+  /*
    * Every retry uses the identical payload and
    * submission ID.
    */
-  const payload = JSON.stringify({
-    ...submission,
-    project: "cards-alert",
-  });
+  const payload =
+    JSON.stringify(
+      normalizedSubmission
+    );
 
   let lastError: Error | null =
     null;

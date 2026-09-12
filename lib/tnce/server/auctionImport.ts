@@ -6556,6 +6556,71 @@ async function importMrBsCollectionListing(
   };
 }
 
+function normalizeImportedGrade(
+  value: unknown
+) {
+  const grade = clean(value)
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!grade) {
+    return "";
+  }
+
+  /*
+   * Preserve altered/authentic designations.
+   */
+  const authenticAltered =
+    grade.match(
+      /\b(PSA|BGS|SGC|CGC|CSG)\b[\s-]*(?:AUTHENTIC\s+)?ALTERED\b/i
+    );
+
+  if (authenticAltered) {
+    return `${authenticAltered[1].toUpperCase()} Authentic Altered`;
+  }
+
+  const authentic =
+    grade.match(
+      /\b(PSA|BGS|SGC|CGC|CSG)\b[\s-]*AUTHENTIC\b/i
+    );
+
+  if (authentic) {
+    return `${authentic[1].toUpperCase()} Authentic`;
+  }
+
+  /*
+   * Standard numerical grades.
+   *
+   * Heritage often includes the descriptive grade:
+   *
+   * PSA NM-MT 8
+   * PSA MINT 9
+   * PSA GEM MT 10
+   * PSA EX-MT 6
+   *
+   * RPA Tracker only stores:
+   *
+   * PSA 8
+   * PSA 9
+   * PSA 10
+   * PSA 6
+   */
+  const numeric =
+    grade.match(
+      /\b(PSA|BGS|SGC|CGC|CSG)\b[\s\S]*?\b(10|[0-9](?:\.[0-9])?)\b/i
+    );
+
+  if (numeric) {
+    return `${numeric[1].toUpperCase()} ${numeric[2]}`;
+  }
+
+  /*
+   * Unknown/unrecognized format:
+   * preserve the original instead of destroying information.
+   */
+  return grade;
+}
+
 function addNormalizedCardFields(
   result: AuctionImportResult
 ): AuctionImportResult {
@@ -6571,8 +6636,10 @@ function addNormalizedCardFields(
       ...parsed,
 
       grade:
-        clean(result.grade) ||
-        parsed.grade,
+  normalizeImportedGrade(
+    clean(result.grade) ||
+    parsed.grade
+  ),
 
       serialNumber:
         clean(result.serialNumber) ||

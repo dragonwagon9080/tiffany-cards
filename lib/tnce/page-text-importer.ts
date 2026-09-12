@@ -208,23 +208,41 @@ function normalizeGrade(
   company: string,
   value: unknown
 ) {
-  const grade =
+  let grade =
     clean(value);
 
   if (!grade) {
     return "";
   }
 
-  if (
-    grade
-      .toLowerCase()
-      .startsWith(
-        company.toLowerCase()
-      )
-  ) {
-    return grade;
+  /*
+   * Some sources include the grading company
+   * inside the grade value itself:
+   *
+   * PSA NM-MT 8
+   * PSA MINT 9
+   * PSA GEM MINT 10
+   *
+   * Strip the company first so the grade can
+   * be normalized consistently.
+   */
+  grade = grade
+    .replace(
+      new RegExp(
+        `^${escapeRegExp(company)}\\s*`,
+        "i"
+      ),
+      ""
+    )
+    .trim();
+
+  if (!grade) {
+    return company;
   }
 
+  /*
+   * Preserve altered designations.
+   */
   if (
     /authentic\s+altered/i.test(
       grade
@@ -233,6 +251,9 @@ function normalizeGrade(
     return `${company} Authentic Altered`;
   }
 
+  /*
+   * Preserve Authentic.
+   */
   if (
     /authentic/i.test(
       grade
@@ -241,6 +262,18 @@ function normalizeGrade(
     return `${company} Authentic`;
   }
 
+  /*
+   * Remove descriptive grading terminology
+   * and keep the numerical grade.
+   *
+   * Examples:
+   *
+   * NM-MT 8       -> PSA 8
+   * MINT 9        -> PSA 9
+   * GEM MINT 10   -> PSA 10
+   * EX-MT 6       -> PSA 6
+   * 8.5           -> BGS 8.5
+   */
   const numeric =
     grade.match(
       /\b10(?:\.0)?\b|\b[1-9](?:\.\d+)?\b/
@@ -250,6 +283,10 @@ function normalizeGrade(
     return `${company} ${numeric}`;
   }
 
+  /*
+   * Unknown format:
+   * preserve it rather than losing data.
+   */
   return `${company} ${grade}`;
 }
 
@@ -460,9 +497,12 @@ function parseHeritagePageText(
     );
 
   const grade =
-    gradeMatch
-      ? clean(gradeMatch[0])
-      : "";
+  gradeMatch
+    ? normalizeGrade(
+        clean(gradeMatch[1]).toUpperCase(),
+        clean(gradeMatch[0])
+      )
+    : "";
 
   const description =
     extractLabelValue(

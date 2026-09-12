@@ -1188,19 +1188,34 @@ if (!isSimilarCard) {
   );
 }
 
-      const requestBody = {
+            const requestBody = {
         project,
-        submissionType: isSimilarCard
-          ? "similar-cards-alert-card"
-          : "new-cards-alert-card",
-        submissionMode: mode,
-        submissionAction: isSimilarCard
-          ? "similar"
-          : "new",
+
+        /*
+         * "Report Similar Card" is only a UI shortcut.
+         * It must publish exactly like a brand-new card
+         * and must never be interpreted as an update to
+         * the card used to prefill the form.
+         */
+        submissionType: "new-cards-alert-card",
+
+        submissionMode: "new",
+
+        submissionAction: "new",
+
         submissionId,
+
         sourcePageUrl:
-          typeof window !== "undefined" ? window.location.href : "",
+          isSimilarCard
+            ? typeof window !== "undefined"
+              ? `${window.location.origin}/cards-alert`
+              : ""
+            : typeof window !== "undefined"
+              ? window.location.href
+              : "",
+
         auctionSourceUrl: currentSourceUrls.join("\n"),
+
         contributor: {
           name: contributorName.trim(),
           email: contributorEmail.trim(),
