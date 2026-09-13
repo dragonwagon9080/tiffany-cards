@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 type Props = {
   reasons?: string[];
@@ -42,16 +45,22 @@ type Props = {
   hideGradeCert?: boolean;
 };
 
-function uniqueOptions(values: string[]) {
-  const seen = new Set<string>();
+function uniqueOptions(
+  values: string[]
+) {
+  const seen =
+    new Set<string>();
 
   return values
     .map((value) =>
-      String(value || "").trim()
+      String(
+        value || ""
+      ).trim()
     )
     .filter(Boolean)
     .filter((value) => {
-      const key = value.toLowerCase();
+      const key =
+        value.toLowerCase();
 
       if (
         key === "other" ||
@@ -60,11 +69,14 @@ function uniqueOptions(values: string[]) {
         return false;
       }
 
-      if (seen.has(key)) {
+      if (
+        seen.has(key)
+      ) {
         return false;
       }
 
       seen.add(key);
+
       return true;
     });
 }
@@ -79,26 +91,70 @@ function ListSelect({
 }: {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (
+    value: string
+  ) => void;
   options: string[];
   placeholder: string;
   customPlaceholder: string;
 }) {
   const normalizedOptions =
-    uniqueOptions(options);
+    uniqueOptions(
+      options
+    );
 
   const valueIsListed =
     !value ||
     normalizedOptions.some(
       (option) =>
-        option.toLowerCase() ===
-        value.toLowerCase()
+        option
+          .toLowerCase() ===
+        value
+          .toLowerCase()
     );
 
   const [
     enteringCustomValue,
     setEnteringCustomValue,
-  ] = useState(!valueIsListed);
+  ] = useState(
+    !valueIsListed
+  );
+
+  /*
+   * Keep the select synchronized when an
+   * importer changes the value after this
+   * component has already mounted.
+   */
+  useEffect(() => {
+    const currentValue =
+      String(
+        value || ""
+      ).trim();
+
+    if (!currentValue) {
+      setEnteringCustomValue(
+        false
+      );
+
+      return;
+    }
+
+    const matchingOption =
+      normalizedOptions.some(
+        (option) =>
+          option
+            .toLowerCase() ===
+          currentValue
+            .toLowerCase()
+      );
+
+    setEnteringCustomValue(
+      !matchingOption
+    );
+  }, [
+    value,
+    options,
+  ]);
 
   return (
     <label className="grid gap-1 text-sm">
@@ -110,20 +166,32 @@ function ListSelect({
             ? "__other__"
             : value
         }
-        onChange={(event) => {
+        onChange={(
+          event
+        ) => {
           const nextValue =
             event.target.value;
 
           if (
-            nextValue === "__other__"
+            nextValue ===
+            "__other__"
           ) {
-            setEnteringCustomValue(true);
+            setEnteringCustomValue(
+              true
+            );
+
             onChange("");
+
             return;
           }
 
-          setEnteringCustomValue(false);
-          onChange(nextValue);
+          setEnteringCustomValue(
+            false
+          );
+
+          onChange(
+            nextValue
+          );
         }}
         className="rounded-lg border border-neutral-700 bg-black px-3 py-2 text-white"
       >
@@ -150,11 +218,17 @@ function ListSelect({
       {enteringCustomValue && (
         <input
           value={value}
-          onChange={(event) =>
-            onChange(event.target.value)
+          onChange={(
+            event
+          ) =>
+            onChange(
+              event.target.value
+            )
           }
           className="mt-2 rounded-lg border border-red-500/60 bg-black px-3 py-2 text-white"
-          placeholder={customPlaceholder}
+          placeholder={
+            customPlaceholder
+          }
           autoFocus
         />
       )}
@@ -224,9 +298,14 @@ export default function CardsAlertProjectForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             Year
+
             <input
-              value={cardYear ?? ""}
-              onChange={(event) =>
+              value={
+                cardYear ?? ""
+              }
+              onChange={(
+                event
+              ) =>
                 setCardYear?.(
                   event.target.value
                 )
@@ -251,9 +330,14 @@ export default function CardsAlertProjectForm({
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             First Name
+
             <input
-              value={firstName ?? ""}
-              onChange={(event) =>
+              value={
+                firstName ?? ""
+              }
+              onChange={(
+                event
+              ) =>
                 setFirstName?.(
                   event.target.value
                 )
@@ -265,9 +349,14 @@ export default function CardsAlertProjectForm({
 
           <label className="grid gap-1 text-sm">
             Last Name
+
             <input
-              value={lastName ?? ""}
-              onChange={(event) =>
+              value={
+                lastName ?? ""
+              }
+              onChange={(
+                event
+              ) =>
                 setLastName?.(
                   event.target.value
                 )
@@ -280,9 +369,14 @@ export default function CardsAlertProjectForm({
 
         <label className="mt-4 grid gap-1 text-sm">
           Card #
+
           <input
-            value={cardNumber ?? ""}
-            onChange={(event) =>
+            value={
+              cardNumber ?? ""
+            }
+            onChange={(
+              event
+            ) =>
               setCardNumber?.(
                 event.target.value
               )
@@ -295,9 +389,14 @@ export default function CardsAlertProjectForm({
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             Parallel
+
             <input
-              value={parallel ?? ""}
-              onChange={(event) =>
+              value={
+                parallel ?? ""
+              }
+              onChange={(
+                event
+              ) =>
                 setParallel?.(
                   event.target.value
                 )
@@ -309,9 +408,14 @@ export default function CardsAlertProjectForm({
 
           <label className="grid gap-1 text-sm">
             Serial #
+
             <input
-              value={serialNumber ?? ""}
-              onChange={(event) =>
+              value={
+                serialNumber ?? ""
+              }
+              onChange={(
+                event
+              ) =>
                 setSerialNumber?.(
                   event.target.value
                 )
@@ -324,9 +428,14 @@ export default function CardsAlertProjectForm({
 
         <label className="mt-4 grid gap-1 text-sm">
           Brand
+
           <input
-            value={brand ?? ""}
-            onChange={(event) =>
+            value={
+              brand ?? ""
+            }
+            onChange={(
+              event
+            ) =>
               setBrand?.(
                 event.target.value
               )
@@ -340,9 +449,14 @@ export default function CardsAlertProjectForm({
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1 text-sm">
               Grade
+
               <input
-                value={grade ?? ""}
-                onChange={(event) =>
+                value={
+                  grade ?? ""
+                }
+                onChange={(
+                  event
+                ) =>
                   setGrade?.(
                     event.target.value
                   )
@@ -354,9 +468,14 @@ export default function CardsAlertProjectForm({
 
             <label className="grid gap-1 text-sm">
               Cert #
+
               <input
-                value={certNumber ?? ""}
-                onChange={(event) =>
+                value={
+                  certNumber ?? ""
+                }
+                onChange={(
+                  event
+                ) =>
                   setCertNumber?.(
                     event.target.value
                   )

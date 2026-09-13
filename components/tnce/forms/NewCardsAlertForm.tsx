@@ -604,13 +604,70 @@ async function importAuctionListing() {
     }
 
     if (
-      parsedListing.sport &&
-      !sport.trim()
-    ) {
-      setSport(
-        parsedListing.sport
-      );
-    }
+  parsedListing.sport &&
+  !sport.trim()
+) {
+  const importedSport =
+    clean(parsedListing.sport);
+
+  const sportAliases:
+    Record<string, string> = {
+      nba: "Basketball",
+      wnba: "Basketball",
+      ncaab: "Basketball",
+      basketball: "Basketball",
+
+      nfl: "Football",
+      ncaaf: "Football",
+      football: "Football",
+
+      mlb: "Baseball",
+      baseball: "Baseball",
+
+      nhl: "Hockey",
+      hockey: "Hockey",
+
+      soccer: "Soccer",
+
+      golf: "Golf",
+
+      racing: "Racing",
+      nascar: "Racing",
+
+      mma: "MMA",
+      ufc: "MMA",
+
+      wrestling: "Wrestling",
+      wwe: "Wrestling",
+
+      pokemon: "Pokémon/TCG",
+      "pokémon": "Pokémon/TCG",
+      tcg: "Pokémon/TCG",
+    };
+
+  const normalizedImportedSport =
+    sportAliases[
+      importedSport.toLowerCase()
+    ] ||
+    importedSport;
+
+  /*
+   * Use the exact spelling/capitalization
+   * from the Cards Alert Sport dropdown.
+   */
+  const matchingSport =
+    sports.find(
+      (option) =>
+        clean(option).toLowerCase() ===
+        normalizedImportedSport
+          .toLowerCase()
+    );
+
+  setSport(
+    matchingSport ||
+    normalizedImportedSport
+  );
+}
 
     const detectedGrades =
       Array.isArray(

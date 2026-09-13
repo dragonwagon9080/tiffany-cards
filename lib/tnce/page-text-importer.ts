@@ -933,6 +933,498 @@ aspects: {
   });
 }
 
+function parseCgcPageText(
+  copiedText: string
+): PageTextImportResult {
+  const text =
+    normalizeCopiedPageText(
+      copiedText
+    );
+
+  const sourceUrl =
+    extractPageUrl(text);
+
+  const certNumber =
+    clean(
+      extractLabelValue(
+        text,
+        [
+          "Cert #",
+          "Cert Number",
+          "Certification Number",
+        ]
+      ).match(
+        /\d{6,12}/
+      )?.[0] ||
+      text.match(
+        /cgccards\.com\/certlookup\/(\d{6,12})/i
+      )?.[1]
+    );
+
+  const year =
+    extractLabelValue(
+      text,
+      ["Year"]
+    );
+
+  const manufacturer =
+    extractLabelValue(
+      text,
+      ["Manufacturer"]
+    );
+
+  const cardSet =
+    extractLabelValue(
+      text,
+      [
+        "Card Set",
+        "Set",
+      ]
+    );
+
+  const cardNumber =
+    extractLabelValue(
+      text,
+      [
+        "Card Number",
+        "Card No.",
+        "Card #",
+      ]
+    );
+
+  const player =
+    extractLabelValue(
+      text,
+      [
+        "Player Name",
+        "Player",
+        "Subject",
+      ]
+    );
+
+  const attributes =
+    extractLabelValue(
+      text,
+      [
+        "Attributes",
+        "Attribute",
+        "Variety",
+        "Parallel",
+      ]
+    );
+
+  const rawGrade =
+    extractLabelValue(
+      text,
+      [
+        "Grade",
+        "Card Grade",
+      ]
+    );
+
+  const gradeDate =
+    extractLabelValue(
+      text,
+      ["Grade Date"]
+    );
+
+  const autographGrade =
+    extractLabelValue(
+      text,
+      [
+        "Autograph Grade",
+        "Auto Grade",
+      ]
+    );
+
+  /*
+   * Determine sport from the CGC population-report URL.
+   *
+   * Example:
+   * /population-report/sports/basketball/...
+   */
+  let sport = "";
+
+const lowerText =
+  text.toLowerCase();
+
+if (
+  lowerText.includes(
+    "/population-report/sports/basketball/"
+  ) ||
+  lowerText.includes(
+    "/population-report/sports/basketball"
+  )
+) {
+  sport = "Basketball";
+} else if (
+  lowerText.includes(
+    "/population-report/sports/baseball/"
+  ) ||
+  lowerText.includes(
+    "/population-report/sports/baseball"
+  )
+) {
+  sport = "Baseball";
+} else if (
+  lowerText.includes(
+    "/population-report/sports/football/"
+  ) ||
+  lowerText.includes(
+    "/population-report/sports/football"
+  )
+) {
+  sport = "Football";
+} else if (
+  lowerText.includes(
+    "/population-report/sports/hockey/"
+  ) ||
+  lowerText.includes(
+    "/population-report/sports/hockey"
+  )
+) {
+  sport = "Hockey";
+} else if (
+  lowerText.includes(
+    "/population-report/sports/soccer/"
+  ) ||
+  lowerText.includes(
+    "/population-report/sports/soccer"
+  )
+) {
+  sport = "Soccer";
+} else if (
+  lowerText.includes(
+    "/population-report/sports/golf/"
+  ) ||
+  lowerText.includes(
+    "/population-report/sports/golf"
+  )
+) {
+  sport = "Golf";
+}
+
+  /*
+   * Normalize the CGC grade.
+   *
+   * AUTHENTIC      -> CGC Authentic
+   * GEM MINT 10    -> CGC 10
+   * 9.5            -> CGC 9.5
+   * AUTHENTIC ALTERED -> CGC Authentic Altered
+   */
+  const cgcGrade =
+    normalizeGrade(
+      "CGC",
+      rawGrade
+    );
+
+  /*
+   * Split CGC Player Name into First / Last.
+   *
+   * Example:
+   *
+   * Shai Gilgeous-Alexander
+   *
+   * First: Shai
+   * Last:  Gilgeous-Alexander
+   */
+  const playerParts =
+    clean(player)
+      .split(/\s+/)
+      .filter(Boolean);
+
+  const firstName =
+    playerParts[0] || "";
+
+  const lastName =
+    playerParts.length > 1
+      ? playerParts
+          .slice(1)
+          .join(" ")
+      : "";
+
+  /*
+   * Use the full-size CGC card images.
+   *
+   * We want:
+   * CAR..._OBV.jpg
+   * CAR..._REV.jpg
+   *
+   * NOT:
+   * TN_CAR...jpg
+   */
+  const frontImage =
+    clean(
+      text.match(
+        /\[Obverse\]\((https?:\/\/[^)\s]+)\)/i
+      )?.[1] ||
+      text.match(
+        /(https?:\/\/[^\s)]+_OBV\.(?:jpg|jpeg|png|webp))/i
+      )?.[1]
+    );
+
+  const backImage =
+    clean(
+      text.match(
+        /\[Reverse\]\((https?:\/\/[^)\s]+)\)/i
+      )?.[1] ||
+      text.match(
+        /(https?:\/\/[^\s)]+_REV\.(?:jpg|jpeg|png|webp))/i
+      )?.[1]
+    );
+
+  /*
+   * Build a clean card title for the parser.
+   */
+  const title = [
+    year,
+
+    player,
+
+    cardNumber
+      ? `#${cardNumber}`
+      : "",
+
+    cardSet,
+
+    attributes,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const parsedTitle =
+    parseAuctionTitle(
+      title,
+      {
+        ...(year
+          ? {
+              Year: [year],
+            }
+          : {}),
+
+        ...(manufacturer
+          ? {
+              Manufacturer: [
+                manufacturer,
+              ],
+            }
+          : {}),
+
+        ...(cardSet
+          ? {
+              "Card Set": [
+                cardSet,
+              ],
+            }
+          : {}),
+
+        ...(cardNumber
+          ? {
+              "Card Number": [
+                cardNumber,
+              ],
+            }
+          : {}),
+
+        ...(player
+          ? {
+              "Player Name": [
+                player,
+              ],
+            }
+          : {}),
+
+        ...(attributes
+          ? {
+              Attributes: [
+                attributes,
+              ],
+            }
+          : {}),
+
+        ...(sport
+          ? {
+              Sport: [
+                sport,
+              ],
+            }
+          : {}),
+      }
+    );
+
+  if (
+    !certNumber &&
+    !title
+  ) {
+    throw new Error(
+      "Unable to find CGC certification information in the copied page text."
+    );
+  }
+
+  return addNormalizedCardFields({
+    ok: true,
+
+    marketplace:
+      "cgc-text",
+
+    sourceUrl,
+
+    listingId:
+      certNumber,
+
+    title,
+
+    seller:
+      "CGC",
+
+    price: "",
+
+    currency: "",
+
+    /*
+     * For CGC imports, use the Grade Date
+     * as the Sale / Event Date.
+     */
+    endDate:
+      parseDate(
+        gradeDate
+      ),
+
+    certNumber,
+
+    grade:
+      cgcGrade,
+
+    serialNumber: "",
+
+    /*
+     * Do not put CGC metadata into
+     * Description / Opinion.
+     */
+    description: "",
+
+    frontImage,
+
+    additionalImages:
+      backImage
+        ? [backImage]
+        : [],
+
+    cardFields: {
+      ...parsedTitle,
+
+      firstName,
+
+      lastName,
+
+      year:
+        clean(year) ||
+        parsedTitle.year,
+
+      cardNumber:
+        clean(cardNumber) ||
+        parsedTitle.cardNumber,
+
+      /*
+       * Use CGC Card Set as the main
+       * Brand / Set value for TNCE.
+       */
+      brand:
+        clean(cardSet) ||
+        clean(manufacturer) ||
+        parsedTitle.brand,
+
+      parallel:
+        clean(attributes) ||
+        parsedTitle.parallel,
+
+      sport,
+
+      grade:
+        cgcGrade ||
+        parsedTitle.grade,
+
+      serialNumber: "",
+
+      certNumber:
+        clean(certNumber),
+    },
+
+    aspects: {
+      ...(year
+        ? {
+            Year: [year],
+          }
+        : {}),
+
+      ...(manufacturer
+        ? {
+            Manufacturer: [
+              manufacturer,
+            ],
+          }
+        : {}),
+
+      ...(cardSet
+        ? {
+            "Card Set": [
+              cardSet,
+            ],
+          }
+        : {}),
+
+      ...(cardNumber
+        ? {
+            "Card Number": [
+              cardNumber,
+            ],
+          }
+        : {}),
+
+      ...(player
+        ? {
+            "Player Name": [
+              player,
+            ],
+          }
+        : {}),
+
+      ...(attributes
+        ? {
+            Attributes: [
+              attributes,
+            ],
+          }
+        : {}),
+
+      ...(sport
+        ? {
+            Sport: [
+              sport,
+            ],
+          }
+        : {}),
+
+      ...(gradeDate
+        ? {
+            "Grade Date": [
+              gradeDate,
+            ],
+          }
+        : {}),
+
+      ...(autographGrade
+        ? {
+            "Autograph Grade": [
+              autographGrade,
+            ],
+          }
+        : {}),
+    },
+  });
+}
 
 function decodeHtmlEntities(
   value: string
@@ -2148,6 +2640,31 @@ export async function importPageText(
       text
     );
   }
+
+const looksLikeCgc =
+  normalizedUrl.includes(
+    "cgccards.com"
+  ) ||
+  normalized.includes(
+    "cgccards.com/certlookup"
+  ) ||
+  (
+    normalized.includes(
+      "verify cgc-certified cards"
+    ) &&
+    normalized.includes(
+      "player name"
+    ) &&
+    normalized.includes(
+      "card set"
+    )
+  );
+
+if (looksLikeCgc) {
+  return parseCgcPageText(
+    text
+  );
+}
 
   const looksLikePsa =
     normalized.includes(
