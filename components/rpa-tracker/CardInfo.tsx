@@ -22,7 +22,33 @@ function extractCardNumber(card: any) {
   return match ? match[1] : "—";
 }
 
-function InfoBox({ label, value }: { label: string; value: any }) {
+function getMaterialColor(value: any) {
+  const material = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (material.includes("game used")) {
+    // Bright electric blue with strong blue glow
+    return "text-[#00A8FF] !text-[1.45rem] font-black drop-shadow-[0_0_5px_rgba(0,168,255,1)] drop-shadow-[0_0_12px_rgba(0,168,255,0.85)]";
+  }
+
+  if (material.includes("junk material")) {
+    // Red with red glow
+    return "text-red-500 drop-shadow-[0_0_6px_rgba(239,68,68,0.40)]";
+  }
+
+  return "text-white";
+}
+
+function InfoBox({
+  label,
+  value,
+  valueClassName = "text-white",
+}: {
+  label: string;
+  value: any;
+  valueClassName?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -46,7 +72,9 @@ function InfoBox({ label, value }: { label: string; value: any }) {
       </div>
 
       <div className="mt-2 flex min-h-[42px] w-full items-center justify-center px-1">
-        <span className="max-w-full break-words text-center text-[clamp(0.72rem,1.15vw,1.15rem)] font-black leading-tight text-white">
+        <span
+          className={`max-w-full break-words text-center text-[clamp(0.72rem,1.15vw,1.15rem)] font-black leading-tight ${valueClassName}`}
+        >
           {clean(value)}
         </span>
       </div>
@@ -62,22 +90,71 @@ function InfoBox({ label, value }: { label: string; value: any }) {
   );
 }
 
-export default function CardInfo({ card }: { card: any }) {
-  const variation = card.Variation_Input || card.Variation || "Base";
+export default function CardInfo({
+  card,
+}: {
+  card: any;
+}) {
+  const variation =
+    card.Variation_Input ||
+    card.Variation ||
+    "Base";
 
   return (
     <section className="overflow-hidden rounded-lg border border-[#9c7a2d] bg-black">
       <div className="grid grid-cols-2 divide-x divide-y divide-[#9c7a2d]/60 sm:grid-cols-5 xl:grid-cols-10 xl:divide-y-0">
-        <InfoBox label="Grade" value={card.Grade || "Raw"} />
-        <InfoBox label="Cert #" value={card.Cert_Number} />
-        <InfoBox label="Year" value={card.Year} />
-        <InfoBox label="Player" value={card.Player} />
-        <InfoBox label="Brand" value={card.Brand || card.Set} />
-        <InfoBox label="Card #" value={extractCardNumber(card)} />
-        <InfoBox label="Variation" value={variation} />
-        <InfoBox label="Serial #" value={card.Serial_Number} />
-        <InfoBox label="Sport" value={card.Sport} />
-        <InfoBox label="Card ID" value={card.Card_id} />
+        <InfoBox
+          label="Grade"
+          value={card.Grade || "Raw"}
+        />
+
+        <InfoBox
+          label="Cert #"
+          value={card.Cert_Number}
+        />
+
+        <InfoBox
+          label="Year"
+          value={card.Year}
+        />
+
+        <InfoBox
+          label="Player"
+          value={card.Player}
+        />
+
+        <InfoBox
+          label="Brand"
+          value={card.Brand || card.Set}
+        />
+
+        <InfoBox
+          label="Card #"
+          value={extractCardNumber(card)}
+        />
+
+        <InfoBox
+          label="Variation"
+          value={variation}
+        />
+
+        <InfoBox
+          label="Serial #"
+          value={card.Serial_Number}
+        />
+
+        <InfoBox
+          label="Material Type"
+          value={card.Material}
+          valueClassName={getMaterialColor(
+            card.Material
+          )}
+        />
+
+        <InfoBox
+          label="Card ID"
+          value={card.Card_id}
+        />
       </div>
     </section>
   );
