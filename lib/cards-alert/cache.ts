@@ -164,43 +164,54 @@ async function readJsonObjectOnce(
       objectPath
     );
 
-  const downloadPromise =
-    file.download();
-
-  const timeoutPromise =
-    new Promise<never>(
-      (_, reject) => {
-        setTimeout(
-          () => {
-            reject(
-              new Error(
-                `${label} snapshot timed out.`
-              )
-            );
-          },
-          FETCH_TIMEOUT_MS
-        );
-      }
-    );
-
-  const [buffer] =
-    await Promise.race([
-      downloadPromise,
-      timeoutPromise,
-    ]);
-
-  const text =
-    buffer.toString("utf8");
+  let timeout:
+    ReturnType<typeof setTimeout> |
+    null = null;
 
   try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(
-      `${label} snapshot returned non-JSON. First response text: ${text.slice(
-        0,
-        200
-      )}`
-    );
+    const downloadPromise =
+      file.download();
+
+    const timeoutPromise =
+      new Promise<never>(
+        (_, reject) => {
+          timeout =
+            setTimeout(
+              () => {
+                reject(
+                  new Error(
+                    `${label} snapshot timed out.`
+                  )
+                );
+              },
+              FETCH_TIMEOUT_MS
+            );
+        }
+      );
+
+    const [buffer] =
+      await Promise.race([
+        downloadPromise,
+        timeoutPromise,
+      ]);
+
+    const text =
+      buffer.toString("utf8");
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(
+        `${label} snapshot returned non-JSON. First response text: ${text.slice(
+          0,
+          200
+        )}`
+      );
+    }
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
 }
 

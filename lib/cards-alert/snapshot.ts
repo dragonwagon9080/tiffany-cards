@@ -268,6 +268,11 @@ async function fetchSnapshotChunk(
     String(offset)
   );
 
+  console.log(
+  "Cards Alert snapshot source URL:",
+  url.toString()
+);
+
   const result =
     await fetchJsonWithRetry(
       url.toString(),
