@@ -17,7 +17,7 @@ const RECENT_LIMIT = 100;
 const FETCH_TIMEOUT_MS =
   45 * 1000;
 
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 6;
 
 
 function wait(milliseconds: number) {
@@ -30,9 +30,20 @@ function wait(milliseconds: number) {
 
 
 function retryDelay(attempt: number) {
-  return attempt === 1
-    ? 750
-    : 2000;
+  const delays = [
+    2000,
+    5000,
+    10000,
+    15000,
+    20000,
+  ];
+
+  return delays[
+    Math.min(
+      attempt - 1,
+      delays.length - 1
+    )
+  ];
 }
 
 
@@ -52,32 +63,32 @@ function uniqueSorted(values: unknown[]) {
 
 
 function isRealCard(card: any) {
+  if (!card) {
+    return false;
+  }
+
+  const year =
+    String(
+      card?.Year || ""
+    ).trim();
+
   const first =
-    String(card?.First || "").trim();
+    String(
+      card?.First || ""
+    ).trim();
 
   const last =
-    String(card?.Last || "").trim();
+    String(
+      card?.Last || ""
+    ).trim();
 
-  const brand =
-    String(card?.Brand || "").trim();
-
-  const cert =
-    String(card?.Cert_Number || "").trim();
-
-  const front =
-    String(card?.front_image || "").trim();
-
-  const back =
-    String(card?.back_image || "").trim();
+  const hasName =
+    first !== "" ||
+    last !== "";
 
   return Boolean(
-    (first || last) &&
-      brand &&
-      (
-        cert ||
-        front.startsWith("http") ||
-        back.startsWith("http")
-      )
+    year &&
+    hasName
   );
 }
 

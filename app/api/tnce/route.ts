@@ -98,19 +98,290 @@ function adminSecretForProject(
  * The publish response is returned first so owner-mode
  * publishing does not wait for the snapshot rebuild.
  *
- * For RPA Tracker, recent activity is recorded BEFORE
- * the snapshot rebuild so the new/updated card can be
- * included in recentCards immediately.
+ * Cards Alert verifies the exact published production
+ * row/cardId before rebuilding the snapshot.
+ *
+ * RPA Tracker records recent activity BEFORE rebuilding
+ * the public snapshot.
  *******************************************************/
+
+type CardsAlertPublishActivity = {
+  cardId?: string;
+  productionRow?: number;
+};
+
+type RpaPublishActivity = {
+  cardId?: string;
+  activity?: string;
+  publishedAt?: string;
+};
+
+const CARDS_ALERT_VERIFY_TIMEOUT_MS =
+  15 * 1000;
+
+const CARDS_ALERT_VERIFY_ATTEMPTS =
+  6;
+
+function waitForCardsAlertVerification(
+  milliseconds: number
+) {
+  return new Promise<void>(
+    (resolve) => {
+      setTimeout(
+        resolve,
+        milliseconds
+      );
+    }
+  );
+}
+
+function cardsAlertVerifyDelay(
+  attempt: number
+) {
+  const delays = [
+    1000,
+    2000,
+    3000,
+    5000,
+    8000,
+  ];
+
+  return delays[
+    Math.min(
+      attempt - 1,
+      delays.length - 1
+    )
+  ];
+}
+
+async function fetchCardsAlertVerification(
+  url: string
+) {
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () => {
+        controller.abort();
+      },
+      CARDS_ALERT_VERIFY_TIMEOUT_MS
+    );
+
+  try {
+    const response =
+      await fetch(
+        url,
+        {
+          method:
+            "GET",
+
+          cache:
+            "no-store",
+
+          redirect:
+            "follow",
+
+          headers: {
+            Accept:
+              "application/json,text/plain;q=0.9,*/*;q=0.8",
+          },
+
+          signal:
+            controller.signal,
+        }
+      );
+
+    const text =
+      await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `Cards Alert verify request failed: ${response.status}`
+      );
+    }
+
+    try {
+      return JSON.parse(
+        text
+      );
+    } catch {
+      throw new Error(
+        `Cards Alert verify returned invalid JSON. First response text: ${text.slice(
+          0,
+          200
+        )}`
+      );
+    }
+  } finally {
+    clearTimeout(
+      timeout
+    );
+  }
+}
+
+async function verifyCardsAlertPublishedCard(
+  submissionId: string,
+  activity: CardsAlertPublishActivity
+) {
+  const apiUrl =
+    String(
+      process.env
+        .CARDS_ALERT_API_URL ||
+      ""
+    ).trim();
+
+  const cardId =
+    String(
+      activity.cardId ||
+      ""
+    ).trim();
+
+  const productionRow =
+    Math.floor(
+      Number(
+        activity.productionRow ||
+        0
+      )
+    );
+
+  if (!apiUrl) {
+    throw new Error(
+      "Missing CARDS_ALERT_API_URL environment variable."
+    );
+  }
+
+  if (
+    !cardId ||
+    !Number.isFinite(
+      productionRow
+    ) ||
+    productionRow < 2
+  ) {
+    throw new Error(
+      `Cards Alert publish ${submissionId} did not return a valid cardId and productionRow.`
+    );
+  }
+
+  const url =
+    new URL(
+      apiUrl
+    );
+
+  url.searchParams.set(
+    "action",
+    "verify-card"
+  );
+
+  url.searchParams.set(
+    "row",
+    String(
+      productionRow
+    )
+  );
+
+  url.searchParams.set(
+    "cardId",
+    cardId
+  );
+
+  let lastError: unknown =
+    null;
+
+  for (
+    let attempt = 1;
+    attempt <=
+      CARDS_ALERT_VERIFY_ATTEMPTS;
+    attempt++
+  ) {
+    try {
+      const result =
+        await fetchCardsAlertVerification(
+          url.toString()
+        );
+
+      if (
+        result?.success ===
+        false
+      ) {
+        throw new Error(
+          String(
+            result?.error ||
+            "Cards Alert verification failed."
+          )
+        );
+      }
+
+      const actualCardId =
+        String(
+          result?.actualCardId ||
+          ""
+        ).trim();
+
+      if (
+        result?.visible ===
+          true &&
+        actualCardId ===
+          cardId
+      ) {
+        console.log(
+          `Cards Alert published card verified for ${submissionId}.`,
+          {
+            cardId,
+            productionRow,
+            attempt,
+          }
+        );
+
+        return;
+      }
+
+      lastError =
+        new Error(
+          `Cards Alert published card ${cardId} is not visible at production row ${productionRow} yet.`
+        );
+
+      console.warn(
+        `Cards Alert verification attempt ${attempt} did not see published card ${cardId} at row ${productionRow}.`
+      );
+    } catch (
+      error
+    ) {
+      lastError =
+        error;
+
+      console.error(
+        `Cards Alert verification attempt ${attempt} failed for ${submissionId}:`,
+        error
+      );
+    }
+
+    if (
+      attempt <
+      CARDS_ALERT_VERIFY_ATTEMPTS
+    ) {
+      await waitForCardsAlertVerification(
+        cardsAlertVerifyDelay(
+          attempt
+        )
+      );
+    }
+  }
+
+  throw (
+    lastError instanceof Error
+      ? lastError
+      : new Error(
+          `Cards Alert published card verification failed for ${submissionId}.`
+        )
+  );
+}
 
 function scheduleProjectSnapshotRefresh(
   project: TNCEProject,
   submissionId: string,
-  rpaActivity?: {
-    cardId?: string;
-    activity?: string;
-    publishedAt?: string;
-  }
+  cardsAlertActivity?: CardsAlertPublishActivity,
+  rpaActivity?: RpaPublishActivity
 ) {
   if (
     project !==
@@ -125,46 +396,49 @@ function scheduleProjectSnapshotRefresh(
     async () => {
       try {
         if (
-  project ===
-  "cards-alert"
-) {
-  console.log(
-    `Cards Alert snapshot refresh scheduled after auto-publish ${submissionId}.`
-  );
+          project ===
+          "cards-alert"
+        ) {
+          console.log(
+            `Cards Alert snapshot refresh scheduled after auto-publish ${submissionId}.`
+          );
 
-  /*
-   * Give the production sheet / Apps Script API
-   * a moment to reflect the newly published row
-   * before rebuilding the public snapshot.
-   */
-  await new Promise(
-    (resolve) =>
-      setTimeout(
-        resolve,
-        3000
-      )
-  );
+          if (
+            !cardsAlertActivity
+              ?.cardId ||
+            !cardsAlertActivity
+              ?.productionRow
+          ) {
+            throw new Error(
+              `Cards Alert snapshot refresh cannot verify auto-publish ${submissionId} because cardId or productionRow was not returned.`
+            );
+          }
 
-  console.log(
-    `Cards Alert snapshot refresh starting after auto-publish ${submissionId}.`
-  );
+          await verifyCardsAlertPublishedCard(
+            submissionId,
+            cardsAlertActivity
+          );
 
-  const result =
-    await buildCardsAlertSnapshots();
+          console.log(
+            `Cards Alert snapshot refresh starting after verified auto-publish ${submissionId}.`
+          );
 
-  console.log(
-    `Cards Alert snapshot refresh completed after auto-publish ${submissionId}.`,
-    {
-      cardCount:
-        result.cardCount,
+          const result =
+            await buildCardsAlertSnapshots();
 
-      generatedAt:
-        result.generatedAt,
-    }
-  );
+          console.log(
+            `Cards Alert snapshot refresh completed after auto-publish ${submissionId}.`,
+            {
+              cardCount:
+                result.cardCount,
 
-  return;
-}
+              generatedAt:
+                result.generatedAt,
+            }
+          );
+
+          return;
+        }
 
         /*
          * Record the RPA activity BEFORE rebuilding
@@ -252,7 +526,6 @@ function scheduleProjectSnapshotRefresh(
     }
   );
 }
-
 
 async function quickPublishSubmission(
   submission: TNCESubmission,
@@ -455,36 +728,59 @@ export async function POST(
     ) {
       try {
         const publishResult =
-          await quickPublishSubmission(
-            submission,
-            submissionId
-          );
+  await quickPublishSubmission(
+    submission,
+    submissionId
+  );
 
-        scheduleProjectSnapshotRefresh(
+console.log(
+  `TNCE publish result for ${submission.project} ${submissionId}:`,
+  publishResult
+);
+
+scheduleProjectSnapshotRefresh(
           submission.project,
           submissionId,
           submission.project ===
-          "rpa-tracker"
+            "cards-alert"
             ? {
                 cardId:
                   String(
                     publishResult
                       ?.cardId ||
-                      ""
+                    ""
+                  ).trim(),
+
+                productionRow:
+                  Number(
+                    publishResult
+                      ?.productionRow ||
+                    0
+                  ),
+              }
+            : undefined,
+          submission.project ===
+            "rpa-tracker"
+            ? {
+                cardId:
+                  String(
+                    publishResult
+                      ?.cardId ||
+                    ""
                   ).trim(),
 
                 activity:
                   String(
                     publishResult
                       ?.action ||
-                      ""
+                    ""
                   ).trim(),
 
                 publishedAt:
                   String(
                     publishResult
                       ?.publishedAt ||
-                      ""
+                    ""
                   ).trim(),
               }
             : undefined

@@ -57,32 +57,32 @@ function retryDelay(attempt: number) {
 
 
 function isRealCard(card: any) {
+  if (!card) {
+    return false;
+  }
+
+  const year =
+    String(
+      card?.Year || ""
+    ).trim();
+
   const first =
-    String(card?.First || "").trim();
+    String(
+      card?.First || ""
+    ).trim();
 
   const last =
-    String(card?.Last || "").trim();
+    String(
+      card?.Last || ""
+    ).trim();
 
-  const brand =
-    String(card?.Brand || "").trim();
+  const hasName =
+    first !== "" ||
+    last !== "";
 
-  const cert =
-    String(card?.Cert_Number || "").trim();
-
-  const front =
-    String(card?.front_image || "").trim();
-
-  const back =
-    String(card?.back_image || "").trim();
-
-  return (
-    (first !== "" || last !== "") &&
-    brand !== "" &&
-    (
-      cert !== "" ||
-      front.startsWith("http") ||
-      back.startsWith("http")
-    )
+  return Boolean(
+    year &&
+    hasName
   );
 }
 
