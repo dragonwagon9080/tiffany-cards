@@ -310,14 +310,232 @@ async function prepareRotatedImages(
  * successful TNCE publish into a failed publish.
  *******************************************************/
 
+type CardsAlertPublishActivity = {
+  cardId?: string;
+  productionRow?: number;
+};
+
+type RpaPublishActivity = {
+  cardId?: string;
+  activity?: string;
+  publishedAt?: string;
+};
+
+const CARDS_ALERT_VERIFY_TIMEOUT_MS =
+  15 * 1000;
+
+const CARDS_ALERT_VERIFY_ATTEMPTS =
+  6;
+
+function waitForCardsAlertVerification(
+  milliseconds: number
+) {
+  return new Promise<void>(
+    (resolve) => {
+      setTimeout(resolve, milliseconds);
+    }
+  );
+}
+
+function cardsAlertVerifyDelay(
+  attempt: number
+) {
+  const delays = [
+    1000,
+    2000,
+    3000,
+    5000,
+    8000,
+  ];
+
+  return delays[
+    Math.min(
+      attempt - 1,
+      delays.length - 1
+    )
+  ];
+}
+
+async function fetchCardsAlertVerification(
+  url: string
+) {
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () => controller.abort(),
+      CARDS_ALERT_VERIFY_TIMEOUT_MS
+    );
+
+  try {
+    const response =
+      await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        redirect: "follow",
+        headers: {
+          Accept:
+            "application/json,text/plain;q=0.9,*/*;q=0.8",
+        },
+        signal: controller.signal,
+      });
+
+    const responseText =
+      await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `Cards Alert verify request failed: ${response.status}`
+      );
+    }
+
+    try {
+      return JSON.parse(responseText);
+    } catch {
+      throw new Error(
+        `Cards Alert verify returned invalid JSON. First response text: ${responseText.slice(
+          0,
+          200
+        )}`
+      );
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function verifyCardsAlertPublishedCard(
+  submissionId: string,
+  activity: CardsAlertPublishActivity
+) {
+  const apiUrl =
+    String(
+      process.env.CARDS_ALERT_API_URL || ""
+    ).trim();
+
+  const cardId =
+    String(activity.cardId || "").trim();
+
+  const productionRow =
+    Math.floor(
+      Number(activity.productionRow || 0)
+    );
+
+  if (!apiUrl) {
+    throw new Error(
+      "Missing CARDS_ALERT_API_URL environment variable."
+    );
+  }
+
+  if (
+    !cardId ||
+    !Number.isFinite(productionRow) ||
+    productionRow < 2
+  ) {
+    throw new Error(
+      `Cards Alert publish ${submissionId} did not return a valid cardId and productionRow.`
+    );
+  }
+
+  const verifyUrl = new URL(apiUrl);
+
+  verifyUrl.searchParams.set(
+    "action",
+    "verify-card"
+  );
+  verifyUrl.searchParams.set(
+    "row",
+    String(productionRow)
+  );
+  verifyUrl.searchParams.set(
+    "cardId",
+    cardId
+  );
+
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= CARDS_ALERT_VERIFY_ATTEMPTS;
+    attempt++
+  ) {
+    try {
+      const result =
+        await fetchCardsAlertVerification(
+          verifyUrl.toString()
+        );
+
+      if (result?.success === false) {
+        throw new Error(
+          String(
+            result?.error ||
+              "Cards Alert verification failed."
+          )
+        );
+      }
+
+      const actualCardId =
+        String(
+          result?.actualCardId || ""
+        ).trim();
+
+      if (
+        result?.visible === true &&
+        actualCardId === cardId
+      ) {
+        console.log(
+          `Cards Alert published card verified for ${submissionId}.`,
+          {
+            cardId,
+            productionRow,
+            attempt,
+          }
+        );
+        return;
+      }
+
+      lastError =
+        new Error(
+          `Cards Alert published card ${cardId} is not visible at production row ${productionRow} yet.`
+        );
+
+      console.warn(
+        `Cards Alert verification attempt ${attempt} did not see published card ${cardId} at row ${productionRow}.`
+      );
+    } catch (error) {
+      lastError = error;
+
+      console.error(
+        `Cards Alert verification attempt ${attempt} failed for ${submissionId}:`,
+        error
+      );
+    }
+
+    if (
+      attempt <
+      CARDS_ALERT_VERIFY_ATTEMPTS
+    ) {
+      await waitForCardsAlertVerification(
+        cardsAlertVerifyDelay(attempt)
+      );
+    }
+  }
+
+  throw (
+    lastError instanceof Error
+      ? lastError
+      : new Error(
+          `Cards Alert published card verification failed for ${submissionId}.`
+        )
+  );
+}
+
 function scheduleProjectSnapshotRefresh(
   project: TNCEProject,
   submissionId: string,
-  rpaActivity?: {
-    cardId?: string;
-    activity?: string;
-    publishedAt?: string;
-  }
+  cardsAlertActivity?: CardsAlertPublishActivity,
+  rpaActivity?: RpaPublishActivity
 ) {
   if (
     project !== "cards-alert" &&
@@ -333,9 +551,33 @@ function scheduleProjectSnapshotRefresh(
           project ===
           "cards-alert"
         ) {
-          console.log(
-            `Cards Alert snapshot refresh starting after publish ${submissionId}.`
-          );
+          if (
+            cardsAlertActivity?.cardId &&
+            cardsAlertActivity?.productionRow
+          ) {
+            console.log(
+              `Cards Alert snapshot refresh scheduled after publish ${submissionId}.`
+            );
+
+            await verifyCardsAlertPublishedCard(
+              submissionId,
+              cardsAlertActivity
+            );
+
+            console.log(
+              `Cards Alert snapshot refresh starting after verified publish ${submissionId}.`
+            );
+          } else {
+            /*
+             * Recovery path:
+             * adminQueue confirmed Published after an interrupted
+             * Apps Script response, but the final row/Card_id may
+             * not be available. Preserve the existing fallback.
+             */
+            console.warn(
+              `Cards Alert snapshot refresh starting after recovered publish ${submissionId} without exact row/Card_id verification.`
+            );
+          }
 
           const result =
             await buildCardsAlertSnapshots();
@@ -563,6 +805,20 @@ export async function POST(
           project,
           submissionId,
           project ===
+          "cards-alert"
+            ? {
+                cardId:
+                  String(
+                    data.cardId || ""
+                  ).trim(),
+
+                productionRow:
+                  Number(
+                    data.productionRow || 0
+                  ),
+              }
+            : undefined,
+          project ===
           "rpa-tracker"
             ? {
                 cardId:
@@ -731,7 +987,9 @@ export async function POST(
     ) {
       scheduleProjectSnapshotRefresh(
         project,
-        submissionId
+        submissionId,
+        undefined,
+        undefined
       );
 
       return NextResponse.json(

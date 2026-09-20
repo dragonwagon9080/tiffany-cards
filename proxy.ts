@@ -25,8 +25,11 @@ export async function proxy(
   }
 
   /*
-   * A valid signed session keeps TNCE Admin unlocked
-   * and will later authorize Owner Quick Publish.
+   * A valid signed session keeps TNCE Admin
+   * and Seller Tracker unlocked.
+   *
+   * This session will also authorize protected
+   * admin API routes.
    */
   if (
     await isValidTNCEAdminSession(
@@ -122,6 +125,8 @@ export async function proxy(
 export const config = {
   matcher: [
     "/admin/tnce/:path*",
+    "/admin/seller-tracker/:path*",
     "/api/tnce/admin/:path*",
+    "/api/seller-tracker/:path*",
   ],
 };

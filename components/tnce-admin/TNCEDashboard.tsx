@@ -430,6 +430,13 @@ export default function TNCEDashboard() {
                 )}
 
                 <div className="flex flex-col gap-2 sm:flex-row">
+                  <a
+                    href="/admin/seller-tracker"
+                    className="inline-flex items-center justify-center rounded-lg border border-blue-500/70 bg-blue-950/40 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-blue-300 transition hover:border-blue-400 hover:bg-blue-950/70 hover:text-blue-200"
+                  >
+                    Seller Tracker
+                  </a>
+
   <PublishAllPending
     submissions={submissions}
     project={project}
