@@ -1,3 +1,4 @@
+
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import MatchComparisonImages from "../MatchComparisonImages";
@@ -139,7 +140,7 @@ function formatDate(
   value?: string
 ) {
   if (!value) {
-    return "—";
+    return "â€”";
   }
 
   const date = new Date(value);
@@ -166,7 +167,7 @@ function displayValue(
   const cleaned =
     String(value || "").trim();
 
-  return cleaned || "—";
+  return cleaned || "â€”";
 }
 
 function reviewStatus(
@@ -191,7 +192,10 @@ export default async function MatchReviewPage() {
           match.Review_Status
         ).toLowerCase();
 
-      return status === "confirmed match";
+      return (
+        status === "confirmed match" ||
+        status === "confirmed"
+      );
     }).length;
 
   return (
@@ -328,7 +332,7 @@ export default async function MatchReviewPage() {
                           Score{" "}
                           {String(
                             match.Match_Score ??
-                              "—"
+                              "â€”"
                           )}
                         </span>
                       </div>
