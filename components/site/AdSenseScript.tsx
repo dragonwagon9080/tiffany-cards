@@ -3,8 +3,8 @@
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 
-const TNCE_PATHS = [
-  "/admin/tnce",
+const NO_AD_PATHS = [
+  "/admin",
   "/tnce",
   "/contribute",
 ];
@@ -12,13 +12,13 @@ const TNCE_PATHS = [
 export default function AdSenseScript() {
   const pathname = usePathname();
 
-  const isTNCE = TNCE_PATHS.some(
+  const shouldHideAds = NO_AD_PATHS.some(
     (path) =>
       pathname === path ||
       pathname.startsWith(`${path}/`)
   );
 
-  if (isTNCE) {
+  if (shouldHideAds) {
     return null;
   }
 
