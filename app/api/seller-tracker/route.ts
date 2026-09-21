@@ -21,6 +21,8 @@ const ALLOWED_POST_ACTIONS = new Set([
   "reviewMatch",
   "importConfirmedPurchase",
   "previewConfirmedPurchase",
+  "importManualConfirmedPurchase",
+  "parseManualPurchaseTitle",
 ]);
 
 function noStoreHeaders() {

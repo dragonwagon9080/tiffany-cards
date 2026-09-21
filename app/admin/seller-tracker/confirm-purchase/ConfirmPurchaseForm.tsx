@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ClipboardEvent,
   FormEvent,
   useMemo,
   useState,
@@ -41,6 +42,48 @@ type ParsedPurchase = {
   certNumber?: string;
 };
 
+type ManualPurchase = {
+  title: string;
+  purchaseDate: string;
+  purchasePrice: string;
+  description: string;
+  year: string;
+  brand: string;
+  set: string;
+  playerFirst: string;
+  playerLast: string;
+  cardNumber: string;
+  parallel: string;
+  serialNumber: string;
+  gradeCompany: string;
+  grade: string;
+  certNumber: string;
+  imageUrls: string[];
+  feedbackText: string;
+  verifiedPurchase: boolean;
+};
+
+const EMPTY_MANUAL_PURCHASE: ManualPurchase = {
+  title: "",
+  purchaseDate: "",
+  purchasePrice: "",
+  description: "",
+  year: "",
+  brand: "",
+  set: "",
+  playerFirst: "",
+  playerLast: "",
+  cardNumber: "",
+  parallel: "",
+  serialNumber: "",
+  gradeCompany: "",
+  grade: "",
+  certNumber: "",
+  imageUrls: [""],
+  feedbackText: "",
+  verifiedPurchase: true,
+};
+
 type PreviewPurchaseResponse = {
   ok: boolean;
   status?: "preview" | "already_exists";
@@ -70,6 +113,15 @@ type ImportPurchaseResponse = {
   row?: number;
   matchStatus?: string;
   matchCount?: number;
+  error?: string;
+};
+
+type ParseManualTitleResponse = {
+  ok: boolean;
+  status?: "parsed";
+  title?: string;
+  cleanTitle?: string;
+  parsed?: ParsedPurchase;
   error?: string;
 };
 
@@ -103,6 +155,14 @@ function extractEbayItemId(
   }
 
   return "";
+}
+
+function getCanonicalEbayUrl(
+  itemId: string
+): string {
+  return itemId
+    ? `https://www.ebay.com/itm/${itemId}`
+    : "";
 }
 
 function getStarColorClass(
@@ -218,6 +278,18 @@ export default function ConfirmPurchaseForm({
   const [isImporting, setIsImporting] =
     useState(false);
 
+  const [isParsingTitle, setIsParsingTitle] =
+    useState(false);
+
+  const [manualMode, setManualMode] =
+    useState(false);
+
+  const [manualPurchase, setManualPurchase] =
+    useState<ManualPurchase>({
+      ...EMPTY_MANUAL_PURCHASE,
+      imageUrls: [""],
+    });
+
   const selectedSeller = useMemo(
     () =>
       sellers.find(
@@ -230,6 +302,11 @@ export default function ConfirmPurchaseForm({
   const itemId = useMemo(
     () => extractEbayItemId(purchaseUrl),
     [purchaseUrl]
+  );
+
+  const canonicalPurchaseUrl = useMemo(
+    () => getCanonicalEbayUrl(itemId),
+    [itemId]
   );
 
   const starColorClass =
@@ -252,7 +329,9 @@ export default function ConfirmPurchaseForm({
   const validPurchase = Boolean(itemId);
 
   const busy =
-    isPreviewing || isImporting;
+    isPreviewing ||
+    isImporting ||
+    isParsingTitle;
 
   const canPreview =
     hasSeller &&
@@ -264,6 +343,13 @@ export default function ConfirmPurchaseForm({
     preview?.status === "preview" &&
     !busy;
 
+  const canManualImport =
+    manualMode &&
+    hasSeller &&
+    validPurchase &&
+    Boolean(manualPurchase.title.trim()) &&
+    !busy;
+
   function clearMessage() {
     setMessage("");
     setMessageType("");
@@ -272,6 +358,75 @@ export default function ConfirmPurchaseForm({
   function clearPreview() {
     setPreview(null);
     setSelectedImages([]);
+  }
+
+  function resetManualPurchase() {
+    setManualMode(false);
+    setManualPurchase({
+      ...EMPTY_MANUAL_PURCHASE,
+      imageUrls: [""],
+    });
+  }
+
+  function updateManualField(
+    field: keyof Omit<
+      ManualPurchase,
+      "imageUrls" | "verifiedPurchase"
+    >,
+    value: string
+  ) {
+    setManualPurchase((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateManualImage(
+    index: number,
+    value: string
+  ) {
+    setManualPurchase((current) => {
+      const imageUrls = [...current.imageUrls];
+      imageUrls[index] = value;
+
+      return {
+        ...current,
+        imageUrls,
+      };
+    });
+  }
+
+  function addManualImageField() {
+    setManualPurchase((current) => {
+      if (current.imageUrls.length >= 4) {
+        return current;
+      }
+
+      return {
+        ...current,
+        imageUrls: [...current.imageUrls, ""],
+      };
+    });
+  }
+
+  function removeManualImageField(
+    index: number
+  ) {
+    setManualPurchase((current) => {
+      const imageUrls =
+        current.imageUrls.filter(
+          (_, imageIndex) =>
+            imageIndex !== index
+        );
+
+      return {
+        ...current,
+        imageUrls:
+          imageUrls.length > 0
+            ? imageUrls
+            : [""],
+      };
+    });
   }
 
   async function readJson<T>(
@@ -301,7 +456,7 @@ export default function ConfirmPurchaseForm({
 
     if (!purchaseUrl.trim()) {
       setMessage(
-        "Enter the eBay purchase URL."
+        "Enter the eBay item number or purchase URL."
       );
       setMessageType("warning");
       return;
@@ -317,6 +472,7 @@ export default function ConfirmPurchaseForm({
 
     setIsPreviewing(true);
     clearPreview();
+    resetManualPurchase();
     setMessage(
       `Loading preview for eBay item ${itemId}...`
     );
@@ -336,7 +492,7 @@ export default function ConfirmPurchaseForm({
               "previewConfirmedPurchase",
             sellerId,
             sourceUrl:
-              purchaseUrl.trim(),
+              canonicalPurchaseUrl,
           }),
         }
       );
@@ -390,14 +546,293 @@ export default function ConfirmPurchaseForm({
       );
       setMessageType("success");
     } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "The purchase preview could not be loaded.";
+
+      const listingUnavailable =
+        errorMessage.includes(
+          "eBay no longer returned the original listing for item"
+        );
+
+      setMessage(errorMessage);
+      setMessageType("error");
+
+      if (listingUnavailable) {
+        setManualMode(true);
+      }
+    } finally {
+      setIsPreviewing(false);
+    }
+  }
+
+  async function parseManualTitle(
+    title: string
+  ) {
+    const pastedTitle = title.trim();
+
+    if (!pastedTitle) {
+      return;
+    }
+
+    setIsParsingTitle(true);
+    setMessage("Parsing listing title...");
+    setMessageType("");
+
+    try {
+      const response = await fetch(
+        "/api/seller-tracker",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            action:
+              "parseManualPurchaseTitle",
+            title: pastedTitle,
+          }),
+        }
+      );
+
+      const data =
+        await readJson<ParseManualTitleResponse>(
+          response
+        );
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error ||
+            "The listing title could not be parsed."
+        );
+      }
+
+      const parsed = data.parsed || {};
+
+      setManualPurchase((current) => ({
+        ...current,
+        title: pastedTitle,
+        year: parsed.year || "",
+        brand: parsed.brand || "",
+        set: parsed.set || "",
+        playerFirst:
+          parsed.playerFirst || "",
+        playerLast:
+          parsed.playerLast || "",
+        cardNumber:
+          parsed.cardNumber || "",
+        parallel:
+          parsed.parallel || "",
+        serialNumber:
+          parsed.serialNumber || "",
+        gradeCompany:
+          parsed.gradeCompany || "",
+        grade: parsed.grade || "",
+        certNumber:
+          parsed.certNumber || "",
+      }));
+
+      setMessage(
+        "Title parsed. Review the auto-filled fields before confirming the purchase."
+      );
+      setMessageType("success");
+    } catch (error) {
+      setManualPurchase((current) => ({
+        ...current,
+        title: pastedTitle,
+      }));
+
       setMessage(
         error instanceof Error
           ? error.message
-          : "The purchase preview could not be loaded."
+          : "The listing title could not be parsed."
       );
       setMessageType("error");
     } finally {
-      setIsPreviewing(false);
+      setIsParsingTitle(false);
+    }
+  }
+
+  function handleManualTitlePaste(
+    event: ClipboardEvent<HTMLInputElement>
+  ) {
+    event.preventDefault();
+
+    const pastedTitle =
+      event.clipboardData
+        .getData("text")
+        .trim();
+
+    if (!pastedTitle) {
+      return;
+    }
+
+    setManualPurchase((current) => ({
+      ...current,
+      title: pastedTitle,
+    }));
+
+    void parseManualTitle(
+      pastedTitle
+    );
+  }
+
+  async function handleManualImport() {
+    if (!canManualImport) {
+      return;
+    }
+
+    const imageUrls =
+      manualPurchase.imageUrls
+        .map((url) => url.trim())
+        .filter(Boolean);
+
+    setIsImporting(true);
+    setMessage(
+      `Importing eBay item ${itemId} as a manual reconstruction...`
+    );
+    setMessageType("");
+
+    try {
+      const response = await fetch(
+        "/api/seller-tracker",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            action:
+              "importManualConfirmedPurchase",
+            sellerId,
+            sourceUrl:
+              canonicalPurchaseUrl,
+            title:
+              manualPurchase.title.trim(),
+            purchaseDate:
+              manualPurchase.purchaseDate.trim(),
+            purchasePrice:
+              manualPurchase.purchasePrice.trim(),
+            description:
+              manualPurchase.description.trim(),
+            parsed: {
+              year:
+                manualPurchase.year.trim(),
+              brand:
+                manualPurchase.brand.trim(),
+              set:
+                manualPurchase.set.trim(),
+              playerFirst:
+                manualPurchase.playerFirst.trim(),
+              playerLast:
+                manualPurchase.playerLast.trim(),
+              cardNumber:
+                manualPurchase.cardNumber.trim(),
+              parallel:
+                manualPurchase.parallel.trim(),
+              serialNumber:
+                manualPurchase.serialNumber.trim(),
+              gradeCompany:
+                manualPurchase.gradeCompany.trim(),
+              grade:
+                manualPurchase.grade.trim(),
+              certNumber:
+                manualPurchase.certNumber.trim(),
+            },
+            imageUrls,
+            evidence: {
+              method:
+                "Manual reconstruction",
+              metadataSource:
+                "eBay seller feedback / admin research",
+              buyerFeedbackId:
+                selectedSeller
+                  ?.Buyer_Feedback_ID || "",
+              verifiedPurchase:
+                manualPurchase.verifiedPurchase,
+              feedbackText:
+                manualPurchase.feedbackText.trim(),
+              listingUnavailableFromEbayApi:
+                true,
+              imageSource:
+                imageUrls.length > 0
+                  ? "Recovered image URL"
+                  : "",
+            },
+          }),
+        }
+      );
+
+      const data =
+        await readJson<ImportPurchaseResponse>(
+          response
+        );
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error ||
+            "The manual purchase could not be imported."
+        );
+      }
+
+      if (
+        data.status === "already_exists"
+      ) {
+        setMessage(
+          `Already captured: eBay item ${
+            data.ebayItemId || itemId
+          }${
+            data.purchaseId
+              ? ` (${data.purchaseId})`
+              : ""
+          }. No duplicate was created.`
+        );
+        setMessageType("warning");
+        return;
+      }
+
+      const matchText =
+        data.matchStatus
+          ? ` Matching result: ${data.matchStatus}${
+              typeof data.matchCount ===
+              "number"
+                ? ` (${data.matchCount} candidate${
+                    data.matchCount === 1
+                      ? ""
+                      : "s"
+                  })`
+                : ""
+            }.`
+          : "";
+
+      setMessage(
+        `Manual purchase imported successfully: eBay item ${
+          data.ebayItemId || itemId
+        }${
+          data.purchaseId
+            ? ` (${data.purchaseId})`
+            : ""
+        }. Archived ${imageUrls.length} recovered image${
+          imageUrls.length === 1
+            ? ""
+            : "s"
+        }.${matchText}`
+      );
+      setMessageType("success");
+      clearPreview();
+      resetManualPurchase();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The manual purchase could not be imported."
+      );
+      setMessageType("error");
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -435,7 +870,7 @@ export default function ConfirmPurchaseForm({
               "importConfirmedPurchase",
             sellerId,
             sourceUrl:
-              purchaseUrl.trim(),
+              canonicalPurchaseUrl,
             selectedImageUrls:
               selectedImages,
           }),
@@ -571,6 +1006,7 @@ export default function ConfirmPurchaseForm({
               );
               clearMessage();
               clearPreview();
+              resetManualPurchase();
             }}
             disabled={
               sellers.length === 0 ||
@@ -656,7 +1092,7 @@ export default function ConfirmPurchaseForm({
             htmlFor="purchaseUrl"
             className="mb-2 block text-sm font-medium text-zinc-200"
           >
-            eBay Purchase URL
+            eBay Item ID or Purchase URL
           </label>
 
           <input
@@ -670,16 +1106,17 @@ export default function ConfirmPurchaseForm({
               );
               clearMessage();
               clearPreview();
+              resetManualPurchase();
             }}
             disabled={busy}
-            placeholder="https://www.ebay.com/itm/..."
+            placeholder="168459130283 or https://www.ebay.com/itm/168459130283"
             autoComplete="off"
             className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
           />
 
           {!hasPurchaseUrl && (
             <p className="mt-2 text-xs text-zinc-500">
-              Paste the original eBay
+              Paste the eBay item number or the full
               purchase/listing URL.
             </p>
           )}
@@ -704,7 +1141,7 @@ export default function ConfirmPurchaseForm({
         </div>
       </div>
 
-      {!preview && (
+      {!preview && !manualMode && (
         <div className="mt-8 border-t border-zinc-800 pt-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-h-5">
@@ -735,6 +1172,271 @@ export default function ConfirmPurchaseForm({
                 ? "Loading Preview..."
                 : "Preview Purchase"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {manualMode && !preview && (
+        <div className="mt-8 border-t border-zinc-800 pt-6">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-400">
+              Manual Purchase Reconstruction
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">
+              eBay no longer returns this listing through the API. Enter only information you can verify from seller feedback, Card Ladder, an archived image, or another source. The record will be permanently marked as a manual reconstruction.
+            </p>
+            <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <span className="text-zinc-500">eBay Item ID:</span>{" "}
+                <span className="font-semibold text-zinc-200">{itemId}</span>
+              </div>
+              <div>
+                <span className="text-zinc-500">Identified Buyer:</span>{" "}
+                <span className="font-semibold text-zinc-200">
+                  {selectedSeller?.Buyer_Feedback_ID || "Not recorded"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-sm font-medium text-zinc-200">
+                Listing Title *
+              </label>
+              <input
+                type="text"
+                value={manualPurchase.title}
+                onChange={(event) =>
+                  updateManualField("title", event.target.value)
+                }
+                onPaste={handleManualTitlePaste}
+                disabled={busy}
+                placeholder="Paste the complete eBay feedback title here"
+                className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-blue-500 disabled:opacity-60"
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                {isParsingTitle
+                  ? "Parsing title and filling card fields..."
+                  : "Paste the complete listing title and the card fields below will auto-fill. You can edit any field before confirming."}
+              </p>
+            </div>
+
+            {[
+              ["year", "Year"],
+              ["brand", "Brand"],
+              ["set", "Set"],
+              ["playerFirst", "Player First"],
+              ["playerLast", "Player Last"],
+              ["cardNumber", "Card Number"],
+              ["parallel", "Parallel"],
+              ["serialNumber", "Serial Number"],
+              ["gradeCompany", "Grade Company"],
+              ["grade", "Grade"],
+              ["certNumber", "Cert Number"],
+              ["purchasePrice", "Purchase Price"],
+            ].map(([field, label]) => (
+              <div key={field}>
+                <label className="mb-2 block text-sm font-medium text-zinc-200">
+                  {label}
+                </label>
+                <input
+                  type="text"
+                  value={
+                    manualPurchase[
+                      field as keyof Omit<
+                        ManualPurchase,
+                        "imageUrls" | "verifiedPurchase"
+                      >
+                    ] as string
+                  }
+                  onChange={(event) =>
+                    updateManualField(
+                      field as keyof Omit<
+                        ManualPurchase,
+                        "imageUrls" | "verifiedPurchase"
+                      >,
+                      event.target.value
+                    )
+                  }
+                  disabled={busy}
+                  className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-blue-500 disabled:opacity-60"
+                />
+              </div>
+            ))}
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-200">
+                Purchase Date
+              </label>
+              <input
+                type="date"
+                value={manualPurchase.purchaseDate}
+                onChange={(event) =>
+                  updateManualField("purchaseDate", event.target.value)
+                }
+                disabled={busy}
+                className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-blue-500 disabled:opacity-60"
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                Leave blank unless the exact purchase date is known.
+              </p>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-sm font-medium text-zinc-200">
+                Description
+              </label>
+              <textarea
+                value={manualPurchase.description}
+                onChange={(event) =>
+                  updateManualField("description", event.target.value)
+                }
+                disabled={busy}
+                rows={3}
+                className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-blue-500 disabled:opacity-60"
+              />
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-zinc-800 pt-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h4 className="text-sm font-semibold text-zinc-200">
+                  Recovered Images
+                </h4>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Paste up to four direct image URLs. They will be archived to the normal purchase folder in Google Cloud.
+                </p>
+              </div>
+              {manualPurchase.imageUrls.length < 4 && (
+                <button
+                  type="button"
+                  onClick={addManualImageField}
+                  disabled={busy}
+                  className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  + Add Image
+                </button>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {manualPurchase.imageUrls.map((imageUrl, index) => (
+                <div key={index} className="flex gap-2">
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={(event) =>
+                      updateManualImage(index, event.target.value)
+                    }
+                    disabled={busy}
+                    placeholder="https://..."
+                    className="h-11 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-blue-500 disabled:opacity-60"
+                  />
+                  {manualPurchase.imageUrls.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeManualImageField(index)}
+                      disabled={busy}
+                      className="rounded-md border border-zinc-700 px-3 text-sm text-zinc-400 transition hover:bg-zinc-800 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-zinc-800 pt-6">
+            <h4 className="text-sm font-semibold text-zinc-200">
+              Purchase Evidence
+            </h4>
+            <p className="mt-1 text-xs text-zinc-500">
+              This information is stored in Notes so the source of the manual reconstruction remains documented.
+            </p>
+
+            <div className="mt-4 grid gap-5 md:grid-cols-2">
+              <label className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-200 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={manualPurchase.verifiedPurchase}
+                  onChange={(event) =>
+                    setManualPurchase((current) => ({
+                      ...current,
+                      verifiedPurchase: event.target.checked,
+                    }))
+                  }
+                  disabled={busy}
+                  className="h-4 w-4"
+                />
+                eBay feedback shows Verified purchase
+              </label>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-zinc-200">
+                  Feedback / Evidence Text
+                </label>
+                <textarea
+                  value={manualPurchase.feedbackText}
+                  onChange={(event) =>
+                    updateManualField("feedbackText", event.target.value)
+                  }
+                  disabled={busy}
+                  rows={3}
+                  placeholder="Paste the seller feedback or other identifying evidence here."
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-blue-500 disabled:opacity-60"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-zinc-800 pt-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-h-5">
+                {message && (
+                  <p
+                    className={
+                      messageType === "success"
+                        ? "text-sm text-emerald-400"
+                        : messageType === "error"
+                          ? "text-sm text-red-400"
+                          : messageType === "warning"
+                            ? "text-sm text-amber-400"
+                            : "text-sm text-zinc-400"
+                    }
+                  >
+                    {message}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetManualPurchase();
+                    clearMessage();
+                  }}
+                  disabled={busy}
+                  className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-700 px-4 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleManualImport}
+                  disabled={!canManualImport}
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isImporting
+                    ? "Importing..."
+                    : "Confirm Manual Purchase"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
