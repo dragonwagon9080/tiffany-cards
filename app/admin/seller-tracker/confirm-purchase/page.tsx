@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import ConfirmPurchaseForm from "./ConfirmPurchaseForm";
 
@@ -37,17 +37,26 @@ type SellersResponse = {
 async function getSellers(): Promise<Seller[]> {
   try {
     const cookieStore = await cookies();
-    const cookieHeader = cookieStore.toString();
+    const requestHeaders = await headers();
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const host =
+      requestHeaders.get("x-forwarded-host") ||
+      requestHeaders.get("host");
+
+    const protocol =
+      requestHeaders.get("x-forwarded-proto") ||
+      (host?.includes("localhost") ? "http" : "https");
+
+    if (!host) {
+      return [];
+    }
 
     const response = await fetch(
-      `${baseUrl}/api/seller-tracker?action=sellers`,
+      `${protocol}://${host}/api/seller-tracker?action=sellers`,
       {
         cache: "no-store",
         headers: {
-          Cookie: cookieHeader,
+          Cookie: cookieStore.toString(),
         },
       }
     );
@@ -56,14 +65,20 @@ async function getSellers(): Promise<Seller[]> {
       return [];
     }
 
-    const data = (await response.json()) as SellersResponse;
+    const data =
+      (await response.json()) as SellersResponse;
 
-    if (!data.ok || !Array.isArray(data.sellers)) {
+    if (
+      !data.ok ||
+      !Array.isArray(data.sellers)
+    ) {
       return [];
     }
 
     return data.sellers.filter(
-      (seller) => seller.Status?.toLowerCase() === "active"
+      (seller) =>
+        seller.Status?.toLowerCase() ===
+        "active"
     );
   } catch {
     return [];
