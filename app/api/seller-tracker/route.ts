@@ -87,14 +87,12 @@ export async function GET(
     );
 
     /*
-     * Only pass parameters we explicitly support.
-     *
-     * seller and purchases require sellerId.
-     * matches optionally accepts reviewStatus.
+     * These actions require a sellerId.
      */
     if (
       action === "seller" ||
-      action === "purchases"
+      action === "purchases" ||
+      action === "matches"
     ) {
       const sellerId =
         String(
@@ -123,6 +121,10 @@ export async function GET(
       );
     }
 
+    /*
+     * Matches can additionally be filtered
+     * by review status.
+     */
     if (action === "matches") {
       const reviewStatus =
         String(
@@ -139,17 +141,19 @@ export async function GET(
       }
     }
 
-    const response = await fetch(
-      upstreamUrl.toString(),
-      {
-        method: "GET",
-        cache: "no-store",
-        redirect: "follow",
-        headers: {
-          Accept: "application/json",
-        },
-      }
-    );
+    const response =
+      await fetch(
+        upstreamUrl.toString(),
+        {
+          method: "GET",
+          cache: "no-store",
+          redirect: "follow",
+          headers: {
+            Accept:
+              "application/json",
+          },
+        }
+      );
 
     const responseText =
       await response.text();
@@ -162,7 +166,10 @@ export async function GET(
     } catch {
       console.error(
         "Seller Tracker returned non-JSON:",
-        responseText.slice(0, 500)
+        responseText.slice(
+          0,
+          500
+        )
       );
 
       return NextResponse.json(
@@ -262,10 +269,12 @@ export async function POST(
       );
     }
 
-    let body: Record<string, unknown>;
+    let body:
+      Record<string, unknown>;
 
     try {
-      body = await request.json();
+      body =
+        await request.json();
     } catch {
       return NextResponse.json(
         {
@@ -315,22 +324,24 @@ export async function POST(
       writeSecret,
     };
 
-    const response = await fetch(
-      apiUrl,
-      {
-        method: "POST",
-        cache: "no-store",
-        redirect: "follow",
-        headers: {
-          Accept: "application/json",
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify(
-          upstreamBody
-        ),
-      }
-    );
+    const response =
+      await fetch(
+        apiUrl,
+        {
+          method: "POST",
+          cache: "no-store",
+          redirect: "follow",
+          headers: {
+            Accept:
+              "application/json",
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(
+            upstreamBody
+          ),
+        }
+      );
 
     const responseText =
       await response.text();
@@ -343,7 +354,10 @@ export async function POST(
     } catch {
       console.error(
         "Seller Tracker POST returned non-JSON:",
-        responseText.slice(0, 500)
+        responseText.slice(
+          0,
+          500
+        )
       );
 
       return NextResponse.json(

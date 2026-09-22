@@ -84,6 +84,33 @@ export type ConfirmedPurchase = {
   Notes?: string;
 };
 
+export type SellerMatch = {
+  Match_ID?: string;
+  Seller_ID?: string;
+  Purchase_ID?: string;
+  Listing_ID?: string;
+  Detected_Date?: string;
+  Match_Score?: string | number;
+  Match_Level?: string;
+  Match_Reasons?: string;
+  Purchase_Title?: string;
+  Listing_Title?: string;
+  Purchase_Grade?: string | number;
+  Listing_Grade?: string | number;
+  Purchase_Cert?: string | number;
+  Listing_Cert?: string | number;
+  Purchase_Serial?: string;
+  Listing_Serial?: string;
+  Purchase_URL?: string;
+  Listing_URL?: string;
+  Purchase_Image?: string;
+  Listing_Image?: string;
+  Review_Status?: string;
+  Notes?: string;
+  Listing_Images?: string[];
+  Purchase_Images?: string[];
+};
+
 type SellerResponse = {
   ok: boolean;
   seller?: Seller;
@@ -100,8 +127,18 @@ type PurchasesResponse = {
   error?: string;
 };
 
+type MatchesResponse = {
+  ok: boolean;
+  sellerId?: string;
+  matches?: SellerMatch[];
+  count?: number;
+  error?: string;
+};
+
 function getBaseUrl(
-  requestHeaders: Awaited<ReturnType<typeof headers>>
+  requestHeaders: Awaited<
+    ReturnType<typeof headers>
+  >
 ) {
   const host =
     requestHeaders.get("host");
@@ -124,6 +161,21 @@ function getBaseUrl(
       : "https");
 
   return `${protocol}://${host}`;
+}
+
+function getCookieHeaders(
+  requestHeaders: Awaited<
+    ReturnType<typeof headers>
+  >
+) {
+  const cookie =
+    requestHeaders.get("cookie");
+
+  return cookie
+    ? {
+        Cookie: cookie,
+      }
+    : undefined;
 }
 
 async function getSeller(
@@ -150,19 +202,15 @@ async function getSeller(
     sellerId
   );
 
-  const cookie =
-    requestHeaders.get("cookie");
-
   const response =
     await fetch(
       url.toString(),
       {
         cache: "no-store",
-        headers: cookie
-          ? {
-              Cookie: cookie,
-            }
-          : undefined,
+        headers:
+          getCookieHeaders(
+            requestHeaders
+          ),
       }
     );
 
@@ -209,19 +257,15 @@ async function getPurchases(
     sellerId
   );
 
-  const cookie =
-    requestHeaders.get("cookie");
-
   const response =
     await fetch(
       url.toString(),
       {
         cache: "no-store",
-        headers: cookie
-          ? {
-              Cookie: cookie,
-            }
-          : undefined,
+        headers:
+          getCookieHeaders(
+            requestHeaders
+          ),
       }
     );
 
@@ -238,6 +282,61 @@ async function getPurchases(
     throw new Error(
       data.error ||
         "Unable to load purchases."
+    );
+  }
+
+  return data;
+}
+
+async function getMatches(
+  sellerId: string,
+  requestHeaders: Awaited<
+    ReturnType<typeof headers>
+  >
+): Promise<MatchesResponse> {
+  const baseUrl =
+    getBaseUrl(requestHeaders);
+
+  const url =
+    new URL(
+      `${baseUrl}/api/seller-tracker`
+    );
+
+  url.searchParams.set(
+    "action",
+    "matches"
+  );
+
+  url.searchParams.set(
+    "sellerId",
+    sellerId
+  );
+
+  const response =
+    await fetch(
+      url.toString(),
+      {
+        cache: "no-store",
+        headers:
+          getCookieHeaders(
+            requestHeaders
+          ),
+      }
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `Matches API returned ${response.status}.`
+    );
+  }
+
+  const data =
+    (await response.json()) as MatchesResponse;
+
+  if (!data.ok) {
+    throw new Error(
+      data.error ||
+        "Unable to load matches."
     );
   }
 
@@ -264,24 +363,40 @@ export default async function SellerInventoryPage({
     await headers();
 
   /*
-   * Load inventory and purchases at the
-   * same time instead of waiting for one
-   * request to finish before starting the
-   * other.
-   */
-  const [
-    sellerResult,
-    purchaseResult,
-  ] = await Promise.allSettled([
+ * Apps Script can become unreliable when
+ * these larger requests are fired at the
+ * same time. Load them sequentially to
+ * avoid overlapping backend executions.
+ */
+const sellerResult =
+  await Promise.allSettled([
     getSeller(
       decodedSellerId,
       requestHeaders
     ),
+  ]).then(
+    ([result]) => result
+  );
+
+const purchaseResult =
+  await Promise.allSettled([
     getPurchases(
       decodedSellerId,
       requestHeaders
     ),
-  ]);
+  ]).then(
+    ([result]) => result
+  );
+
+const matchResult =
+  await Promise.allSettled([
+    getMatches(
+      decodedSellerId,
+      requestHeaders
+    ),
+  ]).then(
+    ([result]) => result
+  );
 
   let sellerData: SellerResponse;
 
@@ -348,10 +463,32 @@ export default async function SellerInventoryPage({
 
     /*
      * Purchase retrieval should never
-     * prevent the seller inventory from
-     * loading.
+     * prevent inventory from loading.
      */
     purchases = [];
+  }
+
+  let matches:
+    SellerMatch[] = [];
+
+  if (
+    matchResult.status ===
+    "fulfilled"
+  ) {
+    matches =
+      matchResult.value
+        .matches || [];
+  } else {
+    console.error(
+      "Unable to load matches:",
+      matchResult.reason
+    );
+
+    /*
+     * Match retrieval should never
+     * prevent inventory from loading.
+     */
+    matches = [];
   }
 
   return (
@@ -365,6 +502,9 @@ export default async function SellerInventoryPage({
       }
       purchases={
         purchases
+      }
+      matches={
+        matches
       }
     />
   );

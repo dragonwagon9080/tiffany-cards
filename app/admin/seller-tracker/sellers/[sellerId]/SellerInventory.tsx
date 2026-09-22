@@ -13,6 +13,7 @@ import type {
 import type {
   SellerListing,
   ConfirmedPurchase,
+  SellerMatch,
 } from "./page";
 
 type Seller = {
@@ -29,10 +30,12 @@ export default function SellerInventory({
   seller,
   listings,
   purchases,
+  matches,
 }: {
   seller: Seller;
   listings: SellerListing[];
   purchases: ConfirmedPurchase[];
+  matches: SellerMatch[];
 }) {
   const [search, setSearch] =
     useState("");
@@ -45,6 +48,78 @@ export default function SellerInventory({
 
   const [selectedListing, setSelectedListing] =
     useState<SellerListing | null>(null);
+
+  const matchStatusByListingId =
+    useMemo(() => {
+      const statusMap =
+        new Map<
+          string,
+          "confirmed" | "possible"
+        >();
+
+      for (const match of matches) {
+        const listingId =
+          String(
+            match.Listing_ID || ""
+          ).trim();
+
+        if (!listingId) {
+          continue;
+        }
+
+        const reviewStatus =
+          String(
+            match.Review_Status || ""
+          )
+            .trim()
+            .toLowerCase();
+
+        /*
+         * Confirmed matches always take
+         * priority over every other status.
+         */
+        if (
+          reviewStatus ===
+            "confirmed match" ||
+          reviewStatus ===
+            "confirmed"
+        ) {
+          statusMap.set(
+            listingId,
+            "confirmed"
+          );
+
+          continue;
+        }
+
+        /*
+         * Rejected matches should not
+         * receive any special border.
+         */
+        if (
+          reviewStatus ===
+            "not a match"
+        ) {
+          continue;
+        }
+
+        /*
+         * Any generated match that has
+         * not been reviewed yet is a
+         * possible match requiring review.
+         */
+        if (
+          !statusMap.has(listingId)
+        ) {
+          statusMap.set(
+            listingId,
+            "possible"
+          );
+        }
+      }
+
+      return statusMap;
+    }, [matches]);
 
   const gradeCompanies =
     useMemo(() => {
@@ -268,23 +343,34 @@ export default function SellerInventory({
           </div>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredListings.map(
-              (listing, index) => (
-                <ListingCard
-                  key={
-                    listing.Listing_ID ||
-                    listing.eBay_Item_ID ||
-                    index
-                  }
-                  listing={listing}
-                  onOpen={() =>
-                    setSelectedListing(
-                      listing
-                    )
-                  }
-                />
-              )
-            )}
+            {filteredListings.map((listing, index) => {
+  const listingId =
+    String(
+      listing.Listing_ID || ""
+    ).trim();
+
+  const matchStatus =
+    listingId
+      ? matchStatusByListingId.get(
+          listingId
+        )
+      : undefined;
+
+  return (
+    <ListingCard
+      key={
+        listing.Listing_ID ||
+        listing.eBay_Item_ID ||
+        index
+      }
+      listing={listing}
+      matchStatus={matchStatus}
+      onOpen={() =>
+        setSelectedListing(listing)
+      }
+    />
+  );
+})}
           </div>
 
           {filteredListings.length ===
@@ -312,9 +398,13 @@ export default function SellerInventory({
 
 function ListingCard({
   listing,
+  matchStatus,
   onOpen,
 }: {
   listing: SellerListing;
+  matchStatus?:
+    | "confirmed"
+    | "possible";
   onOpen: () => void;
 }) {
   const player =
@@ -333,9 +423,15 @@ function ListingCard({
 
   return (
     <article
-      onClick={onOpen}
-      className="cursor-pointer overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 transition hover:border-blue-600 hover:bg-zinc-800/80"
-    >
+  onClick={onOpen}
+  className={`cursor-pointer overflow-hidden rounded-xl border-2 bg-zinc-900 transition hover:bg-zinc-800/80 ${
+    matchStatus === "confirmed"
+      ? "border-red-500 hover:border-red-400"
+      : matchStatus === "possible"
+        ? "border-green-500 hover:border-green-400"
+        : "border-zinc-800 hover:border-blue-600"
+  }`}
+>
       <div className="flex aspect-[4/3] items-center justify-center bg-zinc-950">
         {listing.Image_1 ? (
           <img
