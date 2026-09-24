@@ -168,6 +168,21 @@ async function readJsonObjectOnce(
     ReturnType<typeof setTimeout> |
     null = null;
 
+  const startedAt =
+    Date.now();
+
+  /*
+   * TEMPORARY GCS DIAGNOSTIC
+   *
+   * This records exactly when a Vercel instance
+   * downloads a Cards Alert snapshot from GCS,
+   * how large the object is, and how long the
+   * download takes.
+   */
+  console.log(
+    `[Cards Alert GCS] START ${label} | object=${objectPath} | ${new Date().toISOString()}`
+  );
+
   try {
     const downloadPromise =
       file.download();
@@ -195,6 +210,18 @@ async function readJsonObjectOnce(
         timeoutPromise,
       ]);
 
+    const elapsedMs =
+      Date.now() -
+      startedAt;
+
+    console.log(
+      `[Cards Alert GCS] COMPLETE ${label} | object=${objectPath} | bytes=${buffer.length} | MB=${(
+        buffer.length /
+        1024 /
+        1024
+      ).toFixed(2)} | ${elapsedMs}ms`
+    );
+
     const text =
       buffer.toString("utf8");
 
@@ -208,6 +235,17 @@ async function readJsonObjectOnce(
         )}`
       );
     }
+  } catch (error) {
+    const elapsedMs =
+      Date.now() -
+      startedAt;
+
+    console.error(
+      `[Cards Alert GCS] FAILED ${label} | object=${objectPath} | ${elapsedMs}ms`,
+      error
+    );
+
+    throw error;
   } finally {
     if (timeout) {
       clearTimeout(timeout);
