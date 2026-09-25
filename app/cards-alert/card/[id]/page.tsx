@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import CardClient from "./CardClient";
 
 import {
-  getCachedCardsAlertData,
+  getCardsAlertCardById,
 } from "@/lib/cards-alert/cache";
 
 import {
@@ -13,52 +13,15 @@ import {
   getCardsAlertLists,
 } from "@/lib/cards-alert/lists";
 
-function cleanId(value: unknown) {
+
+function cleanId(
+  value: unknown
+) {
   return decodeURIComponent(
     String(value ?? "")
   ).trim();
 }
 
-function findCardById(
-  cards: any[],
-  id: string
-) {
-  const decodedId =
-    cleanId(id);
-
-  /*
-   * Permanent Card_id is the primary card identity.
-   */
-  const permanentMatch =
-    cards.find((card: any) => {
-      return (
-        String(
-          card.Card_id || ""
-        ).trim() === decodedId
-      );
-    });
-
-  if (permanentMatch) {
-    return permanentMatch;
-  }
-
-  /*
-   * Temporary compatibility for existing public URLs.
-   *
-   * Remove these fallbacks only after all public links
-   * have migrated to Card_id.
-   */
-  return cards.find((card: any) => {
-    return (
-      String(
-        card.ID || ""
-      ).trim() === decodedId ||
-      String(
-        card.Cert_Number || ""
-      ).trim() === decodedId
-    );
-  });
-}
 
 function buildCardTitle(
   card: any
@@ -76,6 +39,7 @@ function buildCardTitle(
     .filter(Boolean)
     .join(" ");
 }
+
 
 function buildCardDescription(
   card: any
@@ -98,17 +62,6 @@ function buildCardDescription(
     .trim();
 }
 
-function getCanonicalCardId(
-  card: any,
-  fallbackId: string
-) {
-  return (
-    String(
-      card?.Card_id || ""
-    ).trim() ||
-    cleanId(fallbackId)
-  );
-}
 
 export async function generateMetadata({
   params,
@@ -120,13 +73,12 @@ export async function generateMetadata({
   const { id } =
     await params;
 
-  const data =
-    await getCachedCardsAlertData();
+  const cardId =
+    cleanId(id);
 
   const card =
-    findCardById(
-      data.cards || [],
-      id
+    await getCardsAlertCardById(
+      cardId
     );
 
   if (!card) {
@@ -160,10 +112,9 @@ export async function generateMetadata({
     "";
 
   const canonicalId =
-    getCanonicalCardId(
-      card,
-      id
-    );
+    String(
+      card.Card_id || cardId
+    ).trim();
 
   const url =
     `https://www.tiffanycards.com/cards-alert/card/${encodeURIComponent(
@@ -212,6 +163,7 @@ export async function generateMetadata({
   };
 }
 
+
 export default async function Page({
   params,
 }: {
@@ -222,30 +174,29 @@ export default async function Page({
   const { id } =
     await params;
 
+  const cardId =
+    cleanId(id);
+
   const [
-    data,
+    card,
     statuses,
     lists,
   ] =
     await Promise.all([
-      getCachedCardsAlertData(),
+      getCardsAlertCardById(
+        cardId
+      ),
       getCardsAlertStatuses(),
       getCardsAlertLists(),
     ]);
 
-  const card =
-    findCardById(
-      data.cards || [],
-      id
-    );
-
   const canonicalId =
     card
-      ? getCanonicalCardId(
-          card,
-          id
-        )
-      : cleanId(id);
+      ? String(
+          card.Card_id ||
+          cardId
+        ).trim()
+      : cardId;
 
   return (
     <CardClient

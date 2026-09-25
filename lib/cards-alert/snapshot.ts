@@ -11,6 +11,9 @@ const CARDS_ALERT_API_URL =
 const SNAPSHOT_PREFIX =
   "cardsalert-data";
 
+const CARD_DETAIL_PREFIX =
+  `${SNAPSHOT_PREFIX}/card-details`;
+
 const CHUNK_SIZE = 500;
 const RECENT_LIMIT = 100;
 
@@ -495,6 +498,140 @@ async function fetchLists() {
   return result;
 }
 
+function getCardId(
+  card: any
+) {
+  return String(
+    card?.Card_id || ""
+  )
+    .trim()
+    .toUpperCase();
+}
+
+
+function getCardDetailPrefix(
+  cardId: string
+) {
+  const normalized =
+    String(cardId || "")
+      .trim()
+      .toUpperCase();
+
+  if (normalized.length < 2) {
+    return "";
+  }
+
+  return normalized.slice(
+    0,
+    2
+  );
+}
+
+
+function buildCardDetailGroups(
+  cards: any[]
+) {
+  const groups =
+    new Map<string, any[]>();
+
+  let missingCardId = 0;
+
+  for (const card of cards) {
+    const cardId =
+      getCardId(card);
+
+    const prefix =
+      getCardDetailPrefix(
+        cardId
+      );
+
+    if (!cardId || !prefix) {
+      missingCardId++;
+      continue;
+    }
+
+    const existing =
+      groups.get(prefix);
+
+    if (existing) {
+      existing.push(card);
+    } else {
+      groups.set(
+        prefix,
+        [card]
+      );
+    }
+  }
+
+  return {
+    groups,
+    missingCardId,
+  };
+}
+
+
+async function writeCardDetailGroups(
+  cards: any[],
+  generatedAt: string
+) {
+  const {
+    groups,
+    missingCardId,
+  } =
+    buildCardDetailGroups(
+      cards
+    );
+
+  console.log(
+    `Cards Alert snapshot: preparing ${groups.size} Card_id detail groups.`
+  );
+
+  if (missingCardId > 0) {
+    console.warn(
+      `Cards Alert snapshot: ${missingCardId} active cards were skipped from detail groups because Card_id was missing or invalid.`
+    );
+  }
+
+  const results = [];
+
+  for (
+    const [prefix, groupCards]
+    of groups.entries()
+  ) {
+    const result =
+      await writeJsonObject(
+        `${CARD_DETAIL_PREFIX}/${prefix}.json`,
+        {
+          cards: groupCards,
+
+          meta: {
+            generatedAt,
+            prefix,
+            count:
+              groupCards.length,
+          },
+        },
+        "private, max-age=300"
+      );
+
+    results.push({
+      ...result,
+      prefix,
+      cardCount:
+        groupCards.length,
+    });
+  }
+
+  return {
+    groupCount:
+      groups.size,
+
+    missingCardId,
+
+    files:
+      results,
+  };
+}
 
 async function writeJsonObject(
   objectPath: string,
@@ -648,7 +785,7 @@ export async function buildCardsAlertSnapshots() {
     "Cards Alert snapshot: writing private GCS files."
   );
 
-  const files =
+    const files =
     await Promise.all([
       writeJsonObject(
         `${SNAPSHOT_PREFIX}/recent.json`,
@@ -669,11 +806,17 @@ export async function buildCardsAlertSnapshots() {
       ),
     ]);
 
+  const cardDetails =
+    await writeCardDetailGroups(
+      cards,
+      generatedAt
+    );
+
   console.log(
     "Cards Alert snapshot: completed successfully."
   );
 
-  return {
+    return {
     ok: true,
 
     generatedAt,
@@ -682,5 +825,7 @@ export async function buildCardsAlertSnapshots() {
       cards.length,
 
     files,
+
+    cardDetails,
   };
 }

@@ -17,6 +17,31 @@ let pendingDatabaseRequest: Promise<any> | null = null;
 let pendingRecentRequest: Promise<any> | null = null;
 let pendingOptionsRequest: Promise<any> | null = null;
 
+/*
+ * Card-detail groups are intentionally cached separately
+ * from the full Cards Alert database.
+ *
+ * Example:
+ *
+ * RB8521B7B1
+ *   -> RB
+ *   -> cardsalert-data/card-details/RB.json
+ */
+const cardDetailCache =
+  new Map<
+    string,
+    {
+      data: any;
+      loadedAt: number;
+    }
+  >();
+
+const pendingCardDetailRequests =
+  new Map<
+    string,
+    Promise<any>
+  >();
+
 const SNAPSHOT_PREFIX =
   "cardsalert-data";
 
@@ -29,10 +54,16 @@ const RECENT_OBJECT =
 const OPTIONS_OBJECT =
   `${SNAPSHOT_PREFIX}/options.json`;
 
+const CARD_DETAIL_PREFIX =
+  `${SNAPSHOT_PREFIX}/card-details`;
+
 const DATABASE_MEMORY_TTL_MS =
   5 * 60 * 1000;
 
 const OPTIONS_MEMORY_TTL_MS =
+  5 * 60 * 1000;
+
+const CARD_DETAIL_MEMORY_TTL_MS =
   5 * 60 * 1000;
 
 const FETCH_TIMEOUT_MS =
@@ -83,6 +114,36 @@ function isRealCard(card: any) {
   return Boolean(
     year &&
     hasName
+  );
+}
+
+
+function normalizeCardId(
+  value: unknown
+) {
+  return decodeURIComponent(
+    String(value ?? "")
+  )
+    .trim()
+    .toUpperCase();
+}
+
+
+function getCardDetailPrefix(
+  cardId: string
+) {
+  const normalized =
+    normalizeCardId(
+      cardId
+    );
+
+  if (normalized.length < 2) {
+    return "";
+  }
+
+  return normalized.slice(
+    0,
+    2
   );
 }
 
@@ -150,6 +211,48 @@ function validateOptions(rawData: any) {
 }
 
 
+function validateCardDetailGroup(
+  rawData: any,
+  expectedPrefix: string
+) {
+  if (
+    !rawData ||
+    typeof rawData !== "object" ||
+    Array.isArray(rawData) ||
+    !Array.isArray(rawData.cards)
+  ) {
+    throw new Error(
+      `Cards Alert ${expectedPrefix} card-detail snapshot is invalid.`
+    );
+  }
+
+  const cards =
+    rawData.cards.filter(
+      (card: any) => {
+        if (!isRealCard(card)) {
+          return false;
+        }
+
+        const cardId =
+          normalizeCardId(
+            card?.Card_id
+          );
+
+        return (
+          getCardDetailPrefix(
+            cardId
+          ) === expectedPrefix
+        );
+      }
+    );
+
+  return {
+    ...rawData,
+    cards,
+  };
+}
+
+
 async function readJsonObjectOnce(
   objectPath: string,
   label: string
@@ -174,10 +277,8 @@ async function readJsonObjectOnce(
   /*
    * TEMPORARY GCS DIAGNOSTIC
    *
-   * This records exactly when a Vercel instance
-   * downloads a Cards Alert snapshot from GCS,
-   * how large the object is, and how long the
-   * download takes.
+   * Keep this in place while we verify that individual
+   * card pages no longer download database.json.
    */
   console.log(
     `[Cards Alert GCS] START ${label} | object=${objectPath} | ${new Date().toISOString()}`
@@ -312,11 +413,6 @@ async function loadDatabaseSnapshot() {
 
 
 async function loadRecentSnapshot() {
-  /*
-   * recent.json is read directly from the private GCS bucket
-   * using the authenticated Storage client, so there is no
-   * public/CDN cache to bust.
-   */
   const raw =
     await readJsonObjectWithRetry(
       RECENT_OBJECT,
@@ -338,11 +434,27 @@ async function loadOptionsSnapshot() {
 }
 
 
+async function loadCardDetailSnapshot(
+  prefix: string
+) {
+  const objectPath =
+    `${CARD_DETAIL_PREFIX}/${prefix}.json`;
+
+  const raw =
+    await readJsonObjectWithRetry(
+      objectPath,
+      `card-detail-${prefix}`
+    );
+
+  return validateCardDetailGroup(
+    raw,
+    prefix
+  );
+}
+
+
 /*******************************************************
  * FULL DATABASE
- *
- * database.json is large, so retain the existing
- * five-minute in-memory caching behavior.
  *******************************************************/
 
 export async function refreshCardsAlertData() {
@@ -382,12 +494,6 @@ export async function getCachedCardsAlertData() {
     return lastGoodData;
   }
 
-  /*
-   * Warm server:
-   *
-   * Serve the large database immediately and update
-   * it in the background.
-   */
   if (lastGoodData) {
     if (!pendingDatabaseRequest) {
       pendingDatabaseRequest =
@@ -418,37 +524,111 @@ export async function getCachedCardsAlertData() {
     return lastGoodData;
   }
 
-  /*
-   * Cold server:
-   *
-   * Retrieve the already-built database snapshot
-   * directly from the private GCS bucket.
-   */
   return refreshCardsAlertData();
 }
 
 
 /*******************************************************
+ * SINGLE CARD BY PERMANENT Card_id
+ *
+ * This does NOT load database.json.
+ *******************************************************/
+
+export async function getCardsAlertCardById(
+  id: string
+) {
+  const cardId =
+    normalizeCardId(id);
+
+  if (!cardId) {
+    return null;
+  }
+
+  const prefix =
+    getCardDetailPrefix(
+      cardId
+    );
+
+  if (!prefix) {
+    return null;
+  }
+
+  const now =
+    Date.now();
+
+  const cached =
+    cardDetailCache.get(
+      prefix
+    );
+
+  let group: any;
+
+  if (
+    cached &&
+    now - cached.loadedAt <
+      CARD_DETAIL_MEMORY_TTL_MS
+  ) {
+    group =
+      cached.data;
+  } else {
+    const existingRequest =
+      pendingCardDetailRequests.get(
+        prefix
+      );
+
+    if (existingRequest) {
+      group =
+        await existingRequest;
+    } else {
+      const request =
+        loadCardDetailSnapshot(
+          prefix
+        )
+          .then((data) => {
+            cardDetailCache.set(
+              prefix,
+              {
+                data,
+                loadedAt:
+                  Date.now(),
+              }
+            );
+
+            return data;
+          })
+          .finally(() => {
+            pendingCardDetailRequests.delete(
+              prefix
+            );
+          });
+
+      pendingCardDetailRequests.set(
+        prefix,
+        request
+      );
+
+      group =
+        await request;
+    }
+  }
+
+  const card =
+    group.cards.find(
+      (candidate: any) =>
+        normalizeCardId(
+          candidate?.Card_id
+        ) === cardId
+    );
+
+  return card || null;
+}
+
+
+/*******************************************************
  * RECENT CARDS
- *
- * recent.json is only the newest Cards Alert cards.
- *
- * Unlike database.json, we intentionally DO NOT keep
- * recent.json behind a time-based memory cache.
- *
- * Every startup request retrieves the current private
- * GCS snapshot.
- *
- * This prevents a warm Vercel instance from continuing
- * to serve an older Cards Alert homepage after new
- * cards have been published.
  *******************************************************/
 
 export async function getCardsAlertRecentSnapshot() {
-  /*
-   * If simultaneous requests arrive, they can share
-   * the same in-progress GCS request.
-   */
   if (pendingRecentRequest) {
     return pendingRecentRequest;
   }
@@ -467,10 +647,6 @@ export async function getCardsAlertRecentSnapshot() {
           error
         );
 
-        /*
-         * Only use the old in-memory copy as an
-         * emergency fallback if GCS is unavailable.
-         */
         if (lastGoodRecent) {
           return lastGoodRecent;
         }
@@ -488,9 +664,6 @@ export async function getCardsAlertRecentSnapshot() {
 
 /*******************************************************
  * FILTER OPTIONS
- *
- * These do not need immediate freshness, so retain
- * the existing five-minute memory cache.
  *******************************************************/
 
 export async function getCardsAlertOptionsSnapshot() {
