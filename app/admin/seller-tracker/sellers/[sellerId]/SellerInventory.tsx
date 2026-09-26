@@ -49,6 +49,84 @@ export default function SellerInventory({
   const [selectedListing, setSelectedListing] =
     useState<SellerListing | null>(null);
 
+  const [capturingInventory, setCapturingInventory] =
+    useState(false);
+
+  const [captureMessage, setCaptureMessage] =
+    useState("");
+
+  const [captureError, setCaptureError] =
+    useState("");
+
+  async function captureInventory() {
+    if (capturingInventory) {
+      return;
+    }
+
+    setCapturingInventory(true);
+    setCaptureMessage("");
+    setCaptureError("");
+
+    try {
+      const response =
+        await fetch(
+          "/api/seller-tracker",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              action:
+                "captureSellerInventory",
+              sellerId:
+                seller.Seller_ID,
+            }),
+          }
+        );
+
+      const responseText =
+        await response.text();
+
+      let data: any = null;
+
+      try {
+        data =
+          JSON.parse(responseText);
+      } catch {
+        throw new Error(
+          responseText ||
+            "Seller Tracker returned an invalid response."
+        );
+      }
+
+      if (
+        !response.ok ||
+        !data?.ok
+      ) {
+        throw new Error(
+          data?.error ||
+            "Unable to capture seller inventory."
+        );
+      }
+
+      setCaptureMessage(
+        "Inventory capture completed. Refreshing listings..."
+      );
+
+      window.location.reload();
+    } catch (error: unknown) {
+      setCaptureError(
+        error instanceof Error
+          ? error.message
+          : "Unable to capture seller inventory."
+      );
+    } finally {
+      setCapturingInventory(false);
+    }
+  }
+
   const matchStatusByListingId =
     useMemo(() => {
       const statusMap =
@@ -259,17 +337,44 @@ export default function SellerInventory({
               </p>
             </div>
 
-            {seller.Store_URL && (
-              <a
-                href={seller.Store_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-fit rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+            <div className="flex flex-wrap items-center gap-3">
+              {seller.Store_URL && (
+                <a
+                  href={seller.Store_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-fit rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+                >
+                  Open eBay Store
+                </a>
+              )}
+
+              <button
+                type="button"
+                onClick={captureInventory}
+                disabled={capturingInventory}
+                className="inline-flex w-fit rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Open eBay Store
-              </a>
-            )}
+                {capturingInventory
+                  ? "Capturing Inventory..."
+                  : listings.length === 0
+                    ? "Capture Inventory"
+                    : "Check for New Listings"}
+              </button>
+            </div>
           </div>
+
+          {(captureMessage || captureError) && (
+            <div
+              className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
+                captureError
+                  ? "border-red-900 bg-red-950/50 text-red-300"
+                  : "border-emerald-900 bg-emerald-950/50 text-emerald-300"
+              }`}
+            >
+              {captureError || captureMessage}
+            </div>
+          )}
 
           <div className="mt-8 grid gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-4 md:grid-cols-[1fr_190px_190px]">
             <input

@@ -17,6 +17,8 @@ const ALLOWED_ACTIONS = new Set([
 
 const ALLOWED_POST_ACTIONS = new Set([
   "saveMarkupAuthTest",
+  "addSeller",
+  "captureSellerInventory",
   "saveMarkup",
   "reviewMatch",
   "importConfirmedPurchase",
