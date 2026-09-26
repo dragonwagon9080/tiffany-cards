@@ -12,8 +12,31 @@ import {
 const API_URL =
   process.env.RPA_TRACKER_API_URL!;
 
+/*
+ * Existing production snapshot.
+ *
+ * IMPORTANT:
+ * This remains unchanged for now so the
+ * current live RPA Tracker continues to
+ * operate exactly as it does today.
+ */
 const SNAPSHOT_OBJECT =
   "rpa-tracker-data/database.json";
+
+/*
+ * New lightweight registry/search index.
+ */
+const INDEX_OBJECT =
+  "rpa-tracker-data/index.json";
+
+/*
+ * New detailed snapshot locations.
+ */
+const GROUP_PREFIX =
+  "rpa-tracker-data/groups";
+
+const CARD_DETAIL_PREFIX =
+  "rpa-tracker-data/card-details";
 
 const MAX_PUBLIC_RECENT_CARDS = 50;
 
@@ -469,6 +492,743 @@ function buildRecentCards(
     );
 }
 
+/*
+ * Build compact searchable text for one card.
+ *
+ * This intentionally includes Card_History.
+ * That means historical certification numbers,
+ * old grades, auction names, and other text
+ * contained in the history remain searchable
+ * without putting the complete card object into
+ * the lightweight startup index.
+ */
+function extractHistoricalCertNumbers(
+  value: any
+) {
+  const history =
+    cleanString(
+      value
+    );
+
+  if (!history) {
+    return [];
+  }
+
+  const certs =
+    new Set<string>();
+
+  /*
+   * Match numbers explicitly identified as
+   * certification numbers.
+   *
+   * Examples:
+   *
+   * cert# 0011695136
+   * cert # 0011695136
+   * cert 0011695136
+   * certification # 0011695136
+   * certification number 0011695136
+   */
+  const patterns = [
+    /\bcert(?:ification)?\s*(?:number|no\.?)?\s*#?\s*:?\s*(\d{6,12})\b/gi,
+  ];
+
+  for (
+    const pattern of patterns
+  ) {
+    let match:
+      RegExpExecArray | null;
+
+    while (
+      (
+        match =
+          pattern.exec(
+            history
+          )
+      ) !== null
+    ) {
+      const cert =
+        cleanString(
+          match[1]
+        );
+
+      if (cert) {
+        certs.add(
+          cert
+        );
+      }
+    }
+  }
+
+  return Array.from(
+    certs
+  );
+}
+
+function buildCardSearchText(
+  card: any
+) {
+  /*
+   * Preserve the normal searchable card fields.
+   *
+   * For Card_History, only certification numbers
+   * explicitly identified as certs are added.
+   *
+   * This prevents unrelated numeric values such as
+   * auction item IDs from entering the search index.
+   */
+  const historicalCertNumbers =
+    extractHistoricalCertNumbers(
+      card.Card_History
+    );
+
+  const values = [
+    card.Card_id,
+    card.Card_Title,
+    card.Card_Title_Display,
+    card.Serial_Number,
+    card.Variation_Input,
+    card.Variation,
+    card.Grade,
+    card.Cert_Number,
+    card.Brand,
+    card.Numerator,
+    card.Denominator,
+    card.First,
+    card.Last,
+    card.Player,
+    card.Year,
+    card.Set,
+    card.Sport,
+    card.Material,
+    card.Card_Description,
+
+    ...historicalCertNumbers,
+  ];
+
+  return Array.from(
+    new Set(
+      values
+        .map(cleanString)
+        .filter(Boolean)
+    )
+  ).join(" ");
+}
+
+/*
+ * Build searchable text by registry/group.
+ *
+ * The homepage searches registries rather than
+ * needing every full individual card object.
+ *
+ * Each group's Search_Text contains searchable
+ * values from every card in that registry,
+ * including historical Card_History text.
+ */
+function buildGroupSearchTextMap(
+  cards: any[]
+) {
+  const map =
+    new Map<
+      string,
+      string[]
+    >();
+
+  for (
+    const card of cards
+  ) {
+    const slug =
+      cleanString(
+        card.Slug
+      );
+
+    if (!slug) {
+      continue;
+    }
+
+    const searchText =
+      buildCardSearchText(
+        card
+      );
+
+    if (!searchText) {
+      continue;
+    }
+
+    if (
+      !map.has(
+        slug
+      )
+    ) {
+      map.set(
+        slug,
+        []
+      );
+    }
+
+    map.get(
+      slug
+    )!.push(
+      searchText
+    );
+  }
+
+  const result:
+    Record<
+      string,
+      string
+    > = {};
+
+  for (
+    const [
+      slug,
+      values,
+    ] of map.entries()
+  ) {
+    result[
+      slug
+    ] =
+      values.join(" ");
+  }
+
+  return result;
+}
+
+/*
+ * Lightweight group/index representation.
+ *
+ * Main_Page_Image stays because the registry
+ * homepage needs its group image.
+ *
+ * Individual card image URLs, histories and
+ * other large detailed fields are not stored
+ * as separate card objects in index.json.
+ */
+function buildLightweightGroups(
+  groups: any[],
+  cards: any[]
+) {
+  const searchBySlug =
+    buildGroupSearchTextMap(
+      cards
+    );
+
+  return groups.map(
+    (group) => {
+      const slug =
+        cleanString(
+          group.Slug
+        );
+
+      const groupSearchText = [
+        group.Slug,
+        group.Card_Title,
+        group.Card_Title_Display,
+        group.Player,
+        group.First,
+        group.Last,
+        group.Year,
+        group.Brand,
+        group.Set,
+        group.Variation,
+        group.Material,
+        group.Type,
+        group.Sport,
+        group.Description,
+        searchBySlug[
+          slug
+        ] || "",
+      ]
+        .map(cleanString)
+        .filter(Boolean)
+        .join(" ");
+
+      return {
+        Slug:
+          group.Slug ||
+          "",
+
+        Card_Title:
+          group.Card_Title ||
+          "",
+
+        Card_Title_Display:
+          group.Card_Title_Display ||
+          "",
+
+        Player:
+          group.Player ||
+          "",
+
+        First:
+          group.First ||
+          "",
+
+        Last:
+          group.Last ||
+          "",
+
+        Year:
+          group.Year ||
+          "",
+
+        Brand:
+          group.Brand ||
+          "",
+
+        Set:
+          group.Set ||
+          "",
+
+        Variation:
+          group.Variation ||
+          "",
+
+        Material:
+          group.Material ||
+          "",
+
+        Type:
+          group.Type ||
+          "",
+
+        Sport:
+          group.Sport ||
+          "",
+
+        Description:
+          group.Description ||
+          "",
+
+        Main_Page_Image:
+          group.Main_Page_Image ||
+          "",
+
+        Count:
+          group.Count ||
+          0,
+
+        HighestGrade:
+          group.HighestGrade ||
+          "",
+
+        LastUpdated:
+          group.LastUpdated ||
+          "",
+
+        Search_Text:
+          groupSearchText,
+      };
+    }
+  );
+}
+
+/*
+ * Group complete cards by registry slug.
+ */
+function buildGroupDetailMap(
+  cards: any[]
+) {
+  const map =
+    new Map<
+      string,
+      any[]
+    >();
+
+  for (
+    const card of cards
+  ) {
+    const slug =
+      cleanString(
+        card.Slug
+      );
+
+    if (!slug) {
+      continue;
+    }
+
+    if (
+      !map.has(
+        slug
+      )
+    ) {
+      map.set(
+        slug,
+        []
+      );
+    }
+
+    map.get(
+      slug
+    )!.push(
+      card
+    );
+  }
+
+  return map;
+}
+
+function normalizeCardId(
+  value: any
+) {
+  return cleanString(
+    value
+  ).toUpperCase();
+}
+
+function getCardDetailPrefix(
+  cardId: any
+) {
+  return normalizeCardId(
+    cardId
+  ).slice(
+    0,
+    2
+  );
+}
+
+/*
+ * Build two-character Card_id shards.
+ *
+ * Example:
+ * CA61B054B3 -> CA.json
+ * KG0F3AC9E2 -> KG.json
+ */
+function buildCardDetailGroups(
+  cards: any[]
+) {
+  const groups =
+    new Map<
+      string,
+      any[]
+    >();
+
+  for (
+    const card of cards
+  ) {
+    const prefix =
+      getCardDetailPrefix(
+        card.Card_id
+      );
+
+    if (!prefix) {
+      continue;
+    }
+
+    if (
+      !groups.has(
+        prefix
+      )
+    ) {
+      groups.set(
+        prefix,
+        []
+      );
+    }
+
+    groups.get(
+      prefix
+    )!.push(
+      card
+    );
+  }
+
+  return groups;
+}
+
+function buildExactLookup(
+  cards: any[]
+) {
+  const cardIds:
+    Record<
+      string,
+      string
+    > = {};
+
+  const certNumbers:
+    Record<
+      string,
+      string[]
+    > = {};
+
+  function addCert(
+    certValue: any,
+    slugValue: any
+  ) {
+    const cert =
+      cleanString(
+        certValue
+      );
+
+    const slug =
+      cleanString(
+        slugValue
+      );
+
+    if (
+      !cert ||
+      !slug
+    ) {
+      return;
+    }
+
+    if (
+      !certNumbers[
+        cert
+      ]
+    ) {
+      certNumbers[
+        cert
+      ] = [];
+    }
+
+    if (
+      !certNumbers[
+        cert
+      ].includes(
+        slug
+      )
+    ) {
+      certNumbers[
+        cert
+      ].push(
+        slug
+      );
+    }
+  }
+
+  for (
+    const card of cards
+  ) {
+    const cardId =
+      normalizeCardId(
+        card.Card_id
+      );
+
+    const prefix =
+      getCardDetailPrefix(
+        cardId
+      );
+
+    const slug =
+      cleanString(
+        card.Slug
+      );
+
+    /*
+     * Card_id -> two-character detail shard.
+     */
+    if (
+      cardId &&
+      prefix
+    ) {
+      cardIds[
+        cardId
+      ] = prefix;
+    }
+
+    /*
+     * Current certification number.
+     */
+    addCert(
+      card.Cert_Number,
+      slug
+    );
+
+    /*
+     * Historical certification numbers.
+     *
+     * Only numbers explicitly associated with
+     * cert/certification wording are included.
+     */
+    const historicalCerts =
+      extractHistoricalCertNumbers(
+        card.Card_History
+      );
+
+    for (
+      const cert
+      of historicalCerts
+    ) {
+      addCert(
+        cert,
+        slug
+      );
+    }
+  }
+
+  return {
+    cardIds,
+    certNumbers,
+  };
+}
+
+async function writeJsonObject(
+  objectPath: string,
+  data: any
+) {
+  const body =
+    JSON.stringify(
+      data
+    );
+
+  const bucket =
+    storage.bucket(
+      cardsAlertPrivateBucket
+    );
+
+  const file =
+    bucket.file(
+      objectPath
+    );
+
+  await file.save(
+    body,
+    {
+      resumable:
+        false,
+
+      contentType:
+        "application/json",
+
+      metadata: {
+        cacheControl:
+          "private, max-age=300",
+      },
+    }
+  );
+
+  return Buffer.byteLength(
+    body,
+    "utf8"
+  );
+}
+
+async function writeGroupDetails(
+  groups: any[],
+  cards: any[],
+  refreshedAt: string
+) {
+  const cardsBySlug =
+    buildGroupDetailMap(
+      cards
+    );
+
+  let totalBytes = 0;
+  let written = 0;
+
+  /*
+   * Sequential writes are intentional.
+   * This avoids firing hundreds of GCS writes
+   * simultaneously during a snapshot rebuild.
+   */
+  for (
+    const group of groups
+  ) {
+    const slug =
+      cleanString(
+        group.Slug
+      );
+
+    if (!slug) {
+      continue;
+    }
+
+    const groupCards =
+      cardsBySlug.get(
+        slug
+      ) || [];
+
+    const objectPath =
+      `${GROUP_PREFIX}/${slug}.json`;
+
+    const bytes =
+      await writeJsonObject(
+        objectPath,
+        {
+          group,
+          cards:
+            groupCards,
+
+          meta: {
+            refreshedAt,
+            slug,
+            count:
+              groupCards.length,
+          },
+        }
+      );
+
+    totalBytes +=
+      bytes;
+
+    written++;
+  }
+
+  return {
+    count:
+      written,
+
+    bytes:
+      totalBytes,
+  };
+}
+
+async function writeCardDetailGroups(
+  cards: any[],
+  refreshedAt: string
+) {
+  const groups =
+    buildCardDetailGroups(
+      cards
+    );
+
+  let totalBytes = 0;
+  let written = 0;
+
+  /*
+   * Sequential writes are intentional.
+   */
+  for (
+    const [
+      prefix,
+      groupCards,
+    ] of groups.entries()
+  ) {
+    const objectPath =
+      `${CARD_DETAIL_PREFIX}/${prefix}.json`;
+
+    const bytes =
+      await writeJsonObject(
+        objectPath,
+        {
+          cards:
+            groupCards,
+
+          meta: {
+            refreshedAt,
+            prefix,
+            count:
+              groupCards.length,
+          },
+        }
+      );
+
+    totalBytes +=
+      bytes;
+
+    written++;
+  }
+
+  return {
+    count:
+      written,
+
+    bytes:
+      totalBytes,
+  };
+}
+
 async function fetchAction(
   action: string
 ) {
@@ -631,6 +1391,14 @@ export async function buildRPATrackerSnapshot() {
     new Date()
       .toISOString();
 
+  /*
+   * -------------------------------------------------
+   * EXISTING PRODUCTION DATABASE
+   * -------------------------------------------------
+   *
+   * Keep this structure unchanged during Step 1.
+   * The current live RPA Tracker continues using it.
+   */
   const data = {
     cards,
 
@@ -642,10 +1410,6 @@ export async function buildRPATrackerSnapshot() {
     groupsBySlug:
       indexes.groupsBySlug,
 
-    /*
-     * Safe recent activity data used by
-     * the Recently Added & Updated slider.
-     */
     recentCards,
 
     meta: {
@@ -677,6 +1441,9 @@ export async function buildRPATrackerSnapshot() {
       SNAPSHOT_OBJECT
     );
 
+  /*
+   * Write existing database.json first.
+   */
   await file.save(
     body,
     {
@@ -699,6 +1466,73 @@ export async function buildRPATrackerSnapshot() {
       "utf8"
     );
 
+  /*
+   * -------------------------------------------------
+   * NEW LIGHTWEIGHT INDEX
+   * -------------------------------------------------
+   */
+  const lightweightGroups =
+  buildLightweightGroups(
+    groups,
+    cards
+  );
+
+const exactLookup =
+  buildExactLookup(
+    cards
+  );
+
+const indexData = {
+  groups:
+    lightweightGroups,
+
+  recentCards,
+
+  exactLookup,
+
+  meta: {
+      cardCount:
+        cards.length,
+
+      groupCount:
+        groups.length,
+
+      recentCardCount:
+        recentCards.length,
+
+      refreshedAt,
+    },
+  };
+
+  const indexBytes =
+    await writeJsonObject(
+      INDEX_OBJECT,
+      indexData
+    );
+
+  /*
+   * -------------------------------------------------
+   * NEW GROUP DETAIL FILES
+   * -------------------------------------------------
+   */
+  const groupDetails =
+    await writeGroupDetails(
+      groups,
+      cards,
+      refreshedAt
+    );
+
+  /*
+   * -------------------------------------------------
+   * NEW CARD DETAIL SHARDS
+   * -------------------------------------------------
+   */
+  const cardDetails =
+    await writeCardDetailGroups(
+      cards,
+      refreshedAt
+    );
+
   console.log(
     "RPA Tracker snapshot: complete.",
     {
@@ -718,6 +1552,23 @@ export async function buildRPATrackerSnapshot() {
         recentCards.length,
 
       bytes,
+
+      indexObject:
+        INDEX_OBJECT,
+
+      indexBytes,
+
+      groupDetailFiles:
+        groupDetails.count,
+
+      groupDetailBytes:
+        groupDetails.bytes,
+
+      cardDetailFiles:
+        cardDetails.count,
+
+      cardDetailBytes:
+        cardDetails.bytes,
     }
   );
 
@@ -740,6 +1591,30 @@ export async function buildRPATrackerSnapshot() {
       recentCards.length,
 
     bytes,
+
+    index: {
+      object:
+        INDEX_OBJECT,
+
+      bytes:
+        indexBytes,
+    },
+
+    groupDetails: {
+      count:
+        groupDetails.count,
+
+      bytes:
+        groupDetails.bytes,
+    },
+
+    cardDetails: {
+      count:
+        cardDetails.count,
+
+      bytes:
+        cardDetails.bytes,
+    },
 
     refreshedAt,
   };
