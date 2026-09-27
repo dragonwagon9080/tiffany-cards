@@ -89,12 +89,12 @@ export async function GET(
     );
 
     /*
-     * These actions require a sellerId.
+     * Seller detail and purchases always
+     * require a sellerId.
      */
     if (
       action === "seller" ||
-      action === "purchases" ||
-      action === "matches"
+      action === "purchases"
     ) {
       const sellerId =
         String(
@@ -124,16 +124,31 @@ export async function GET(
     }
 
     /*
-     * Matches can additionally be filtered
-     * by review status.
+     * Matches may be requested globally
+     * for Match Review or filtered to one
+     * seller for the seller inventory page.
      */
     if (action === "matches") {
+      const sellerId =
+        String(
+          searchParams.get(
+            "sellerId"
+          ) || ""
+        ).trim();
+
       const reviewStatus =
         String(
           searchParams.get(
             "reviewStatus"
           ) || ""
         ).trim();
+
+      if (sellerId) {
+        upstreamUrl.searchParams.set(
+          "sellerId",
+          sellerId
+        );
+      }
 
       if (reviewStatus) {
         upstreamUrl.searchParams.set(

@@ -49,6 +49,13 @@ export default function SellerInventory({
   const [selectedListing, setSelectedListing] =
     useState<SellerListing | null>(null);
 
+const [currentMatches, setCurrentMatches] =
+  useState<SellerMatch[]>(matches);
+
+useEffect(() => {
+  setCurrentMatches(matches);
+}, [matches]);
+
   const [capturingInventory, setCapturingInventory] =
     useState(false);
 
@@ -128,76 +135,111 @@ export default function SellerInventory({
   }
 
   const matchStatusByListingId =
-    useMemo(() => {
-      const statusMap =
-        new Map<
-          string,
-          "confirmed" | "possible"
-        >();
+  useMemo(() => {
+    const statusMap =
+      new Map<
+        string,
+        "pending" | "altered" | "not-altered"
+      >();
 
-      for (const match of matches) {
-        const listingId =
-          String(
-            match.Listing_ID || ""
-          ).trim();
+    for (const match of currentMatches) {
+      const listingId =
+        String(
+          match.Listing_ID || ""
+        ).trim();
 
-        if (!listingId) {
-          continue;
-        }
-
-        const reviewStatus =
-          String(
-            match.Review_Status || ""
-          )
-            .trim()
-            .toLowerCase();
-
-        /*
-         * Confirmed matches always take
-         * priority over every other status.
-         */
-        if (
-          reviewStatus ===
-            "confirmed match" ||
-          reviewStatus ===
-            "confirmed"
-        ) {
-          statusMap.set(
-            listingId,
-            "confirmed"
-          );
-
-          continue;
-        }
-
-        /*
-         * Rejected matches should not
-         * receive any special border.
-         */
-        if (
-          reviewStatus ===
-            "not a match"
-        ) {
-          continue;
-        }
-
-        /*
-         * Any generated match that has
-         * not been reviewed yet is a
-         * possible match requiring review.
-         */
-        if (
-          !statusMap.has(listingId)
-        ) {
-          statusMap.set(
-            listingId,
-            "possible"
-          );
-        }
+      if (!listingId) {
+        continue;
       }
 
-      return statusMap;
-    }, [matches]);
+      const reviewStatus =
+        String(
+          match.Review_Status || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      const alterationStatus =
+        String(
+          match.Alteration_Status || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      /*
+       * Rejected matches receive no
+       * special inventory border.
+       */
+      if (
+        reviewStatus === "not a match"
+      ) {
+        continue;
+      }
+
+      /*
+       * A confirmed altered card
+       * receives the red border.
+       */
+      if (
+        (reviewStatus ===
+          "confirmed match" ||
+          reviewStatus ===
+            "confirmed") &&
+        alterationStatus === "altered"
+      ) {
+        statusMap.set(
+          listingId,
+          "altered"
+        );
+
+        continue;
+      }
+
+      /*
+       * A confirmed match determined
+       * not to be altered receives
+       * the green border.
+       */
+      if (
+        (reviewStatus ===
+          "confirmed match" ||
+          reviewStatus ===
+            "confirmed") &&
+        alterationStatus ===
+          "not altered"
+      ) {
+        if (
+          statusMap.get(listingId) !==
+          "altered"
+        ) {
+          statusMap.set(
+            listingId,
+            "not-altered"
+          );
+        }
+
+        continue;
+      }
+
+      /*
+       * Everything still requiring
+       * review receives yellow.
+       * This includes a candidate and
+       * a confirmed match awaiting an
+       * alteration decision.
+       */
+      if (
+        !statusMap.has(listingId)
+      ) {
+        statusMap.set(
+          listingId,
+          "pending"
+        );
+      }
+    }
+
+    return statusMap;
+  }, [currentMatches]);
 
   const gradeCompanies =
     useMemo(() => {
@@ -492,8 +534,22 @@ export default function SellerInventory({
         <ListingCompareModal
           listing={selectedListing}
           purchases={purchases}
+          matches={currentMatches}
+          onMatchUpdated={(matchId, updates) => {
+  setCurrentMatches((current) =>
+    current.map((match) =>
+      String(match.Match_ID || "").trim() ===
+      String(matchId || "").trim()
+        ? {
+            ...match,
+            ...updates,
+          }
+        : match
+    )
+  );
+}}
           onClose={() =>
-            setSelectedListing(null)
+          setSelectedListing(null)
           }
         />
       )}
@@ -508,8 +564,9 @@ function ListingCard({
 }: {
   listing: SellerListing;
   matchStatus?:
-    | "confirmed"
-    | "possible";
+  | "pending"
+  | "altered"
+  | "not-altered";
   onOpen: () => void;
 }) {
   const player =
@@ -530,11 +587,13 @@ function ListingCard({
     <article
   onClick={onOpen}
   className={`cursor-pointer overflow-hidden rounded-xl border-2 bg-zinc-900 transition hover:bg-zinc-800/80 ${
-    matchStatus === "confirmed"
-      ? "border-red-500 hover:border-red-400"
-      : matchStatus === "possible"
-        ? "border-green-500 hover:border-green-400"
-        : "border-zinc-800 hover:border-blue-600"
+    matchStatus === "altered"
+  ? "border-red-500 hover:border-red-400"
+  : matchStatus === "not-altered"
+    ? "border-green-500 hover:border-green-400"
+    : matchStatus === "pending"
+      ? "border-yellow-500 hover:border-yellow-400"
+      : "border-zinc-800 hover:border-blue-600"
   }`}
 >
       <div className="flex aspect-[4/3] items-center justify-center bg-zinc-950">
@@ -659,10 +718,17 @@ function ListingCard({
 function ListingCompareModal({
   listing,
   purchases,
+  matches,
+  onMatchUpdated,
   onClose,
 }: {
   listing: SellerListing;
   purchases: ConfirmedPurchase[];
+  matches: SellerMatch[];
+  onMatchUpdated: (
+    matchId: string,
+    updates: Partial<SellerMatch>
+  ) => void;
   onClose: () => void;
 }) {
   const images = useMemo(
@@ -670,24 +736,85 @@ function ListingCompareModal({
     [listing]
   );
 
-  const suggestedPurchases = useMemo(
-    () =>
-      purchases
-        .map((purchase) => ({
-          purchase,
-          ...scorePurchaseForListing(
-            listing,
-            purchase
-          ),
-        }))
-        .filter(
-          (candidate) =>
-            candidate.chronologyPossible &&
-            candidate.isCandidate
+  const suggestedPurchases = useMemo(() => {
+  const listingId =
+    String(
+      listing.Listing_ID || ""
+    ).trim();
+
+  const sellerId =
+    String(
+      listing.Seller_ID || ""
+    ).trim();
+
+  const matchingRows =
+    matches.filter((match) => {
+      const matchListingId =
+        String(
+          match.Listing_ID || ""
+        ).trim();
+
+      const matchSellerId =
+        String(
+          match.Seller_ID || ""
+        ).trim();
+
+      const reviewStatus =
+        String(
+          match.Review_Status || ""
         )
-        .sort((a, b) => b.score - a.score),
-    [listing, purchases]
-  );
+          .trim()
+          .toLowerCase();
+
+      return (
+        matchListingId === listingId &&
+        matchSellerId === sellerId &&
+        reviewStatus !== "not a match"
+      );
+    });
+
+  return matchingRows
+    .map((match) => {
+      const purchaseId =
+        String(
+          match.Purchase_ID || ""
+        ).trim();
+
+      const purchase =
+        purchases.find(
+          (item) =>
+            String(
+              item.Purchase_ID || ""
+            ).trim() === purchaseId
+        );
+
+      if (!purchase) {
+        return null;
+      }
+
+      return {
+        purchase,
+        match,
+        score:
+          Number(match.Match_Score) || 0,
+      };
+    })
+    .filter(
+      (
+        candidate
+      ): candidate is NonNullable<
+        typeof candidate
+      > => candidate !== null
+    )
+    .sort(
+      (a, b) =>
+        b.score - a.score
+    );
+}, [
+  listing,
+  purchases,
+  matches,
+]);
 
   const allPurchases = useMemo(
     () =>
@@ -803,6 +930,225 @@ function ListingCompareModal({
           selectedPurchase
         )
       : null;
+
+const selectedMatch =
+  selectedPurchase
+    ? matches.find((match) => {
+        const matchListingId =
+          String(
+            match.Listing_ID || ""
+          ).trim();
+
+        const matchPurchaseId =
+          String(
+            match.Purchase_ID || ""
+          ).trim();
+
+        const matchSellerId =
+          String(
+            match.Seller_ID || ""
+          ).trim();
+
+        return (
+          matchListingId ===
+            String(
+              listing.Listing_ID || ""
+            ).trim() &&
+          matchPurchaseId ===
+            String(
+              selectedPurchase.Purchase_ID ||
+                ""
+            ).trim() &&
+          matchSellerId ===
+            String(
+              listing.Seller_ID || ""
+            ).trim()
+        );
+      })
+    : undefined;
+
+const [
+  reviewingMatch,
+  setReviewingMatch,
+] = useState(false);
+
+const [
+  reviewMessage,
+  setReviewMessage,
+] = useState("");
+
+const [
+  reviewError,
+  setReviewError,
+] = useState("");
+
+async function reviewSelectedMatch(
+  reviewStatus:
+    | "Confirmed Match"
+    | "Not a Match"
+) {
+  const matchId =
+    String(
+      selectedMatch?.Match_ID || ""
+    ).trim();
+
+  if (!matchId || reviewingMatch) {
+    return;
+  }
+
+  setReviewingMatch(true);
+  setReviewMessage("");
+  setReviewError("");
+
+  try {
+    const response =
+      await fetch(
+        "/api/seller-tracker",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            action: "reviewMatch",
+            matchId,
+            reviewStatus,
+          }),
+        }
+      );
+
+    const responseText =
+      await response.text();
+
+    let data: any = null;
+
+    try {
+      data =
+        JSON.parse(responseText);
+    } catch {
+      throw new Error(
+        responseText ||
+          "Seller Tracker returned an invalid response."
+      );
+    }
+
+    if (
+      !response.ok ||
+      !data?.ok
+    ) {
+      throw new Error(
+        data?.error ||
+          "Unable to save match decision."
+      );
+    }
+
+onMatchUpdated(
+  matchId,
+  {
+    Review_Status: reviewStatus,
+  }
+);
+
+    setReviewMessage(
+      reviewStatus === "Confirmed Match"
+        ? "Match confirmed."
+        : "Marked as not a match."
+    );
+  } catch (error: unknown) {
+    setReviewError(
+      error instanceof Error
+        ? error.message
+        : "Unable to save match decision."
+    );
+  } finally {
+    setReviewingMatch(false);
+  }
+}
+
+async function classifySelectedMatch(
+  alterationStatus:
+    | "Altered"
+    | "Not Altered"
+) {
+  const matchId =
+    String(
+      selectedMatch?.Match_ID || ""
+    ).trim();
+
+  if (!matchId || reviewingMatch) {
+    return;
+  }
+
+  setReviewingMatch(true);
+  setReviewMessage("");
+  setReviewError("");
+
+  try {
+    const response =
+      await fetch(
+        "/api/seller-tracker",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            action: "reviewMatch",
+            matchId,
+            alterationStatus,
+          }),
+        }
+      );
+
+    const responseText =
+      await response.text();
+
+    let data: any = null;
+
+    try {
+      data =
+        JSON.parse(responseText);
+    } catch {
+      throw new Error(
+        responseText ||
+          "Seller Tracker returned an invalid response."
+      );
+    }
+
+    if (
+      !response.ok ||
+      !data?.ok
+    ) {
+      throw new Error(
+        data?.error ||
+          "Unable to save alteration decision."
+      );
+    }
+
+onMatchUpdated(
+  matchId,
+  {
+    Alteration_Status: alterationStatus,
+  }
+);
+
+    setReviewMessage(
+      alterationStatus === "Altered"
+        ? "Match classified as altered."
+        : "Match classified as not altered."
+    );
+  } catch (error: unknown) {
+    setReviewError(
+      error instanceof Error
+        ? error.message
+        : "Unable to save alteration decision."
+    );
+  } finally {
+    setReviewingMatch(false);
+  }
+}
 
   function previousImage() {
     if (images.length <= 1) {
@@ -1184,11 +1530,19 @@ function ListingCompareModal({
                                 )}
 
                                 {!showAllPurchases && (
-                                  <p className="mt-2 text-xs font-semibold text-blue-300">
-                                    Metadata score:{" "}
-                                    {score.score}
-                                  </p>
-                                )}
+  <p className="mt-2 text-xs font-semibold text-blue-300">
+    Match score:{" "}
+    {suggestedPurchases.find(
+      (candidate) =>
+        String(
+          candidate.purchase.Purchase_ID || ""
+        ).trim() ===
+        String(
+          purchase.Purchase_ID || ""
+        ).trim()
+    )?.score ?? score.score}
+  </p>
+)}
 
                                 {showAllPurchases &&
                                   !score.chronologyPossible && (
@@ -1350,6 +1704,183 @@ function ListingCompareModal({
                         </p>
                       </div>
                     )}
+
+{selectedMatch && (
+  <>
+    <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+        Match Decision
+      </p>
+
+      <div className="mt-3 flex flex-wrap gap-3">
+        {(() => {
+          const reviewStatus = String(
+            selectedMatch.Review_Status || ""
+          )
+            .trim()
+            .toLowerCase();
+
+          const isConfirmed =
+            reviewStatus === "confirmed match" ||
+            reviewStatus === "confirmed";
+
+          const isNotMatch =
+            reviewStatus === "not a match";
+
+          return (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  reviewSelectedMatch(
+                    "Confirmed Match"
+                  )
+                }
+                disabled={
+                  reviewingMatch ||
+                  isConfirmed ||
+                  isNotMatch
+                }
+                className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
+                  isConfirmed
+                    ? "cursor-default bg-emerald-600 text-white"
+                    : isNotMatch
+                      ? "cursor-not-allowed bg-zinc-800 text-zinc-600"
+                      : "bg-emerald-600 text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                }`}
+              >
+                {isConfirmed
+                  ? "✓ Confirmed Match"
+                  : "Confirm Match"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  reviewSelectedMatch(
+                    "Not a Match"
+                  )
+                }
+                disabled={
+                  reviewingMatch ||
+                  isConfirmed ||
+                  isNotMatch
+                }
+                className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
+                  isNotMatch
+                    ? "cursor-default bg-red-600 text-white"
+                    : isConfirmed
+                      ? "cursor-not-allowed bg-zinc-800 text-zinc-600"
+                      : "bg-red-600 text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                }`}
+              >
+                {isNotMatch
+                  ? "✓ Not a Match"
+                  : "Not a Match"}
+              </button>
+            </>
+          );
+        })()}
+      </div>
+    </div>
+
+    {["confirmed match", "confirmed"].includes(
+      String(
+        selectedMatch.Review_Status || ""
+      )
+        .trim()
+        .toLowerCase()
+    ) && (
+      <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+          Alteration Decision
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-3">
+          {(() => {
+            const alterationStatus = String(
+              selectedMatch.Alteration_Status || ""
+            )
+              .trim()
+              .toLowerCase();
+
+            const isAltered =
+              alterationStatus === "altered";
+
+            const isNotAltered =
+              alterationStatus === "not altered";
+
+            return (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    classifySelectedMatch(
+                      "Altered"
+                    )
+                  }
+                  disabled={
+                    reviewingMatch ||
+                    isAltered ||
+                    isNotAltered
+                  }
+                  className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
+                    isAltered
+                      ? "cursor-default bg-red-600 text-white"
+                      : isNotAltered
+                        ? "cursor-not-allowed bg-zinc-800 text-zinc-600"
+                        : "bg-red-600 text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  }`}
+                >
+                  {isAltered
+                    ? "✓ Altered"
+                    : "Altered"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    classifySelectedMatch(
+                      "Not Altered"
+                    )
+                  }
+                  disabled={
+                    reviewingMatch ||
+                    isAltered ||
+                    isNotAltered
+                  }
+                  className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
+                    isNotAltered
+                      ? "cursor-default bg-emerald-600 text-white"
+                      : isAltered
+                        ? "cursor-not-allowed bg-zinc-800 text-zinc-600"
+                        : "bg-emerald-600 text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  }`}
+                >
+                  {isNotAltered
+                    ? "✓ Not Altered"
+                    : "Not Altered"}
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      </div>
+    )}
+
+    {(reviewMessage || reviewError) && (
+      <div
+        className={`mt-3 rounded-lg border px-4 py-3 text-sm font-semibold ${
+          reviewError
+            ? "border-red-900 bg-red-950/50 text-red-300"
+            : "border-emerald-900 bg-emerald-950/50 text-emerald-300"
+        }`}
+      >
+        {reviewError || reviewMessage}
+      </div>
+    )}
+  </>
+)}
 
                     <div className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-2">
                       <ModalDetail

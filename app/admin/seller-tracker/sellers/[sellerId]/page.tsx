@@ -107,6 +107,7 @@ export type SellerMatch = {
   Listing_Image?: string;
   Review_Status?: string;
   Notes?: string;
+  Alteration_Status?: string;
   Listing_Images?: string[];
   Purchase_Images?: string[];
 };
