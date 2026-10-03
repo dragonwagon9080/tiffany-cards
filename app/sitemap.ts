@@ -10,7 +10,7 @@ import {
 } from "@/lib/cms";
 
 import {
-  getCachedCardsAlertData,
+  refreshCardsAlertData,
 } from "@/lib/cards-alert/cache";
 
 import {
@@ -88,9 +88,9 @@ export default async function sitemap(): Promise<
       []
     ),
     safeFetch(
-      () => getCachedCardsAlertData(),
-      { cards: [] } as any
-    ),
+  () => refreshCardsAlertData(),
+  { cards: [] } as any
+),
     safeFetch(
       () => getCachedRPATrackerData(),
       {
