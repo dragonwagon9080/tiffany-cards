@@ -204,6 +204,77 @@ async function importImageAsUpload(
   };
 }
 
+async function importComparisonOriginalAsUpload(
+  url: string,
+  slot: "front" | "back",
+  index: number,
+  prefix: "current" | "previous"
+): Promise<PendingTNCEUpload> {
+  if (!url) {
+    throw new Error("Missing comparison image URL.");
+  }
+
+  if (!url.startsWith("blob:") && !url.startsWith("data:")) {
+    const imported = await importImageAsUpload(
+      url,
+      slot,
+      index
+    );
+
+    return {
+      ...imported,
+      fileName: `${prefix}-${slot}-original-${index + 1}-${
+        imported.fileName
+      }`,
+    };
+  }
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(
+      `Unable to read the ${prefix} ${slot} comparison image.`
+    );
+  }
+
+  const blob = await response.blob();
+
+  const contentType =
+    blob.type || "image/jpeg";
+
+  const extension =
+    contentType === "image/png"
+      ? "png"
+      : contentType === "image/webp"
+        ? "webp"
+        : "jpg";
+
+  const fileName =
+    `${prefix}-${slot}-original.${extension}`;
+
+  const file = new File(
+    [blob],
+    fileName,
+    {
+      type: contentType,
+    }
+  );
+
+  return {
+    id: `card-comparison-original-${prefix}-${slot}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`,
+    source: "device",
+    slot,
+    fileName,
+    contentType,
+    file,
+    previewUrl: URL.createObjectURL(file),
+    originalUrl: url,
+    uploaded: false,
+  };
+}
+
 export default function NewCardsAlertForm({
   mode,
   action,
@@ -384,6 +455,177 @@ setPreviousUploadedImages([]);
     setSaleEventDate("");
     setSaleEventDateTouched(false);
   }, [activeObject, isSimilarCard]);
+
+    useEffect(() => {
+    if (activeObject?.source !== "card-comparison") return;
+
+    const handoff = activeObject?.comparisonHandoff;
+    if (!handoff) return;
+
+    let cancelled = false;
+
+    const createPendingUpload = (
+      file: File,
+      slot: "front" | "back" | "other"
+    ): PendingTNCEUpload => ({
+      id: `card-comparison-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+      source: "device",
+      slot,
+      fileName: file.name,
+      contentType: file.type || "image/png",
+      file,
+      previewUrl: URL.createObjectURL(file),
+      uploaded: false,
+    });
+
+    async function loadComparisonImages() {
+      try {
+        const currentUploads: PendingTNCEUpload[] = [];
+        const previousUploads: PendingTNCEUpload[] = [];
+
+        /*
+         * CURRENT ORIGINALS
+         */
+        if (handoff.current?.frontSrc) {
+          currentUploads.push(
+            await importComparisonOriginalAsUpload(
+              handoff.current.frontSrc,
+              "front",
+              0,
+              "current"
+            )
+          );
+        }
+
+        if (handoff.current?.backSrc) {
+          currentUploads.push(
+            await importComparisonOriginalAsUpload(
+              handoff.current.backSrc,
+              "back",
+              1,
+              "current"
+            )
+          );
+        }
+
+        /*
+         * PREVIOUS ORIGINALS
+         */
+        if (handoff.previous?.frontSrc) {
+          previousUploads.push(
+            await importComparisonOriginalAsUpload(
+              handoff.previous.frontSrc,
+              "front",
+              0,
+              "previous"
+            )
+          );
+        }
+
+        if (handoff.previous?.backSrc) {
+          previousUploads.push(
+            await importComparisonOriginalAsUpload(
+              handoff.previous.backSrc,
+              "back",
+              1,
+              "previous"
+            )
+          );
+        }
+
+        /*
+         * CURRENT MARKED IMAGES
+         */
+        if (
+          handoff.current?.markedFrontFile instanceof File
+        ) {
+          currentUploads.push(
+            createPendingUpload(
+              handoff.current.markedFrontFile,
+              "other"
+            )
+          );
+        }
+
+        if (
+          handoff.current?.markedBackFile instanceof File
+        ) {
+          currentUploads.push(
+            createPendingUpload(
+              handoff.current.markedBackFile,
+              "other"
+            )
+          );
+        }
+
+        /*
+         * PREVIOUS MARKED IMAGES
+         */
+        if (
+          handoff.previous?.markedFrontFile instanceof File
+        ) {
+          previousUploads.push(
+            createPendingUpload(
+              handoff.previous.markedFrontFile,
+              "other"
+            )
+          );
+        }
+
+        if (
+          handoff.previous?.markedBackFile instanceof File
+        ) {
+          previousUploads.push(
+            createPendingUpload(
+              handoff.previous.markedBackFile,
+              "other"
+            )
+          );
+        }
+
+        if (cancelled) return;
+
+        /*
+         * The comparison originals are now actual pending
+         * TNCE uploads, so don't also place their temporary
+         * blob/URL values into the legacy string fields.
+         */
+        setFrontImage("");
+        setBackImage("");
+        setOtherImages("");
+        setUploadedImages(currentUploads);
+
+        setPreviousFrontImage("");
+        setPreviousBackImage("");
+        setPreviousOtherImages("");
+        setPreviousUploadedImages(previousUploads);
+
+        setDescription(
+          handoff.description ||
+            "Comparison created using the TiffanyCards.com Card Comparison Tool."
+        );
+      } catch (error) {
+        console.error(
+          "Unable to load Card Comparison images:",
+          error
+        );
+
+        if (!cancelled) {
+          window.alert(
+            "One or more original comparison images could not be loaded into Cards Alert."
+          );
+        }
+      }
+    }
+
+    void loadComparisonImages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeObject]);
 
 async function importAuctionListing() {
   const sourceUrl =
@@ -1245,6 +1487,58 @@ if (!isSimilarCard) {
   );
 }
 
+const uploadedCurrentFront =
+  uploadedFiles.find(
+    (image) =>
+      image.slot === "front" &&
+      image.uploaded &&
+      image.publicUrl?.trim()
+  )?.publicUrl?.trim() || "";
+
+const uploadedCurrentBack =
+  uploadedFiles.find(
+    (image) =>
+      image.slot === "back" &&
+      image.uploaded &&
+      image.publicUrl?.trim()
+  )?.publicUrl?.trim() || "";
+
+const uploadedCurrentOther =
+  uploadedFiles
+    .filter(
+      (image) =>
+        image.slot === "other" &&
+        image.uploaded &&
+        image.publicUrl?.trim()
+    )
+    .map((image) => image.publicUrl!.trim());
+
+const uploadedPreviousFront =
+  previousUploadedFiles.find(
+    (image) =>
+      image.slot === "front" &&
+      image.uploaded &&
+      image.publicUrl?.trim()
+  )?.publicUrl?.trim() || "";
+
+const uploadedPreviousBack =
+  previousUploadedFiles.find(
+    (image) =>
+      image.slot === "back" &&
+      image.uploaded &&
+      image.publicUrl?.trim()
+  )?.publicUrl?.trim() || "";
+
+const uploadedPreviousOther =
+  previousUploadedFiles
+    .filter(
+      (image) =>
+        image.slot === "other" &&
+        image.uploaded &&
+        image.publicUrl?.trim()
+    )
+    .map((image) => image.publicUrl!.trim());
+
             const requestBody = {
         project,
 
@@ -1353,7 +1647,39 @@ if (!isSimilarCard) {
           Previous_Cert_Number: previousCertNumber.trim(),
 
           Previous_Source_URL: previousSourceUrls.join("\n"),
-          Auction_Source_URL: currentSourceUrls.join("\n"),
+Auction_Source_URL: currentSourceUrls.join("\n"),
+
+Front_Image:
+  uploadedCurrentFront ||
+  frontImage.trim(),
+
+Back_Image:
+  uploadedCurrentBack ||
+  backImage.trim(),
+
+Additional_Images: uniqueLines([
+  ...uploadedCurrentOther,
+  ...otherImages
+    .split(/\r?\n/)
+    .map(clean)
+    .filter(Boolean),
+]),
+
+Previous_Front_Image:
+  uploadedPreviousFront ||
+  previousFrontImage.trim(),
+
+Previous_Back_Image:
+  uploadedPreviousBack ||
+  previousBackImage.trim(),
+
+Previous_Additional_Images: uniqueLines([
+  ...uploadedPreviousOther,
+  ...previousOtherImages
+    .split(/\r?\n/)
+    .map(clean)
+    .filter(Boolean),
+]),
         },
         imageUrls: {
           front: frontImage.trim(),
