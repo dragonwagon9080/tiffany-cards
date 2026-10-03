@@ -30,14 +30,20 @@ function buildCardTitle(
     card.Year,
     card.First,
     card.Last,
+    card.Brand,
     card.Num
       ? `#${card.Num}`
       : "",
-    card.Brand,
-    card.Grade,
+    card.Parallel,
+    card.Serial_Number,
   ]
-    .filter(Boolean)
-    .join(" ");
+    .filter(
+      (value) =>
+        String(value || "").trim()
+    )
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 
@@ -47,9 +53,9 @@ function buildCardDescription(
   const title =
     buildCardTitle(card);
 
-  const status =
-    card.Status
-      ? `Reported as Possibly ${card.Status}.`
+  const grade =
+    card.Grade
+      ? `Grade: ${card.Grade}.`
       : "";
 
   const cert =
@@ -57,7 +63,12 @@ function buildCardDescription(
       ? `Cert #${card.Cert_Number}.`
       : "";
 
-  return `${status} ${title}. ${cert} View images, details, source links, and collector-submitted information on Cards Alert.`
+  const status =
+    card.Status
+      ? `Reported as possibly ${card.Status}.`
+      : "";
+
+  return `${title}. ${grade} ${cert} ${status} View card images, details, source links, and collector-submitted information on Cards Alert.`
     .replace(/\s+/g, " ")
     .trim();
 }
