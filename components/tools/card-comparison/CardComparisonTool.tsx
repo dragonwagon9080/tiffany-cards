@@ -7776,13 +7776,16 @@ function OverlayAlignmentEditor({
     alignmentBRef.current = alignmentB;
   }, [alignmentB]);
 
-  function emitB(next: AlignmentTransform) {
+  function emitB(next: AlignmentTransform | CardAlignmentTransform) {
   const current = alignmentBRef.current;
+  const incoming = next as CardAlignmentTransform;
 
   const completeNext: CardAlignmentTransform = {
     ...current,
     ...next,
-    perspective: current.perspective,
+    perspective: incoming.perspective
+      ? { ...incoming.perspective }
+      : { ...current.perspective },
   };
 
   alignmentBRef.current = completeNext;
