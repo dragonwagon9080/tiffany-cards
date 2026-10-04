@@ -18,6 +18,7 @@ type Seller = {
   Store_Name: string;
   Store_URL: string;
   Profile_URL: string;
+  Feedback_URL: string;
   Status: string;
   Date_Added: string;
   Last_Checked: string;

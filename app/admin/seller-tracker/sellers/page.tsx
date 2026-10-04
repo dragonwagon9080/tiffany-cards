@@ -33,6 +33,20 @@ type SellersResponse = {
   error?: string;
 };
 
+type SellerMatch = {
+  Match_ID: string;
+  Seller_ID: string;
+  Review_Status: string;
+  Alteration_Status?: string;
+};
+
+type MatchesResponse = {
+  ok: boolean;
+  matches?: SellerMatch[];
+  count?: number;
+  error?: string;
+};
+
 async function getSellers(): Promise<{
   sellers: Seller[];
   error: string | null;
@@ -115,6 +129,76 @@ async function getSellers(): Promise<{
   }
 }
 
+async function getPendingMatchCount(): Promise<number> {
+  try {
+    const requestHeaders = await headers();
+
+    const host = requestHeaders.get("host");
+
+    if (!host) {
+      return 0;
+    }
+
+    const forwardedProto =
+      requestHeaders.get("x-forwarded-proto");
+
+    const protocol =
+      forwardedProto ||
+      (host.includes("localhost")
+        ? "http"
+        : "https");
+
+    const url =
+      `${protocol}://${host}` +
+      "/api/seller-tracker?action=matches";
+
+    const cookie =
+      requestHeaders.get("cookie");
+
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      headers: cookie
+        ? {
+            Cookie: cookie,
+          }
+        : undefined,
+    });
+
+    if (!response.ok) {
+      return 0;
+    }
+
+    const data =
+      (await response.json()) as MatchesResponse;
+
+    if (!data.ok || !Array.isArray(data.matches)) {
+      return 0;
+    }
+
+    return data.matches.filter((match) => {
+      const reviewStatus = String(
+        match.Review_Status || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      return (
+        !reviewStatus ||
+        reviewStatus === "pending review" ||
+        reviewStatus === "needs review"
+      );
+    }).length;
+  } catch (error) {
+    console.error(
+      "Pending seller matches error:",
+      error
+    );
+
+    return 0;
+  }
+}
+
 function formatDate(
   value: string
 ) {
@@ -145,10 +229,13 @@ function formatDate(
 }
 
 export default async function MonitoredSellersPage() {
-  const {
-    sellers,
-    error,
-  } = await getSellers();
+  const [
+    { sellers, error },
+    pendingMatchCount,
+  ] = await Promise.all([
+    getSellers(),
+    getPendingMatchCount(),
+  ]);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
@@ -178,6 +265,30 @@ export default async function MonitoredSellersPage() {
               >
                 Dashboard
               </a>
+
+<a
+  href="/admin/seller-tracker/confirm-purchase"
+  className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-800"
+>
+  Confirm Purchase
+</a>
+
+<a
+  href="/admin/seller-tracker/matches"
+  className={
+    pendingMatchCount > 0
+      ? "inline-flex items-center gap-2 rounded-lg border border-amber-500/60 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-300 transition hover:bg-amber-500/20"
+      : "inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-800"
+  }
+>
+  Matches to Review
+
+  {pendingMatchCount > 0 && (
+    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-amber-400 px-1.5 py-0.5 text-xs font-bold text-zinc-950">
+      {pendingMatchCount}
+    </span>
+  )}
+</a>
 
               <a
                 href="/admin/seller-tracker/add-seller"
@@ -294,18 +405,16 @@ export default async function MonitoredSellersPage() {
                     View Inventory
                   </a>
 
-                  {seller.Store_URL && (
-                    <a
-                      href={
-                        seller.Store_URL
-                      }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
-                    >
-                      Open eBay Store
-                    </a>
-                  )}
+                  {seller.Profile_URL && (
+  <a
+    href={seller.Profile_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
+  >
+    Open eBay Profile
+  </a>
+)}
                 </div>
               </div>
             </article>

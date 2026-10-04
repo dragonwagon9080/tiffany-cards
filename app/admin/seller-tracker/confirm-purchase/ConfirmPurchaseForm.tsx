@@ -13,8 +13,9 @@ type Seller = {
   Username: string;
   eBay_User_ID: string;
   Store_Name: string;
-  Store_URL: string;
+    Store_URL: string;
   Profile_URL: string;
+  Feedback_URL: string;
   Status: string;
   Date_Added: string;
   Last_Checked: string;
@@ -183,8 +184,12 @@ function getStarColorClass(
       return "text-yellow-400";
     case "orange":
       return "text-orange-500";
-    case "purple":
+        case "purple":
       return "text-purple-500";
+    case "light purple":
+    case "light-purple":
+    case "lightpurple":
+      return "text-purple-300";
     case "teal":
     case "turquoise":
       return "text-cyan-400";
@@ -1033,34 +1038,55 @@ export default function ConfirmPurchaseForm({
             ))}
           </select>
 
-          {selectedSeller
-            ?.Buyer_Feedback_ID && (
-            <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-              <p className="text-xs text-zinc-500">
-                Identified Buyer
-              </p>
+          {selectedSeller &&
+  (selectedSeller.Buyer_Feedback_ID ||
+    selectedSeller.Feedback_URL) && (
+    <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+      {selectedSeller.Buyer_Feedback_ID && (
+        <>
+          <p className="text-xs text-zinc-500">
+            Identified Buyer
+          </p>
 
-              <p className="mt-1 text-sm font-semibold text-zinc-200">
-                {
+          <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-zinc-200">
+            <button
+              type="button"
+              onClick={() =>
+                navigator.clipboard.writeText(
                   selectedSeller.Buyer_Feedback_ID
-                }
+                )
+              }
+              title="Click to copy buyer identifier"
+              className="cursor-copy rounded px-1 py-0.5 transition hover:bg-zinc-800 hover:text-white"
+            >
+              {selectedSeller.Buyer_Feedback_ID}
+            </button>
 
-                {showStar && (
-                  <>
-                    {" ("}
-                    <span
-                      className={
-                        starColorClass
-                      }
-                    >
-                      ★
-                    </span>
-                    {")"}
-                  </>
-                )}
-              </p>
-            </div>
-          )}
+            {showStar && (
+              <span>
+                (
+                <span className={starColorClass}>
+                  ★
+                </span>
+                )
+              </span>
+            )}
+          </div>
+        </>
+      )}
+
+      {selectedSeller.Feedback_URL?.trim() && (
+        <a
+          href={selectedSeller.Feedback_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex text-xs font-semibold text-blue-400 transition hover:text-blue-300"
+        >
+          Open Seller Feedback →
+        </a>
+      )}
+    </div>
+  )}
 
           {sellers.length === 0 && (
             <p className="mt-2 text-xs text-red-400">
