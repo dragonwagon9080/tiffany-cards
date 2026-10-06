@@ -3,7 +3,7 @@ import {
 } from "next/server";
 
 import {
-  getCachedRPATrackerData,
+  getRPATrackerIndex,
 } from "@/lib/rpa-tracker/cache";
 
 export const runtime =
@@ -35,14 +35,21 @@ function json(data: any) {
 
 export async function GET() {
   try {
-    const cache =
-      await getCachedRPATrackerData();
+    /*
+     * Recent cards are already included in the
+     * lightweight RPA Tracker index snapshot.
+     *
+     * Do NOT use getCachedRPATrackerData() here.
+     * That loads the full RPA database.json file.
+     */
+    const index =
+      await getRPATrackerIndex();
 
     const recentCards =
       Array.isArray(
-        cache?.recentCards
+        index?.recentCards
       )
-        ? cache.recentCards
+        ? index.recentCards
         : [];
 
     return json({
@@ -55,7 +62,7 @@ export async function GET() {
         recentCards.length,
 
       refreshedAt:
-        cache?.meta
+        index?.meta
           ?.refreshedAt ||
         null,
     });
