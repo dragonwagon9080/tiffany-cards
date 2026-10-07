@@ -10,11 +10,11 @@ import {
 } from "@/lib/cms";
 
 import {
-  refreshCardsAlertData,
+  getCardsAlertSitemap,
 } from "@/lib/cards-alert/cache";
 
 import {
-  getCachedRPATrackerData,
+  getRPATrackerIndex,
 } from "@/lib/rpa-tracker/cache";
 
 const SITE_URL =
@@ -77,25 +77,44 @@ export default async function sitemap(): Promise<
     cardSets,
     guides,
     interactiveGuides,
-    cardsAlertData,
-    rpaData,
+    cardsAlertSitemap,
+    rpaIndex,
   ] = await Promise.all([
     safeFetch(() => getPages(), []),
-    safeFetch(() => getCardSets(), []),
-    safeFetch(() => getGuides(), []),
+
+    safeFetch(
+      () => getCardSets(),
+      []
+    ),
+
+    safeFetch(
+      () => getGuides(),
+      []
+    ),
+
     safeFetch(
       () => getInteractiveGuides(),
       []
     ),
+
     safeFetch(
-  () => refreshCardsAlertData(),
-  { cards: [] } as any
-),
-    safeFetch(
-      () => getCachedRPATrackerData(),
+      () => getCardsAlertSitemap(),
       {
-        cards: [],
+        cardIds: [],
+        meta: {
+          generatedAt: "",
+          count: 0,
+        },
+      } as any
+    ),
+
+    safeFetch(
+      () => getRPATrackerIndex(),
+      {
         groups: [],
+        exactLookup: {
+          cardIds: {},
+        },
       } as any
     ),
   ]);
@@ -161,7 +180,10 @@ export default async function sitemap(): Promise<
   for (const page of pages || []) {
     if (!isActive(page)) continue;
 
-    const slug = cleanSlug(page.slug);
+    const slug = cleanSlug(
+      page.slug
+    );
+
     if (!slug) continue;
 
     urls.push({
@@ -174,11 +196,16 @@ export default async function sitemap(): Promise<
   for (const set of cardSets || []) {
     if (!isActive(set)) continue;
 
-    const slug = cleanSlug(set.slug);
+    const slug = cleanSlug(
+      set.slug
+    );
+
     if (!slug) continue;
 
     urls.push({
-      ...pageUrl(`/card-sets/${slug}`),
+      ...pageUrl(
+        `/card-sets/${slug}`
+      ),
       changeFrequency: "monthly",
       priority: 0.85,
     });
@@ -195,7 +222,9 @@ export default async function sitemap(): Promise<
     if (!slug) continue;
 
     urls.push({
-      ...pageUrl(`/guide/${slug}`),
+      ...pageUrl(
+        `/guide/${slug}`
+      ),
       changeFrequency: "monthly",
       priority: 0.8,
     });
@@ -214,19 +243,35 @@ export default async function sitemap(): Promise<
     if (!slug) continue;
 
     urls.push({
-      ...pageUrl(`/guide/${slug}`),
+      ...pageUrl(
+        `/guide/${slug}`
+      ),
       changeFrequency: "monthly",
       priority: 0.8,
     });
   }
 
-  const cardsAlertCards =
-    cardsAlertData?.cards || [];
+  /*
+   * Cards Alert
+   *
+   * Individual Cards Alert URLs now
+   * come from the lightweight
+   * sitemap.json snapshot.
+   *
+   * This does NOT load database.json.
+   */
+  const cardsAlertCardIds =
+    Array.isArray(
+      cardsAlertSitemap?.cardIds
+    )
+      ? cardsAlertSitemap.cardIds
+      : [];
 
-  for (const card of cardsAlertCards) {
-    const cardId = cleanCardId(
-      card?.Card_id
-    );
+  for (
+    const rawCardId of cardsAlertCardIds
+  ) {
+    const cardId =
+      cleanCardId(rawCardId);
 
     if (!cardId) continue;
 
@@ -241,8 +286,12 @@ export default async function sitemap(): Promise<
     });
   }
 
+  /*
+   * RPA group URLs come from
+   * the lightweight index snapshot.
+   */
   const rpaGroups =
-    rpaData?.groups || [];
+    rpaIndex?.groups || [];
 
   for (const group of rpaGroups) {
     const slug = cleanSlug(
@@ -262,13 +311,24 @@ export default async function sitemap(): Promise<
     });
   }
 
-  const rpaCards =
-    rpaData?.cards || [];
-
-  for (const card of rpaCards) {
-    const cardId = cleanCardId(
-      card?.Card_id
+  /*
+   * Every current RPA Card_id is
+   * already stored as a key in
+   * exactLookup.cardIds.
+   *
+   * This lets the sitemap create
+   * individual card URLs without
+   * loading database.json.
+   */
+  const rpaCardIds =
+    Object.keys(
+      rpaIndex?.exactLookup
+        ?.cardIds || {}
     );
+
+  for (const rawCardId of rpaCardIds) {
+    const cardId =
+      cleanCardId(rawCardId);
 
     if (!cardId) continue;
 
