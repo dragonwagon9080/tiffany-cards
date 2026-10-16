@@ -62,7 +62,21 @@ function dateInputFromValue(
   if (!text) {
     return "";
   }
+  // Convert timestamps to Eastern Time so late-night
+  // Goldin auctions use the date shown on Goldin.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/i.test(text)) {
+    const parsed = new Date(text);
 
+    if (!Number.isNaN(parsed.getTime())) {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/New_York",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(parsed);
+    }
+  }
+  
   const directMatch = text.match(
     /^(\d{4})-(\d{2})-(\d{2})/
   );
@@ -1001,6 +1015,7 @@ async function importAuctionListing() {
       dateInputFromValue(
         result.endDate
       );
+
 
     if (
       importedSaleDate &&

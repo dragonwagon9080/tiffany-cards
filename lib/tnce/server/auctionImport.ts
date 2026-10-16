@@ -1973,20 +1973,50 @@ const allImages = filterGoldinImages(
     "USD",
 };
 
+    // Goldin's displayed auction date, when present.
+  // Only inspect the primary listing section, not
+  // the unrelated recommended lots.
+  const goldinPrimarySection = html
+    .split(/\bSimilar\b/i)[0];
+
+  const goldinDisplayedDateMatch =
+    goldinPrimarySection.match(
+      /\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*(?:EDT|EST|CDT|CST|MDT|MST|PDT|PST)\b/i
+    );
+
+  const goldinDisplayedDate = (() => {
+    if (!goldinDisplayedDateMatch) return "";
+
+    const month = Number(goldinDisplayedDateMatch[1]);
+    const day = Number(goldinDisplayedDateMatch[2]);
+    const rawYear = Number(goldinDisplayedDateMatch[3]);
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+
+    const date = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day
+    ) {
+      return "";
+    }
+
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  })();
+
   const endDate =
-  clean(goldinLot?.end_timestamp) ||
-  clean(productJsonLd?.offers?.availabilityEnds) ||
-  clean(productJsonLd?.offers?.validThrough) ||
-  getMetaContent(
-    html,
-    "product:expiration_time"
-  ) ||
-  getMetaContent(html, "auction:end_time") ||
-  clean(
-    html.match(
-      /"(?:endDate|endTime|auctionEndDate)"\s*:\s*"([^"]+)"/i
-    )?.[1]
-  );
+    clean(goldinLot?.end_timestamp) ||
+    clean(productJsonLd?.offers?.availabilityEnds) ||
+    clean(productJsonLd?.offers?.validThrough) ||
+    getMetaContent(html, "product:expiration_time") ||
+    getMetaContent(html, "auction:end_time") ||
+    clean(
+      html.match(
+        /"(?:endDate|endTime|auctionEndDate)"\s*:\s*"([^"]+)"/i
+      )?.[1]
+    ) ||
+    goldinDisplayedDate;
 
   const listingId =
   clean(goldinLot?.lot_id) ||
@@ -2072,7 +2102,7 @@ function normalizePsaSport(value: unknown) {
     [/\bsoccer\b/, "Soccer"],
     [/\bgolf\b/, "Golf"],
     [/\bwrestling\b/, "Wrestling"],
-    [/\bpok[eé]mon\b|\btcg\b/, "Pokémon/TCG"],
+    [/\bpok[eÃ©]mon\b|\btcg\b/, "PokÃ©mon/TCG"],
   ];
 
   for (const [pattern, sport] of sports) {
@@ -2731,7 +2761,7 @@ function extractInstagramCaption(
    * "Actual caption". 
    */
   const quoted = decoded.match(
-    /:\s*["“]([\s\S]*?)["”]\.?\s*$/
+    /:\s*["â€œ]([\s\S]*?)["â€]\.?\s*$/
   )?.[1];
 
   const caption =
@@ -3370,7 +3400,7 @@ function normalizeAltSport(
     [/\bsoccer\b/, "Soccer"],
     [/\bgolf\b/, "Golf"],
     [/\bwrestling\b/, "Wrestling"],
-    [/\bpok[eé]mon\b|\btcg\b/, "Pokémon/TCG"],
+    [/\bpok[eÃ©]mon\b|\btcg\b/, "PokÃ©mon/TCG"],
   ];
 
   for (const [pattern, sport] of sports) {

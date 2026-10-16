@@ -1,3 +1,4 @@
+
 import {
   NextRequest,
   NextResponse,
@@ -14,29 +15,19 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ALT_SHORT_HOSTS =
-  new Set([
-    "alt.app.link",
-    "www.alt.app.link",
-  ]);
-
+const ALT_SHORT_HOSTS = new Set([
+  "alt.app.link",
+  "www.alt.app.link",
+]);
 
 /*******************************************************
  * CLEAN URL
  *******************************************************/
 
-function cleanUrl(
-  value: string
-) {
-  const text =
-    String(
-      value || ""
-    )
-      .trim()
-      .replace(
-        /&amp;/gi,
-        "&"
-      );
+function cleanUrl(value: string) {
+  const text = String(value || "")
+    .trim()
+    .replace(/&amp;/gi, "&");
 
   /*
    * Allows links copied/shared from apps to include
@@ -47,33 +38,27 @@ function cleanUrl(
    *
    * Extract the first URL and discard the share text.
    */
-  const match =
-    text.match(
-      /https?:\/\/[^\s<>"']+/i
-    );
+  const match = text.match(
+    /https?:\/\/[^\s<>"']+/i
+  );
 
   if (match?.[0]) {
-    return match[0]
-      .replace(
-        /[),.;!?]+$/,
-        ""
-      );
+    return match[0].replace(
+      /[),.;!?]+$/,
+      ""
+    );
   }
 
   return text;
 }
 
-
 /*******************************************************
  * DETECT ALT SHORT LINK
  *******************************************************/
 
-function isAltShortLink(
-  value: string
-) {
+function isAltShortLink(value: string) {
   try {
-    const parsed =
-      new URL(value);
+    const parsed = new URL(value);
 
     return ALT_SHORT_HOSTS.has(
       parsed.hostname.toLowerCase()
@@ -82,7 +67,6 @@ function isAltShortLink(
     return false;
   }
 }
-
 
 /*******************************************************
  * FIND REAL ALT URL INSIDE HTML
@@ -94,27 +78,15 @@ function isAltShortLink(
  * app.alt.xyz URL inside the returned HTML.
  *******************************************************/
 
-function findAltUrlInHtml(
-  html: string
-) {
+function findAltUrlInHtml(html: string) {
   if (!html) {
     return "";
   }
 
-  const decoded =
-    html
-      .replace(
-        /&amp;/gi,
-        "&"
-      )
-      .replace(
-        /\\u002F/gi,
-        "/"
-      )
-      .replace(
-        /\\\//g,
-        "/"
-      );
+  const decoded = html
+    .replace(/&amp;/gi, "&")
+    .replace(/\\u002F/gi, "/")
+    .replace(/\\\//g, "/");
 
   const patterns = [
     /https?:\/\/app\.alt\.xyz\/itm\/[A-Za-z0-9_-]+(?:\?[^"'<>\\\s]*)?/i,
@@ -124,22 +96,16 @@ function findAltUrlInHtml(
     /https?:\/\/app\.alt\.xyz\/[^"'<>\\\s]+/i,
   ];
 
-  for (
-    const pattern of patterns
-  ) {
-    const match =
-      decoded.match(pattern);
+  for (const pattern of patterns) {
+    const match = decoded.match(pattern);
 
     if (match?.[0]) {
-      return cleanUrl(
-        match[0]
-      );
+      return cleanUrl(match[0]);
     }
   }
 
   return "";
 }
-
 
 /*******************************************************
  * RESOLVE ALT.APP.LINK
@@ -148,24 +114,15 @@ function findAltUrlInHtml(
 async function resolveAltShortLink(
   shortUrl: string
 ) {
-  if (
-    !isAltShortLink(
-      shortUrl
-    )
-  ) {
+  if (!isAltShortLink(shortUrl)) {
     return shortUrl;
   }
 
-  const controller =
-    new AbortController();
+  const controller = new AbortController();
 
-  const timeout =
-    setTimeout(
-      () => {
-        controller.abort();
-      },
-      15000
-    );
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, 15000);
 
   try {
     console.log(
@@ -173,30 +130,21 @@ async function resolveAltShortLink(
       shortUrl
     );
 
-    const response =
-      await fetch(
-        shortUrl,
-        {
-          method: "GET",
+    const response = await fetch(shortUrl, {
+      method: "GET",
+      redirect: "follow",
+      cache: "no-store",
 
-          redirect:
-            "follow",
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
 
-          cache:
-            "no-store",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151.0 Safari/537.36",
+      },
 
-          headers: {
-            Accept:
-              "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
-
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151.0 Safari/537.36",
-          },
-
-          signal:
-            controller.signal,
-        }
-      );
+      signal: controller.signal,
+    });
 
     /*
      * Best case:
@@ -204,16 +152,11 @@ async function resolveAltShortLink(
      * Branch/app.link actually redirected us to the
      * real Alt listing.
      */
-    const finalUrl =
-      cleanUrl(
-        response.url
-      );
+    const finalUrl = cleanUrl(response.url);
 
     if (
       finalUrl &&
-      !isAltShortLink(
-        finalUrl
-      )
+      !isAltShortLink(finalUrl)
     ) {
       console.log(
         "Alt short link resolved by redirect:",
@@ -229,13 +172,9 @@ async function resolveAltShortLink(
      *
      * Search that HTML for the actual Alt listing URL.
      */
-    const html =
-      await response.text();
+    const html = await response.text();
 
-    const htmlUrl =
-      findAltUrlInHtml(
-        html
-      );
+    const htmlUrl = findAltUrlInHtml(html);
 
     if (htmlUrl) {
       console.log(
@@ -267,12 +206,26 @@ async function resolveAltShortLink(
      */
     return shortUrl;
   } finally {
-    clearTimeout(
-      timeout
-    );
+    clearTimeout(timeout);
   }
 }
 
+/*******************************************************
+ * DETECT GOLDIN URL
+ *******************************************************/
+
+function isGoldinUrl(value: string) {
+  try {
+    const hostname = new URL(value)
+      .hostname.toLowerCase();
+
+    return /(?:^|\.)goldin\.co$/.test(
+      hostname
+    );
+  } catch {
+    return false;
+  }
+}
 
 /*******************************************************
  * POST
@@ -282,23 +235,19 @@ export async function POST(
   req: NextRequest
 ) {
   try {
-    const body =
-      await req.json();
+    const body = await req.json();
 
-    const suppliedUrl =
-      cleanUrl(
-        body?.url || ""
-      );
+    const suppliedUrl = cleanUrl(
+      body?.url || ""
+    );
 
-    const pageText =
-      String(
-        body?.pageText || ""
-      ).trim();
+    const pageText = String(
+      body?.pageText || ""
+    ).trim();
 
-    const pageHtml =
-      String(
-        body?.pageHtml || ""
-      ).trim();
+    const pageHtml = String(
+      body?.pageHtml || ""
+    ).trim();
 
     if (
       !suppliedUrl &&
@@ -308,7 +257,6 @@ export async function POST(
       return NextResponse.json(
         {
           ok: false,
-
           error:
             "Enter an auction URL or paste copied page text.",
         },
@@ -324,24 +272,25 @@ export async function POST(
      *
      * All other marketplace URLs pass through unchanged.
      */
-    const resolvedUrl =
-      suppliedUrl
-        ? await resolveAltShortLink(
-            suppliedUrl
-          )
-        : "";
+    const resolvedUrl = suppliedUrl
+      ? await resolveAltShortLink(
+          suppliedUrl
+        )
+      : "";
 
-    console.log(
-      "TNCE import URL:",
-      {
-        suppliedUrl,
-        resolvedUrl,
-      }
-    );
+    console.log("TNCE import URL:", {
+      suppliedUrl,
+      resolvedUrl,
+    });
 
-    const result =
-      pageText ||
-      pageHtml
+    /*
+     * When copied page text or HTML is provided,
+     * use the page-text importer.
+     *
+     * Otherwise, import directly from the URL.
+     */
+    let result =
+      pageText || pageHtml
         ? await importPageText(
             pageText,
             resolvedUrl,
@@ -351,14 +300,55 @@ export async function POST(
             resolvedUrl
           );
 
+    /*
+     * GOLDIN SALE DATE FIX
+     *
+     * Goldin copied-page text may contain dates from
+     * similar listings rather than the actual auction.
+     *
+     * The direct Goldin importer can retrieve the
+     * auction's end timestamp.
+     *
+     * If copied-page import did not provide an endDate,
+     * retrieve that date from the direct Goldin importer.
+     *
+     * Preserve all other copied-page information.
+     */
+    if (
+      (pageText || pageHtml) &&
+      isGoldinUrl(resolvedUrl) &&
+      !result.endDate
+    ) {
+      try {
+        const goldinResult =
+          await importAuction(resolvedUrl);
+
+        if (goldinResult.endDate) {
+          result = {
+            ...result,
+            endDate:
+              goldinResult.endDate,
+          };
+        }
+      } catch (error) {
+        /*
+         * The Goldin date lookup is supplemental.
+         *
+         * If it fails, preserve the original
+         * copied-page import.
+         */
+        console.warn(
+          "Goldin date lookup failed; preserving copied-page import:",
+          error
+        );
+      }
+    }
+
     return NextResponse.json({
       ok: true,
 
       /*
-       * Useful while debugging Alt links.
-       *
-       * This does not interfere with the existing
-       * importer result.
+       * Preserve the resolved URL in the response.
        */
       resolvedUrl,
 
@@ -373,7 +363,6 @@ export async function POST(
     return NextResponse.json(
       {
         ok: false,
-
         error:
           error?.message ||
           "Import failed.",

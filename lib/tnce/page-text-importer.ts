@@ -2473,17 +2473,13 @@ function parseGenericPageText(
   let marketplace =
     "generic-text";
 
-  if (
-    /\bebay\b/i.test(text)
-  ) {
-    marketplace =
-      "ebay-text";
-  } else if (
-    /\bgoldin\b/i.test(text)
-  ) {
-    marketplace =
-      "goldin-text";
-  } else if (
+if (/\bgoldin\b/i.test(text)) {
+  marketplace = "goldin-text";
+} else if (/\bebay\b/i.test(text)) {
+  marketplace = "ebay-text";
+}
+
+   else if (
     /\bfanatics\b/i.test(text)
   ) {
     marketplace =
