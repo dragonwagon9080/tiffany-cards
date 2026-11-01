@@ -24,7 +24,7 @@ async function getCard(id: string): Promise<Card | null> {
   try {
     const res = await fetch(
       `${SITE_URL}/api/rpa-tracker?mode=card&id=${encodeURIComponent(id)}`,
-      { cache: "no-store" }
+      { next: { revalidate: 300 } }
     );
 
     if (!res.ok) return null;
