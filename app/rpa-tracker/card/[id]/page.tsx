@@ -2,6 +2,13 @@ import type { Metadata } from "next";
 import CardClient from "@/components/rpa-tracker/CardClient";
 import { getSiteSettings } from "@/lib/cms";
 
+export const revalidate = 300;
+export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  return [];
+}
+
 type Card = {
   Card_Title?: string;
   Card_Title_Display?: string;
