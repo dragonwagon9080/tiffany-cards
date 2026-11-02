@@ -1,5 +1,13 @@
+
 import type { Metadata } from "next";
 import GroupClient from "@/components/rpa-tracker/GroupClient";
+
+export const revalidate = 300;
+export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  return [];
+}
 
 type GroupResponse = {
   group: {
@@ -15,14 +23,18 @@ const API =
   process.env.NEXT_PUBLIC_BASE_URL ||
   "";
 
-async function getGroup(slug: string): Promise<GroupResponse | null> {
+async function getGroup(
+  slug: string
+): Promise<GroupResponse | null> {
   try {
     if (!API) return null;
 
     const res = await fetch(
-      `${API}/api/rpa-tracker?mode=group&slug=${slug}`,
+      `${API}/api/rpa-tracker?mode=group&slug=${encodeURIComponent(slug)}`,
       {
-        cache: "no-store",
+        next: {
+          revalidate: 300,
+        },
       }
     );
 
@@ -43,7 +55,7 @@ export async function generateMetadata({
 
   const data = await getGroup(slug);
 
-  if (!data) {
+  if (!data?.group) {
     return {
       title: "Registry Not Found",
     };
