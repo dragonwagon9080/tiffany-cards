@@ -14,6 +14,13 @@ import {
 } from "@/lib/cards-alert/lists";
 
 
+export const revalidate = 300;
+export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  return [];
+}
+
 function cleanId(
   value: unknown
 ) {
